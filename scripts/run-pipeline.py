@@ -247,6 +247,24 @@ def main() -> int:
     else:
         enrich_result = {"name": "Enrich", "status": "skipped", "elapsed_s": 0, "count": 0, "stderr_tail": []}
 
+    # Phase 4: Record source health from the fetch outputs
+    health_output = Path(_run_dir) / "health.json"
+    health_args = []
+    for flag, path in [("--rss", tmp_rss), ("--twitter", tmp_twitter), ("--github", tmp_github), ("--reddit", tmp_reddit), ("--web", tmp_web)]:
+        if path.exists():
+            health_args += [flag, str(path)]
+    health_args += ["--output", str(health_output)]
+    health_args += ["--verbose"] if args.verbose else []
+    health_result = run_step("Health", "source-health.py", health_args, health_output, timeout=30, force=False)
+
+    health_summary = None
+    if health_result["status"] == "ok" and health_output.exists():
+        try:
+            with open(health_output) as f:
+                health_summary = json.load(f)
+        except (json.JSONDecodeError, OSError):
+            health_summary = None
+
     total_elapsed = time.time() - t_start
 
     # Summary
@@ -255,6 +273,7 @@ def main() -> int:
     for r in step_results:
         logger.info(f"   {r['name']:10s} {r['status']:7s} {r['count']:4d} items  {r['elapsed_s']:5.1f}s")
     logger.info(f"   {'Merge':10s} {merge_result['status']:7s} {merge_result.get('count',0):4d} items  {merge_result['elapsed_s']:5.1f}s")
+    logger.info(f"   {'Health':10s} {health_result['status']:7s} {health_summary.get('tracked_sources', 0) if health_summary else 0:4d} tracked {health_result['elapsed_s']:5.1f}s")
     logger.info(f"   Output: {args.output}")
 
     if merge_result["status"] != "ok":
@@ -263,11 +282,13 @@ def main() -> int:
 
     # Write pipeline metadata alongside output for agent consumption
     meta = {
-        "pipeline_version": "1.0.0",
+        "pipeline_version": "1.1.0",
         "total_elapsed_s": round(total_elapsed, 1),
         "fetch_elapsed_s": round(fetch_elapsed, 1),
         "steps": step_results,
         "merge": merge_result,
+        "health": health_result,
+        "health_summary": health_summary,
         "output": str(args.output),
     }
     meta_path = args.output.with_suffix(".meta.json")

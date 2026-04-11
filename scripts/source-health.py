@@ -5,7 +5,7 @@ Source health monitoring for tech-news-digest pipeline.
 Tracks per-source success/failure history and reports unhealthy sources.
 
 Usage:
-    python3 source-health.py --rss rss.json --twitter twitter.json --github github.json
+    python3 source-health.py --rss rss.json --twitter twitter.json --github github.json [--output health.json]
 """
 
 import json
@@ -116,29 +116,46 @@ def main():
     parser.add_argument("--github", type=Path, help="GitHub output JSON")
     parser.add_argument("--reddit", type=Path, help="Reddit output JSON")
     parser.add_argument("--web", type=Path, help="Web search output JSON")
+    parser.add_argument("--output", type=Path, help="Optional JSON summary output path")
     parser.add_argument("--verbose", "-v", action="store_true")
     args = parser.parse_args()
 
     logger = setup_logging(args.verbose)
     health = load_health_data()
     now = time.time()
+    processed_inputs = []
 
     # Standard sources (use 'sources' key)
-    for path in [args.rss, args.twitter, args.github]:
+    for label, path in [("rss", args.rss), ("twitter", args.twitter), ("github", args.github)]:
         sources = load_source_file(path)
         if sources:
             update_health(health, sources, now)
+            processed_inputs.append({"name": label, "path": str(path), "count": len(sources)})
 
     # Reddit and Web use flexible loading (subreddits/topics keys)
-    for path in [args.reddit, args.web]:
+    for label, path in [("reddit", args.reddit), ("web", args.web)]:
         sources = load_source_file_flexible(path)
         if sources:
             update_health(health, sources, now)
+            processed_inputs.append({"name": label, "path": str(path), "count": len(sources)})
 
     save_health_data(health)
     unhealthy = report_unhealthy(health, logger)
 
     total = len(health)
+    summary = {
+        "status": "ok",
+        "tracked_sources": total,
+        "unhealthy_sources": unhealthy,
+        "inputs": processed_inputs,
+        "health_file": HEALTH_FILE,
+        "checked_at": datetime.utcfromtimestamp(now).isoformat() + "Z",
+    }
+
+    if args.output:
+        with open(args.output, 'w') as f:
+            json.dump(summary, f, indent=2)
+
     logger.info(f"📊 Health check: {total} sources tracked, {unhealthy} unhealthy")
     return 0
 
