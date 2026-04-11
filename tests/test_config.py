@@ -13,6 +13,19 @@ sys.path.insert(0, str(SCRIPTS_DIR))
 from config_loader import load_merged_sources, load_merged_topics
 
 DEFAULTS_DIR = Path(__file__).parent.parent / "config" / "defaults"
+README_EN = Path(__file__).parent.parent / "README.md"
+README_ZH = Path(__file__).parent.parent / "README_CN.md"
+
+
+def get_source_counts():
+    sources = load_merged_sources(DEFAULTS_DIR)
+    return {
+        "total": len(sources),
+        "rss": len([s for s in sources if s["type"] == "rss"]),
+        "twitter": len([s for s in sources if s["type"] == "twitter"]),
+        "github": len([s for s in sources if s["type"] == "github"]),
+        "reddit": len([s for s in sources if s["type"] == "reddit"]),
+    }
 
 
 class TestLoadSources(unittest.TestCase):
@@ -104,24 +117,70 @@ class TestSourceCounts(unittest.TestCase):
         self.assertGreaterEqual(len(enabled), 130)
 
     def test_twitter_count(self):
-        sources = load_merged_sources(DEFAULTS_DIR)
-        tw = [s for s in sources if s["type"] == "twitter"]
-        self.assertEqual(len(tw), 48)
+        counts = get_source_counts()
+        self.assertEqual(counts["twitter"], 48)
 
     def test_rss_count(self):
-        sources = load_merged_sources(DEFAULTS_DIR)
-        rss = [s for s in sources if s["type"] == "rss"]
-        self.assertEqual(len(rss), 78)  # 62 original + 16 YouTube RSS
+        counts = get_source_counts()
+        self.assertEqual(counts["rss"], 78)  # 62 original + 16 YouTube RSS
 
     def test_github_count(self):
-        sources = load_merged_sources(DEFAULTS_DIR)
-        gh = [s for s in sources if s["type"] == "github"]
-        self.assertEqual(len(gh), 28)
+        counts = get_source_counts()
+        self.assertEqual(counts["github"], 29)
 
     def test_reddit_count(self):
-        sources = load_merged_sources(DEFAULTS_DIR)
-        rd = [s for s in sources if s["type"] == "reddit"]
-        self.assertEqual(len(rd), 13)
+        counts = get_source_counts()
+        self.assertEqual(counts["reddit"], 13)
+
+
+class TestReadmeCounts(unittest.TestCase):
+    def test_english_readme_counts_are_current(self):
+        counts = get_source_counts()
+        content = README_EN.read_text(encoding="utf-8")
+        self.assertIn(
+            f"Automated tech news digest — {counts['total']} built-in sources, 6-source pipeline, one chat message to install.",
+            content,
+        )
+        self.assertIn(
+            f"A quality-scored, deduplicated tech digest built from **{counts['total']} built-in sources** plus **4 web search topics**:",
+            content,
+        )
+        self.assertIn(
+            f"| 📡 RSS | {counts['rss']} feeds |",
+            content,
+        )
+        self.assertIn(
+            f"| 🐙 GitHub | {counts['github']} repos |",
+            content,
+        )
+        self.assertIn(
+            f"`config/defaults/sources.json` — {counts['total']} built-in sources ({counts['rss']} RSS, {counts['twitter']} Twitter, {counts['github']} GitHub, {counts['reddit']} Reddit)",
+            content,
+        )
+
+    def test_chinese_readme_counts_are_current(self):
+        counts = get_source_counts()
+        content = README_ZH.read_text(encoding="utf-8")
+        self.assertIn(
+            f"自动化科技资讯汇总 — {counts['total']} 个内置数据源，6 层管道，一句话安装。",
+            content,
+        )
+        self.assertIn(
+            f"基于 **{counts['total']} 个内置数据源** + **4 个 Web 搜索主题** 的质量评分、去重科技日报：",
+            content,
+        )
+        self.assertIn(
+            f"| 📡 RSS | {counts['rss']} 个订阅源 |",
+            content,
+        )
+        self.assertIn(
+            f"| 🐙 GitHub | {counts['github']} 个仓库 |",
+            content,
+        )
+        self.assertIn(
+            f"`config/defaults/sources.json` — {counts['total']} 个内置数据源（{counts['rss']} RSS、{counts['twitter']} Twitter、{counts['github']} GitHub、{counts['reddit']} Reddit）",
+            content,
+        )
 
 
 if __name__ == "__main__":

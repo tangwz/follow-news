@@ -1,6 +1,6 @@
 # Tech News Digest
 
-> 自动化科技资讯汇总 — 151 个数据源，5 层管道，一句话安装。
+> 自动化科技资讯汇总 — 168 个内置数据源，6 层管道，一句话安装。
 
 [English](README.md) | **中文**
 
@@ -32,14 +32,14 @@ clawhub install tech-news-digest
 
 ## 📊 你会得到什么
 
-基于 **151 个数据源** 的质量评分、去重科技日报：
+基于 **168 个内置数据源** + **4 个 Web 搜索主题** 的质量评分、去重科技日报：
 
 | 层级 | 数量 | 内容 |
 |------|------|------|
-| 📡 RSS | 49 个订阅源 | OpenAI、Anthropic、Ben's Bites、HN、36氪、CoinDesk… |
+| 📡 RSS | 78 个订阅源 | OpenAI、Anthropic、Ben's Bites、HN、36氪、CoinDesk… |
 | 🐦 Twitter/X | 48 个 KOL | @karpathy、@VitalikButerin、@sama、@elonmusk… |
 | 🔍 Web 搜索 | 4 个主题 | Tavily 或 Brave Search API + 时效过滤 |
-| 🐙 GitHub | 28 个仓库 | 关键项目的 Release 跟踪（LangChain、vLLM、DeepSeek、Llama…） |
+| 🐙 GitHub | 29 个仓库 | 关键项目的 Release 跟踪（LangChain、vLLM、DeepSeek、Llama…） |
 | 🗣️ Reddit | 13 个子版块 | r/MachineLearning、r/LocalLLaMA、r/CryptoCurrency… |
 
 ### 数据管道
@@ -62,13 +62,13 @@ clawhub install tech-news-digest
 
 ## ⚙️ 配置
 
-- `config/defaults/sources.json` — 151 个内置数据源
+- `config/defaults/sources.json` — 168 个内置数据源（78 RSS、48 Twitter、29 GitHub、13 Reddit）
 - `config/defaults/topics.json` — 4 个主题，含搜索查询和 Twitter 查询
 - 用户自定义配置放 `workspace/config/`，优先级更高
 
 ## 🎨 自定义数据源
 
-开箱即用，内置 151 个数据源——但完全可自定义。将默认配置复制到 workspace 并覆盖：
+开箱即用，内置 168 个数据源——但完全可自定义。将默认配置复制到 workspace 并覆盖：
 
 ```bash
 # 复制并自定义

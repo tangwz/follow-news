@@ -20,5 +20,13 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt pytest
+
+      - name: Validate configuration
+        run: python scripts/validate-config.py --defaults config/defaults
+
       - name: Run tests
-        run: python -m unittest discover -s tests -v
+        run: python -m pytest -q
