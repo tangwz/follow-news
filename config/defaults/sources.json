@@ -1731,6 +1731,19 @@
       "note": "HKUDS NanoBot AI agent project"
     },
     {
+      "id": "hermes-agent-github",
+      "type": "github",
+      "name": "Nous Hermes Agent",
+      "repo": "nousresearch/hermes-agent",
+      "enabled": true,
+      "priority": false,
+      "topics": [
+        "ai-agent",
+        "llm"
+      ],
+      "note": "Nous Research Hermes agent framework/project"
+    },
+    {
       "id": "zeroclaw-github",
       "type": "github",
       "name": "ZeroClaw",
