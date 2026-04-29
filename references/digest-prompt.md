@@ -130,6 +130,10 @@ Save to `<WORKSPACE>/archive/tech-news-digest/<MODE>-YYYY-MM-DD.md`. Delete file
 ## Delivery
 
 1. **Discord**: Send to `<DISCORD_CHANNEL_ID>` via `message` tool
+   - If the report exceeds Discord's message limit, split it into numbered chunks (`1/N`, `2/N`, ...) before sending.
+   - Split on section boundaries (`## ...`) or paragraph breaks when possible; do not cut links, code fences, or list items mid-line.
+   - Keep each chunk comfortably below the platform limit (target ~1700 chars, never near 2000) to leave room for numbering/reply tags.
+   - Send only the current report being generated. Do not concatenate older reports, retries, or summaries into the same delivery batch.
 2. **Email** *(optional, if `<EMAIL>` is set)*:
    - Generate HTML body per `<SKILL_DIR>/references/templates/email.md` → write to `/tmp/td-email.html`
    - Generate PDF attachment:
