@@ -55,6 +55,10 @@ python3 <SKILL_DIR>/scripts/run-pipeline.py \
 
 If it fails, run individual scripts in `<SKILL_DIR>/scripts/` (see each script's `--help`), then merge with `merge-sources.py`.
 
+### Twitter/X Backend Guidance
+
+Twitter/X uses `TWITTER_API_BACKEND=auto` by default. Auto mode tries OpenCLI first, then API fallbacks. If the `jackwener/opencli` skill is available in OpenClaw and Twitter data is missing, use that skill to validate `opencli doctor`, browser bridge connectivity, and X login state before asking the user for API credentials.
+
 ## Report Generation
 
 Get a structured overview:

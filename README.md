@@ -97,11 +97,12 @@ No need to copy the entire file — just include what you want to change.
 All environment variables are optional. The pipeline runs with whatever sources are available.
 
 ```bash
-# Twitter/X Backend (auto priority: getxapi > twitterapiio > official)
-export GETX_API_KEY="..."        # GetXAPI
-export TWITTERAPI_IO_KEY="..."   # twitterapi.io
-export X_BEARER_TOKEN="..."      # Official X API v2
-export TWITTER_API_BACKEND="auto"  # auto|getxapi|twitterapiio|official
+# Twitter/X Backend (auto priority: opencli > getxapi > twitterapiio > official)
+export TWITTER_API_BACKEND="auto"  # auto|opencli|getxapi|twitterapiio|official
+export OPENCLI_BIN="/path/to/opencli"  # optional; defaults to opencli on PATH
+export GETX_API_KEY="..."        # GetXAPI fallback
+export TWITTERAPI_IO_KEY="..."   # twitterapi.io fallback
+export X_BEARER_TOKEN="..."      # Official X API v2 fallback
 # Web Search
 export TAVILY_API_KEY="tvly-xxx"   # Tavily Search API
 export BRAVE_API_KEYS="k1,k2,k3"   # Brave Search API keys (comma-separated for rotation)
@@ -112,6 +113,8 @@ export GITHUB_TOKEN="..."          # GitHub API
 # Other
 export BRAVE_PLAN="free"           # Override Brave rate limit: free|pro
 ```
+
+OpenCLI is preferred because it can reuse an authenticated Chrome/Chromium session instead of requiring Twitter API credentials. API backends remain available for CI, headless machines, or users who already configured API keys.
 
 ## 📦 Dependencies
 

@@ -8,11 +8,17 @@ metadata:
   openclaw:
     requires:
       bins: ["python3"]
-    optionalBins: ["mail", "msmtp", "gog", "gh", "openssl", "weasyprint"]
+    optionalBins: ["opencli", "mail", "msmtp", "gog", "gh", "openssl", "weasyprint"]
 env:
   - name: TWITTER_API_BACKEND
     required: false
-    description: "Twitter API backend: 'official', 'twitterapiio', or 'auto' (default: auto)"
+    description: "Twitter backend: 'auto', 'opencli', 'getxapi', 'twitterapiio', or 'official' (default: auto; auto tries OpenCLI first)"
+  - name: OPENCLI_BIN
+    required: false
+    description: Optional path to the OpenCLI executable. Used when OpenCLI is not available on PATH.
+  - name: GETX_API_KEY
+    required: false
+    description: GetXAPI key for Twitter/X fallback (getxapi backend)
   - name: X_BEARER_TOKEN
     required: false
     description: Twitter/X API bearer token for KOL monitoring (official backend)
@@ -74,13 +80,18 @@ Automated tech news digest system with unified data source model, quality scorin
    ```
 
 2. **Environment Variables**: 
-   - `TWITTERAPI_IO_KEY` - twitterapi.io API key (optional, preferred)
-   - `X_BEARER_TOKEN` - Twitter/X official API bearer token (optional, fallback)
+   - `TWITTER_API_BACKEND` - Twitter backend: auto|opencli|getxapi|twitterapiio|official (optional, default: auto)
+   - `OPENCLI_BIN` - OpenCLI executable path override (optional)
+   - `GETX_API_KEY` - GetXAPI key for Twitter/X fallback (optional)
+   - `TWITTERAPI_IO_KEY` - twitterapi.io API key for Twitter/X fallback (optional)
+   - `X_BEARER_TOKEN` - Twitter/X official API bearer token for final fallback (optional)
    - `TAVILY_API_KEY` - Tavily Search API key, alternative to Brave (optional)
    - `WEB_SEARCH_BACKEND` - Web search backend: auto|brave|tavily (optional, default: auto)
    - `BRAVE_API_KEYS` - Brave Search API keys, comma-separated for rotation (optional)
    - `BRAVE_API_KEY` - Single Brave key fallback (optional)
    - `GITHUB_TOKEN` - GitHub personal access token (optional, improves rate limits)
+
+   OpenCLI is the preferred Twitter/X backend in `auto` mode. In OpenClaw environments where `jackwener/opencli` is installed, the agent should use that skill to validate `opencli doctor`, browser bridge state, and X login before asking for API keys.
 
 3. **Generate Digest**:
    ```bash
