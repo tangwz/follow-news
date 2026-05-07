@@ -305,9 +305,11 @@ class TestOpenCliBackend(unittest.TestCase):
         ]
 
         backend = fetch_twitter.OpenCliBackend()
-        results = backend.fetch_all([self.source, second_source], self.cutoff)
+        with self.assertLogs(level="WARNING") as logs:
+            results = backend.fetch_all([self.source, second_source], self.cutoff)
 
         by_handle = {item["handle"]: item for item in results}
         self.assertEqual(by_handle["sama"]["status"], "ok")
         self.assertEqual(by_handle["OpenAI"]["status"], "error")
         self.assertIn("opencli_source_error", by_handle["OpenAI"]["error"])
+        self.assertTrue(any("opencli_source_error" in line for line in logs.output))

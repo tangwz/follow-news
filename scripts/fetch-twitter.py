@@ -243,6 +243,22 @@ def get_backend_order(backend_name: str) -> List[str]:
     return [backend_name]
 
 
+def _classify_opencli_failure(returncode: int, stderr: str) -> str:
+    """Map OpenCLI process failures into stable backend error codes."""
+    text = (stderr or "").lower()
+    if returncode == 69:
+        return "opencli_browser_unavailable"
+    if returncode == 75:
+        return "opencli_timeout"
+    if returncode == 77:
+        return "opencli_auth_required"
+    if "not logged" in text or "auth" in text or "permission" in text:
+        return "opencli_auth_required"
+    if "browser" in text and ("unavailable" in text or "connect" in text):
+        return "opencli_browser_unavailable"
+    return "opencli_source_error"
+
+
 # ---------------------------------------------------------------------------
 # Rate limiting
 # ---------------------------------------------------------------------------
@@ -304,6 +320,115 @@ class TwitterBackend(ABC):
     @abstractmethod
     def fetch_all(self, sources: List[Dict[str, Any]], cutoff: datetime) -> List[Dict[str, Any]]:
         """Fetch tweets for all sources. Returns list of source result dicts."""
+
+
+class OpenCliBackend(TwitterBackend):
+    """OpenCLI backend using the browser-backed twitter tweets adapter."""
+
+    def __init__(self, command: Optional[str] = None):
+        self.command = command or resolve_opencli_bin()
+        self._verify_capability()
+        self._run_doctor()
+
+    def _run_command(self, args: List[str], timeout: int = OPENCLI_TIMEOUT) -> subprocess.CompletedProcess:
+        try:
+            return subprocess.run(
+                [self.command] + args,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                env=os.environ,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise OpenCliBackendError("opencli_timeout", f"OpenCLI command timed out: {exc}") from exc
+
+    def _verify_capability(self) -> None:
+        result = self._run_command(["list", "-f", "json"], timeout=30)
+        if result.returncode != 0:
+            code = _classify_opencli_failure(result.returncode, result.stderr)
+            raise OpenCliBackendError(code, result.stderr.strip() or "opencli list failed")
+
+        try:
+            payload = json.loads(result.stdout or "null")
+        except json.JSONDecodeError as exc:
+            raise OpenCliBackendError("opencli_parse_error", "opencli list returned invalid JSON") from exc
+
+        if not opencli_has_twitter_tweets(payload):
+            raise OpenCliBackendError(
+                "opencli_capability_missing",
+                "OpenCLI does not expose the twitter tweets command.",
+            )
+
+    def _run_doctor(self) -> None:
+        result = self._run_command(["doctor"], timeout=30)
+        if result.returncode == 0:
+            return
+        code = _classify_opencli_failure(result.returncode, result.stderr)
+        if code in {"opencli_browser_unavailable", "opencli_auth_required"}:
+            raise OpenCliBackendError(code, result.stderr.strip() or "opencli doctor failed")
+        logging.warning(f"opencli doctor returned {result.returncode}: {(result.stderr or result.stdout).strip()[:200]}")
+
+    def _parse_tweets_output(self, stdout: str, source: Dict[str, Any], cutoff: datetime) -> List[Dict[str, Any]]:
+        try:
+            payload = json.loads(stdout or "null")
+        except json.JSONDecodeError as exc:
+            raise OpenCliBackendError("opencli_parse_error", "opencli twitter tweets returned invalid JSON") from exc
+
+        articles = []
+        for record in extract_opencli_tweet_records(payload):
+            article = normalize_opencli_tweet(record, source, cutoff)
+            if article:
+                articles.append(article)
+        return articles
+
+    def _fetch_user_tweets(self, source: Dict[str, Any], cutoff: datetime) -> Dict[str, Any]:
+        handle = source["handle"].lstrip("@")
+        result = self._run_command(
+            ["twitter", "tweets", handle, "--limit", str(MAX_TWEETS_PER_USER), "-f", "json"]
+        )
+
+        if result.returncode != 0:
+            code = _classify_opencli_failure(result.returncode, result.stderr)
+            message = (result.stderr or result.stdout or "opencli twitter tweets failed").strip()
+            if code in OPENCLI_GLOBAL_ERROR_CODES:
+                raise OpenCliBackendError(code, message)
+            return self._make_error(source, f"{code}: {message[:160]}", 0)
+
+        articles = self._parse_tweets_output(result.stdout, source, cutoff)
+        return self._make_result(source, articles, 0)
+
+    def fetch_all(self, sources: List[Dict[str, Any]], cutoff: datetime) -> List[Dict[str, Any]]:
+        if not sources:
+            return []
+
+        results: List[Dict[str, Any]] = []
+        total = len(sources)
+
+        first = self._fetch_user_tweets(sources[0], cutoff)
+        results.append(first)
+        logging.info(f"[1/{total}] @{first['handle']}: {first['count']} tweets via OpenCLI")
+
+        remaining = sources[1:]
+        if not remaining:
+            return results
+
+        done = 1
+        with ThreadPoolExecutor(max_workers=OPENCLI_MAX_WORKERS) as pool:
+            futures = {pool.submit(self._fetch_user_tweets, source, cutoff): source for source in remaining}
+            for future in as_completed(futures):
+                source = futures[future]
+                try:
+                    result = future.result()
+                except OpenCliBackendError as exc:
+                    result = self._make_error(source, f"{exc.code}: {exc.message[:160]}", 0)
+                results.append(result)
+                done += 1
+                if result["status"] == "ok":
+                    logging.info(f"[{done}/{total}] ✅ @{result['handle']}: {result['count']} tweets via OpenCLI")
+                else:
+                    logging.warning(f"[{done}/{total}] ❌ @{result['handle']}: {result.get('error', 'unknown')}")
+
+        return results
 
 
 class OfficialBackend(TwitterBackend):
