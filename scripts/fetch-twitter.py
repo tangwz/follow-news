@@ -192,6 +192,57 @@ def normalize_opencli_tweet(
     }
 
 
+def resolve_opencli_bin() -> str:
+    """Resolve the OpenCLI executable from OPENCLI_BIN or PATH."""
+    configured = os.getenv("OPENCLI_BIN")
+    if configured:
+        return configured
+
+    found = shutil.which("opencli")
+    if found:
+        return found
+
+    raise OpenCliBackendError(
+        "opencli_missing",
+        "OpenCLI executable not found. Set OPENCLI_BIN or install opencli on PATH.",
+    )
+
+
+def opencli_has_twitter_tweets(payload: Any) -> bool:
+    """Return true when `opencli list -f json` exposes twitter tweets."""
+    if isinstance(payload, list):
+        for item in payload:
+            if opencli_has_twitter_tweets(item):
+                return True
+        return False
+
+    if isinstance(payload, dict):
+        site = str(payload.get("site") or payload.get("group") or "").lower()
+        name = str(payload.get("name") or payload.get("command") or "").lower()
+        if site == "twitter" and name == "tweets":
+            return True
+
+        if "twitter" in payload:
+            twitter_value = payload["twitter"]
+            if isinstance(twitter_value, list):
+                return "tweets" in [str(item).lower() for item in twitter_value]
+            if isinstance(twitter_value, dict):
+                return opencli_has_twitter_tweets(twitter_value)
+
+        for key in ("commands", "items", "data", "sites"):
+            if key in payload and opencli_has_twitter_tweets(payload[key]):
+                return True
+
+    return False
+
+
+def get_backend_order(backend_name: str) -> List[str]:
+    """Return backend candidates in the order they should be attempted."""
+    if backend_name == "auto":
+        return ["opencli", "getxapi", "twitterapiio", "official"]
+    return [backend_name]
+
+
 # ---------------------------------------------------------------------------
 # Rate limiting
 # ---------------------------------------------------------------------------
