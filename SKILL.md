@@ -395,7 +395,7 @@ export GH_APP_INSTALL_ID="67890"
 export GH_APP_KEY_FILE="/path/to/key.pem"
 ```
 
-- **Twitter**: `TWITTERAPI_IO_KEY` preferred ($3-5/mo); `X_BEARER_TOKEN` as fallback; `auto` mode tries twitterapiio first
+- **Twitter**: OpenCLI is preferred in `auto` mode; API backends fallback in this order: `GETX_API_KEY`, `TWITTERAPI_IO_KEY`, `X_BEARER_TOKEN`
 - **Web Search**: Tavily (preferred in auto mode) or Brave; optional, fallback to agent web_search if unavailable
 - **GitHub**: Auto-generates token from GitHub App if PAT not set; unauthenticated fallback (60 req/hr)
 - **Reddit**: No API key needed (uses public JSON API)
