@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Configuration overlay loader for tech-news-digest.
+Configuration overlay loader for follow-news.
 
 Handles loading and merging of default configurations with optional user overlays.
 Supports sources.json and topics.json with overlay logic for customization.
@@ -61,7 +61,7 @@ def load_merged_sources(defaults_dir: Path, config_dir: Optional[Path] = None) -
     if config_dir is None:
         return default_sources
         
-    config_path = config_dir / "tech-news-digest-sources.json"
+    config_path = config_dir / "follow-news-sources.json"
     
     # Try to load user overlay
     try:
@@ -160,7 +160,7 @@ def load_merged_topics(defaults_dir: Path, config_dir: Optional[Path] = None) ->
     if config_dir is None:
         return default_topics
         
-    config_path = config_dir / "tech-news-digest-topics.json"
+    config_path = config_dir / "follow-news-topics.json"
     
     # Try to load user overlay
     try:

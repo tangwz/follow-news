@@ -101,7 +101,7 @@
 - **Quality scores in output**: 🔥 score prefix on every article, strict descending order per topic
 - **Domain limit fix**: Exempt x.com/github.com/reddit.com from per-topic domain limits (#1)
 - **Brave multi-key**: `BRAVE_API_KEYS` for comma-separated key rotation
-- **Config naming**: User overlay files renamed to `tech-news-digest-sources.json` / `tech-news-digest-topics.json`
+- **Config naming**: User overlay files renamed to `follow-news-sources.json` / `follow-news-topics.json`
 - **Tests**: 41 unit + integration tests with real fixture data, GitHub Actions CI (Python 3.9 + 3.12)
 - **Docs**: Full env var alignment, Network Access/Shell Safety updates, README badges, CN sync
 
@@ -109,7 +109,7 @@
 
 - **Docs**: Align API Keys & Environment with all 10 actual env vars
 - **Docs**: Update Network Access (add Reddit) and Shell Safety (send-email.py + generate-pdf.py)
-- **Refactor**: Rename user overlay configs to `tech-news-digest-sources.json` / `tech-news-digest-topics.json` to avoid naming conflicts
+- **Refactor**: Rename user overlay configs to `follow-news-sources.json` / `follow-news-topics.json` to avoid naming conflicts
 
 ## v3.10.2
 
@@ -217,7 +217,7 @@
 ## v3.4.6
 
 - Add `reddit` to config/schema.json source type enum (was missing, caused validation mismatch)
-- Rename all archive paths `tech-digest/` → `tech-news-digest/` for consistency
+- Rename all archive paths `tech-digest/` → `follow-news/` for consistency
 - Fix Discord template: default delivery is channel (via DISCORD_CHANNEL_ID), not DM
 - GH_APP_TOKEN_SCRIPT: add trust warning in code and env var description
 - Path placeholders: SKILL.md uses `<workspace>/` consistently with digest-prompt.md
@@ -225,7 +225,7 @@
 ## v3.4.5
 
 - Fix source count inconsistencies across docs (131/132 → 133: 49 RSS + 49 Twitter + 22 GitHub + 13 Reddit)
-- Rename legacy `tech-digest` references to `tech-news-digest` in comments, descriptions, and cache file paths
+- Rename legacy `tech-digest` references to `follow-news` in comments, descriptions, and cache file paths
 
 ## v3.4.4
 

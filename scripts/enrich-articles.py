@@ -31,7 +31,7 @@ MAX_WORKERS = 5
 DEFAULT_MIN_SCORE = 10
 DEFAULT_MAX_ARTICLES = 15
 DEFAULT_MAX_CHARS = 2000
-USER_AGENT = "TechDigest/3.0 (article enrichment)"
+USER_AGENT = "FollowNews/3.0 (article enrichment)"
 
 SKIP_DOMAINS = {
     "twitter.com", "x.com",

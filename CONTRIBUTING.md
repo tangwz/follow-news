@@ -50,5 +50,5 @@ scripts/          — Python pipeline scripts
 ## Git Workflow
 
 - Commit messages: concise English, describe what changed
-- Push to `main` branch on github.com/draco-agent/tech-news-digest
+- Push to `main` branch on github.com/tangwz/follow-news
 - No feature branches for solo development (direct to main)

@@ -30,7 +30,7 @@ MAX_WORKERS = 10
 MAX_RELEASES_PER_REPO = 20
 RETRY_COUNT = 2
 RETRY_DELAY = 2.0  # seconds
-GITHUB_CACHE_PATH = "/tmp/tech-news-digest-github-cache.json"
+GITHUB_CACHE_PATH = "/tmp/follow-news-github-cache.json"
 GITHUB_CACHE_TTL_HOURS = 24
 
 
@@ -82,7 +82,7 @@ def _generate_github_app_token(app_id: str, install_id: str, key_file: str) -> s
         headers={
             'Authorization': f'Bearer {jwt}',
             'Accept': 'application/vnd.github+json',
-            'User-Agent': 'tech-news-digest',
+            'User-Agent': 'follow-news',
         },
     )
     with urlopen(req, timeout=15) as resp:
@@ -266,7 +266,7 @@ def fetch_releases_with_retry(source: Dict[str, Any], cutoff: datetime, github_t
     
     # Setup headers
     headers = {
-        "User-Agent": "TechDigest/2.0",
+        "User-Agent": "FollowNews/2.0",
         "Accept": "application/vnd.github.v3+json",
     }
     if github_token:
@@ -414,7 +414,7 @@ def load_sources(defaults_dir: Path, config_dir: Optional[Path] = None) -> List[
 def main():
     """Main GitHub releases fetching function."""
     parser = argparse.ArgumentParser(
-        description="Parallel GitHub releases fetcher for tech-news-digest. "
+        description="Parallel GitHub releases fetcher for follow-news. "
                    "Fetches enabled GitHub sources from unified configuration, "
                    "filters by time window, and outputs structured release data.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -490,7 +490,7 @@ Environment Variables:
     
     # Auto-generate unique output path if not specified
     if not args.output:
-        fd, temp_path = tempfile.mkstemp(prefix="tech-news-digest-github-", suffix=".json")
+        fd, temp_path = tempfile.mkstemp(prefix="follow-news-github-", suffix=".json")
         os.close(fd)
         args.output = Path(temp_path)
     
@@ -575,7 +575,7 @@ TRENDING_QUERIES = [
     {"topic": "frontier-tech", "q": "machine-learning deep-learning in:topics,name,description"},
 ]
 
-TRENDING_CACHE_PATH = "/tmp/tech-news-digest-trending-cache.json"
+TRENDING_CACHE_PATH = "/tmp/follow-news-trending-cache.json"
 
 
 def fetch_trending_repos(hours: int = 48, github_token: Optional[str] = None,
@@ -589,7 +589,7 @@ def fetch_trending_repos(hours: int = 48, github_token: Optional[str] = None,
     cutoff_str = cutoff.strftime("%Y-%m-%d")
 
     headers = {
-        "User-Agent": "TechDigest/3.0",
+        "User-Agent": "FollowNews/3.0",
         "Accept": "application/vnd.github.v3+json",
     }
     if github_token:

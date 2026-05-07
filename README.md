@@ -1,19 +1,19 @@
-# Tech News Digest
+# Follow News
 
 > Automated tech news digest — 168 built-in sources, 6-source pipeline, one chat message to install.
 
 **English** | [中文](README_CN.md)
 
-[![Tests](https://github.com/draco-agent/tech-news-digest/actions/workflows/test.yml/badge.svg)](https://github.com/draco-agent/tech-news-digest/actions/workflows/test.yml)
+[![Tests](https://github.com/tangwz/follow-news/actions/workflows/test.yml/badge.svg)](https://github.com/tangwz/follow-news/actions/workflows/test.yml)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
-[![ClawHub](https://img.shields.io/badge/ClawHub-tech--news--digest-blueviolet)](https://clawhub.com/draco-agent/tech-news-digest)
+[![ClawHub](https://img.shields.io/badge/ClawHub-follow--news-blueviolet)](https://clawhub.com/tangwz/follow-news)
 [![MIT License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 ## 💬 Install in One Message
 
 Tell your [OpenClaw](https://openclaw.ai) AI assistant:
 
-> **"Install tech-news-digest and send a daily digest to #tech-news every morning at 9am"**
+> **"Install follow-news and send a daily digest to #tech-news every morning at 9am"**
 
 That's it. Your bot handles installation, configuration, scheduling, and delivery — all through conversation.
 
@@ -21,13 +21,13 @@ More examples:
 
 > 🗣️ "Set up a weekly AI digest, only LLM and AI Agent topics, deliver to Discord #ai-weekly every Monday"
 
-> 🗣️ "Install tech-news-digest, add my RSS feeds, and send crypto news to Telegram"
+> 🗣️ "Install follow-news, add my RSS feeds, and send crypto news to Telegram"
 
 > 🗣️ "Give me a tech digest right now, skip Twitter sources"
 
 Or install via CLI:
 ```bash
-clawhub install tech-news-digest
+clawhub install follow-news
 ```
 
 ## 📊 What You Get
@@ -72,8 +72,8 @@ Works out of the box with 168 built-in sources (78 RSS, 48 Twitter, 29 GitHub, 1
 
 ```bash
 # Copy and customize
-cp config/defaults/sources.json workspace/config/tech-news-digest-sources.json
-cp config/defaults/topics.json workspace/config/tech-news-digest-topics.json
+cp config/defaults/sources.json workspace/config/follow-news-sources.json
+cp config/defaults/topics.json workspace/config/follow-news-topics.json
 ```
 
 Your overlay file **merges** with defaults:
@@ -138,7 +138,7 @@ pip install weasyprint
 
 ## 📂 Repository
 
-**GitHub**: [github.com/draco-agent/tech-news-digest](https://github.com/draco-agent/tech-news-digest)
+**GitHub**: [github.com/tangwz/follow-news](https://github.com/tangwz/follow-news)
 
 ## 🌟 Featured In
 

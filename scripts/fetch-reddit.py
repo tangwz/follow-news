@@ -34,7 +34,7 @@ MAX_WORKERS = 4
 TIMEOUT = 30
 RETRY_COUNT = 2
 RETRY_DELAY = 3
-USER_AGENT = "TechDigest/2.8 (bot; +https://github.com/draco-agent/tech-news-digest)"
+USER_AGENT = "FollowNews/2.8 (bot; +https://github.com/tangwz/follow-news)"
 RESUME_MAX_AGE_SECONDS = 3600  # 1 hour
 
 
@@ -242,7 +242,7 @@ Examples:
     
     # Auto-generate output path if not specified
     if not args.output:
-        fd, temp_path = tempfile.mkstemp(prefix="tech-news-digest-reddit-", suffix=".json")
+        fd, temp_path = tempfile.mkstemp(prefix="follow-news-reddit-", suffix=".json")
         os.close(fd)
         args.output = Path(temp_path)
     

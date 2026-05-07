@@ -40,7 +40,7 @@ MAX_WORKERS = 5  # Lower for API rate limits
 RETRY_COUNT = 2
 RETRY_DELAY = 2.0
 MAX_TWEETS_PER_USER = 20
-ID_CACHE_PATH = "/tmp/tech-news-digest-twitter-id-cache.json"
+ID_CACHE_PATH = "/tmp/follow-news-twitter-id-cache.json"
 ID_CACHE_TTL_DAYS = 7
 
 # Twitter API v2 endpoints
@@ -180,7 +180,7 @@ class OfficialBackend(TwitterBackend):
             logging.info(f"Batch resolving {len(to_resolve)} usernames (cached: {len(result)})")
             headers = {
                 "Authorization": f"Bearer {self.bearer_token}",
-                "User-Agent": "TechDigest/2.0"
+                "User-Agent": "FollowNews/2.0"
             }
             for i in range(0, len(to_resolve), 100):
                 batch = to_resolve[i:i+100]
@@ -250,7 +250,7 @@ class OfficialBackend(TwitterBackend):
                     user_url = f"{USER_LOOKUP_ENDPOINT}?{urlencode({'usernames': handle})}"
                     headers = {
                         "Authorization": f"Bearer {self.bearer_token}",
-                        "User-Agent": "TechDigest/2.0"
+                        "User-Agent": "FollowNews/2.0"
                     }
                     req = Request(user_url, headers=headers)
                     with urlopen(req, timeout=TIMEOUT) as resp:
@@ -261,7 +261,7 @@ class OfficialBackend(TwitterBackend):
 
                 headers = {
                     "Authorization": f"Bearer {self.bearer_token}",
-                    "User-Agent": "TechDigest/2.0"
+                    "User-Agent": "FollowNews/2.0"
                 }
 
                 time.sleep(0.3)
@@ -407,7 +407,7 @@ class TwitterApiIoBackend(TwitterBackend):
                 url = f"{TWITTERAPIIO_BASE}/twitter/user/last_tweets?{params}"
                 headers = {
                     "X-API-Key": self.api_key,
-                    "User-Agent": "TechDigest/2.0",
+                    "User-Agent": "FollowNews/2.0",
                 }
 
                 self._limiter.wait()
@@ -573,7 +573,7 @@ class GetXApiBackend(TwitterBackend):
                 url = f"{GETXAPI_BASE}/twitter/user/tweets?{urlencode({'userName': handle})}"
                 headers = {
                     "Authorization": f"Bearer {self.api_key}",
-                    "User-Agent": "TechDigest/2.0",
+                    "User-Agent": "FollowNews/2.0",
                 }
 
                 req = Request(url, headers=headers)
@@ -858,7 +858,7 @@ Examples:
 
     # Auto-generate unique output path if not specified
     if not args.output:
-        fd, temp_path = tempfile.mkstemp(prefix="tech-news-digest-twitter-", suffix=".json")
+        fd, temp_path = tempfile.mkstemp(prefix="follow-news-twitter-", suffix=".json")
         os.close(fd)
         args.output = Path(temp_path)
 

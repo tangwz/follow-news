@@ -1,19 +1,19 @@
-# Tech News Digest
+# Follow News
 
 > 自动化科技资讯汇总 — 168 个内置数据源，6 层管道，一句话安装。
 
 [English](README.md) | **中文**
 
-[![Tests](https://github.com/draco-agent/tech-news-digest/actions/workflows/test.yml/badge.svg)](https://github.com/draco-agent/tech-news-digest/actions/workflows/test.yml)
+[![Tests](https://github.com/tangwz/follow-news/actions/workflows/test.yml/badge.svg)](https://github.com/tangwz/follow-news/actions/workflows/test.yml)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
-[![ClawHub](https://img.shields.io/badge/ClawHub-tech--news--digest-blueviolet)](https://clawhub.com/draco-agent/tech-news-digest)
+[![ClawHub](https://img.shields.io/badge/ClawHub-follow--news-blueviolet)](https://clawhub.com/tangwz/follow-news)
 [![MIT License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 ## 💬 一句话安装
 
 跟你的 [OpenClaw](https://openclaw.ai) AI 助手说：
 
-> **"安装 tech-news-digest，每天早上 9 点发科技日报到 #tech-news 频道"**
+> **"安装 follow-news，每天早上 9 点发科技日报到 #tech-news 频道"**
 
 搞定。Bot 会自动安装、配置、定时、推送——全程对话完成。
 
@@ -21,13 +21,13 @@
 
 > 🗣️ "配置一个每周 AI 周报，只要 LLM 和 AI Agent 板块，每周一发到 Discord #ai-weekly"
 
-> 🗣️ "安装 tech-news-digest，加上我的 RSS 源，发送科技新闻到 Telegram"
+> 🗣️ "安装 follow-news，加上我的 RSS 源，发送科技新闻到 Telegram"
 
 > 🗣️ "现在就给我生成一份科技日报，跳过 Twitter 数据源"
 
 或通过 CLI 安装：
 ```bash
-clawhub install tech-news-digest
+clawhub install follow-news
 ```
 
 ## 📊 你会得到什么
@@ -72,8 +72,8 @@ clawhub install tech-news-digest
 
 ```bash
 # 复制并自定义
-cp config/defaults/sources.json workspace/config/tech-news-digest-sources.json
-cp config/defaults/topics.json workspace/config/tech-news-digest-topics.json
+cp config/defaults/sources.json workspace/config/follow-news-sources.json
+cp config/defaults/topics.json workspace/config/follow-news-topics.json
 ```
 
 你的配置文件会与默认配置**合并**：
@@ -140,7 +140,7 @@ python -m unittest discover -s tests -v   # 41 个测试，纯标准库
 
 ## 📂 仓库地址
 
-**GitHub**: [github.com/draco-agent/tech-news-digest](https://github.com/draco-agent/tech-news-digest)
+**GitHub**: [github.com/tangwz/follow-news](https://github.com/tangwz/follow-news)
 
 ## 🌟 相关引用
 

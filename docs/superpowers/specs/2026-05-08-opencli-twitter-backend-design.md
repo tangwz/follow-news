@@ -2,7 +2,7 @@
 
 ## Context
 
-`tech-news-digest` currently gathers Twitter/X posts through API-based backends in `scripts/fetch-twitter.py`: GetXAPI, twitterapi.io, and the official X API. This creates a setup burden for users because Twitter/X data requires API credentials.
+`follow-news` currently gathers Twitter/X posts through API-based backends in `scripts/fetch-twitter.py`: GetXAPI, twitterapi.io, and the official X API. This creates a setup burden for users because Twitter/X data requires API credentials.
 
 The goal is to make OpenCLI the default Twitter/X backend while keeping the rest of the collection pipeline unchanged. RSS, Web, GitHub, GitHub Trending, and Reddit sources remain as they are. The change is intended for OpenClaw agents, where the `jackwener/opencli` skill may already be installed and can guide the agent through OpenCLI setup, discovery, and browser-login diagnostics.
 
@@ -235,5 +235,5 @@ python3 -m unittest discover -s tests -v
 - Existing API backends still work.
 - Twitter output shape remains compatible with `merge-sources.py`.
 - RSS, Web, GitHub, GitHub Trending, and Reddit behavior is unchanged.
-- OpenClaw-facing docs explain the relationship between `tech-news-digest` and `jackwener/opencli`.
+- OpenClaw-facing docs explain the relationship between `follow-news` and `jackwener/opencli`.
 - Tests cover normalization, backend selection fallback, and merge compatibility without real X/Twitter access.

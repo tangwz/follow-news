@@ -2,7 +2,7 @@
 """
 Generate styled PDF from markdown digest report.
 
-Converts a tech-news-digest markdown report into a professional PDF
+Converts a follow-news markdown report into a professional PDF
 with Chinese font support, emoji icons, and clean typography.
 
 Usage:

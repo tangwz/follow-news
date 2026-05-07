@@ -56,7 +56,7 @@ class TestLoadSources(unittest.TestCase):
                     {"id": "test-new-source", "type": "rss", "enabled": True, "url": "https://test.com/feed"},
                 ]
             }
-            overlay_path = Path(tmpdir) / "tech-news-digest-sources.json"
+            overlay_path = Path(tmpdir) / "follow-news-sources.json"
             with open(overlay_path, "w") as f:
                 json.dump(overlay, f)
 
@@ -75,7 +75,7 @@ class TestLoadSources(unittest.TestCase):
                     {"id": first_id, "type": defaults[0]["type"], "enabled": False},
                 ]
             }
-            overlay_path = Path(tmpdir) / "tech-news-digest-sources.json"
+            overlay_path = Path(tmpdir) / "follow-news-sources.json"
             with open(overlay_path, "w") as f:
                 json.dump(overlay, f)
 

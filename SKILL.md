@@ -1,9 +1,9 @@
 ---
-name: tech-news-digest
+name: follow-news
 description: Generate tech news digests with unified source model, quality scoring, and multi-format output. Six-source data collection from RSS feeds, Twitter/X KOLs, GitHub releases, GitHub Trending, Reddit, and web search. Pipeline-based scripts with retry mechanisms and deduplication. Supports Discord, email, and markdown templates.
 version: "3.16.0"
-homepage: https://github.com/draco-agent/tech-news-digest
-source: https://github.com/draco-agent/tech-news-digest
+homepage: https://github.com/tangwz/follow-news
+source: https://github.com/tangwz/follow-news
 metadata:
   openclaw:
     requires:
@@ -52,15 +52,15 @@ files:
     - config/defaults/: Default source and topic configurations
     - references/: Prompt templates and output templates
     - scripts/: Python pipeline scripts
-    - <workspace>/archive/tech-news-digest/: Previous digests for dedup
+    - <workspace>/archive/follow-news/: Previous digests for dedup
   write:
     - /tmp/td-*.json: Temporary pipeline intermediate outputs
     - /tmp/td-email.html: Temporary email HTML body
     - /tmp/td-digest.pdf: Generated PDF digest
-    - <workspace>/archive/tech-news-digest/: Saved digest archives
+    - <workspace>/archive/follow-news/: Saved digest archives
 ---
 
-# Tech News Digest
+# Follow News
 
 Automated tech news digest system with unified data source model, quality scoring pipeline, and template-based output generation.
 
@@ -69,8 +69,8 @@ Automated tech news digest system with unified data source model, quality scorin
 1. **Configuration Setup**: Default configs are in `config/defaults/`. Copy to workspace for customization:
    ```bash
    mkdir -p workspace/config
-   cp config/defaults/sources.json workspace/config/tech-news-digest-sources.json
-   cp config/defaults/topics.json workspace/config/tech-news-digest-topics.json
+   cp config/defaults/sources.json workspace/config/follow-news-sources.json
+   cp config/defaults/topics.json workspace/config/follow-news-topics.json
    ```
 
 2. **Environment Variables**: 
@@ -89,7 +89,7 @@ Automated tech news digest system with unified data source model, quality scorin
      --defaults config/defaults \
      --config workspace/config \
      --hours 48 --freshness pd \
-     --archive-dir workspace/archive/tech-news-digest/ \
+     --archive-dir workspace/archive/follow-news/ \
      --output /tmp/td-merged.json --verbose --force
    ```
 
@@ -155,7 +155,7 @@ Automated tech news digest system with unified data source model, quality scorin
 python3 scripts/run-pipeline.py \
   --defaults config/defaults [--config CONFIG_DIR] \
   --hours 48 --freshness pd \
-  --archive-dir workspace/archive/tech-news-digest/ \
+  --archive-dir workspace/archive/follow-news/ \
   --output /tmp/td-merged.json --verbose --force
 ```
 - **Features**: Runs all 6 fetch steps in parallel, then merges + deduplicates + scores
@@ -274,7 +274,7 @@ Place custom configs in `workspace/config/` to override defaults:
 
 ### Example Workspace Override
 ```json
-// workspace/config/tech-news-digest-sources.json
+// workspace/config/follow-news-sources.json
 {
   "sources": [
     {
@@ -349,7 +349,7 @@ python3 scripts/fetch-twitter.py --hours 1 --verbose
 ```
 
 ### Archive Management
-- Digests automatically archived to `<workspace>/archive/tech-news-digest/`
+- Digests automatically archived to `<workspace>/archive/follow-news/`
 - Previous digest titles used for duplicate detection
 - Old archives cleaned automatically (90+ days)
 
@@ -474,7 +474,7 @@ This skill uses a **prompt template pattern**: the agent reads `digest-prompt.md
 
 ### Network Access
 The Python scripts make outbound requests to:
-- RSS feed URLs (configured in `tech-news-digest-sources.json`)
+- RSS feed URLs (configured in `follow-news-sources.json`)
 - Twitter/X API (`api.x.com` or `api.twitterapi.io`)
 - Brave Search API (`api.search.brave.com`)
 - Tavily Search API (`api.tavily.com`)

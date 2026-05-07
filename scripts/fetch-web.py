@@ -36,7 +36,7 @@ RETRY_DELAY = 2.0
 # Brave Search API
 BRAVE_API_BASE = "https://api.search.brave.com/res/v1/web/search"
 TAVILY_API_BASE = "https://api.tavily.com/search"
-BRAVE_RATE_LIMIT_CACHE = "/tmp/tech-news-digest-brave-rate-limit.json"
+BRAVE_RATE_LIMIT_CACHE = "/tmp/follow-news-brave-rate-limit.json"
 
 
 def setup_logging(verbose: bool) -> logging.Logger:
@@ -78,7 +78,7 @@ def _probe_brave_key(api_key: str) -> Dict[str, Any]:
         req = Request(url, headers={
             'Accept': 'application/json',
             'X-Subscription-Token': api_key,
-            'User-Agent': 'TechDigest/2.0'
+            'User-Agent': 'FollowNews/2.0'
         })
         with urlopen(req, timeout=TIMEOUT) as resp:
             limit_header = resp.headers.get('x-ratelimit-limit', '1')
@@ -206,7 +206,7 @@ def _brave_search_single(query: str, api_key: str, freshness: Optional[str] = No
     headers = {
         'Accept': 'application/json',
         'X-Subscription-Token': api_key,
-        'User-Agent': 'TechDigest/2.0'
+        'User-Agent': 'FollowNews/2.0'
     }
     
     req = Request(url, headers=headers)
@@ -379,7 +379,7 @@ def search_tavily(query: str, api_key: str, topic: str = "general",
         data = json.dumps(payload).encode()
         req = Request(TAVILY_API_BASE, data=data, headers={
             "Content-Type": "application/json",
-            "User-Agent": "TechDigest/3.0"
+            "User-Agent": "FollowNews/3.0"
         }, method="POST")
         with urlopen(req, timeout=TIMEOUT) as resp:
             result = json.loads(resp.read().decode())
@@ -570,7 +570,7 @@ Examples:
     
     # Auto-generate unique output path if not specified
     if not args.output:
-        fd, temp_path = tempfile.mkstemp(prefix="tech-news-digest-web-", suffix=".json")
+        fd, temp_path = tempfile.mkstemp(prefix="follow-news-web-", suffix=".json")
         os.close(fd)
         args.output = Path(temp_path)
     
