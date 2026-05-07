@@ -182,6 +182,20 @@ class TestReadmeCounts(unittest.TestCase):
             content,
         )
 
+    def test_twitter_backend_docs_include_opencli(self):
+        readme_en = README_EN.read_text(encoding="utf-8")
+        readme_zh = README_ZH.read_text(encoding="utf-8")
+        skill = (Path(__file__).parent.parent / "SKILL.md").read_text(encoding="utf-8")
+
+        for content in (readme_en, readme_zh, skill):
+            lowered = content.lower()
+            self.assertIn("opencli", lowered)
+            self.assertIn("getxapi", lowered)
+            self.assertIn("twitterapiio", lowered)
+            self.assertIn("official", lowered)
+
+        self.assertIn("OPENCLI_BIN", skill)
+
 
 if __name__ == "__main__":
     unittest.main()
