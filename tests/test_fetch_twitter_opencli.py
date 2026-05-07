@@ -16,6 +16,7 @@ sys.path.insert(0, str(SCRIPTS_DIR))
 
 spec = importlib.util.spec_from_file_location("fetch_twitter", SCRIPTS_DIR / "fetch-twitter.py")
 fetch_twitter = importlib.util.module_from_spec(spec)
+sys.modules["fetch_twitter"] = fetch_twitter
 spec.loader.exec_module(fetch_twitter)
 
 
@@ -148,3 +149,52 @@ class TestOpenCliTweetNormalization(unittest.TestCase):
         for payload in shapes:
             with self.subTest(payload=payload):
                 self.assertEqual(fetch_twitter.extract_opencli_tweet_records(payload), [{"id": "1"}])
+
+
+class TestOpenCliDiscovery(unittest.TestCase):
+    def test_resolves_opencli_bin_from_env(self):
+        with patch.dict(os.environ, {"OPENCLI_BIN": "/custom/opencli"}):
+            self.assertEqual(fetch_twitter.resolve_opencli_bin(), "/custom/opencli")
+
+    def test_resolves_opencli_bin_from_path(self):
+        with patch.dict(os.environ, {}, clear=True), patch(
+            "fetch_twitter.shutil.which",
+            return_value="/usr/local/bin/opencli",
+        ):
+            self.assertEqual(fetch_twitter.resolve_opencli_bin(), "/usr/local/bin/opencli")
+
+    def test_missing_opencli_bin_raises(self):
+        with patch.dict(os.environ, {}, clear=True), patch("fetch_twitter.shutil.which", return_value=None):
+            with self.assertRaises(fetch_twitter.OpenCliBackendError) as ctx:
+                fetch_twitter.resolve_opencli_bin()
+        self.assertEqual(ctx.exception.code, "opencli_missing")
+
+    def test_detects_twitter_tweets_capability_from_list_json(self):
+        payloads = [
+            [{"site": "twitter", "name": "tweets"}],
+            {"commands": [{"site": "twitter", "name": "tweets"}]},
+            {"twitter": ["search", "timeline", "tweets"]},
+        ]
+        for payload in payloads:
+            with self.subTest(payload=payload):
+                self.assertTrue(fetch_twitter.opencli_has_twitter_tweets(payload))
+
+    def test_rejects_missing_twitter_tweets_capability(self):
+        payload = {"commands": [{"site": "twitter", "name": "search"}]}
+        self.assertFalse(fetch_twitter.opencli_has_twitter_tweets(payload))
+
+
+class TestBackendSelection(unittest.TestCase):
+    def test_auto_backend_order_starts_with_opencli(self):
+        self.assertEqual(
+            fetch_twitter.get_backend_order("auto"),
+            ["opencli", "getxapi", "twitterapiio", "official"],
+        )
+
+    def test_explicit_opencli_has_no_api_fallback(self):
+        self.assertEqual(fetch_twitter.get_backend_order("opencli"), ["opencli"])
+
+    def test_explicit_api_backend_order_is_single_backend(self):
+        self.assertEqual(fetch_twitter.get_backend_order("getxapi"), ["getxapi"])
+        self.assertEqual(fetch_twitter.get_backend_order("twitterapiio"), ["twitterapiio"])
+        self.assertEqual(fetch_twitter.get_backend_order("official"), ["official"])
