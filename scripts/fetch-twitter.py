@@ -961,15 +961,16 @@ class GetXApiBackend(TwitterBackend):
 # Backend selection
 # ---------------------------------------------------------------------------
 
-def select_backend(backend_name: str, no_cache: bool = False) -> Optional[TwitterBackend]:
-    """Select and instantiate the appropriate backend.
+def _instantiate_backend(backend_name: str, no_cache: bool = False) -> Optional[TwitterBackend]:
+    """Instantiate one backend without applying fallback policy."""
+    if backend_name == "opencli":
+        logging.info("Using OpenCLI backend")
+        return OpenCliBackend()
 
-    Returns None if no credentials are available for the chosen backend.
-    """
     if backend_name == "getxapi":
         key = os.getenv("GETX_API_KEY")
         if not key:
-            logging.error("GETX_API_KEY not set (required for getxapi backend)")
+            logging.info("GETX_API_KEY not set; getxapi backend unavailable")
             return None
         logging.info("Using GetXAPI backend")
         return GetXApiBackend(key)
@@ -977,7 +978,7 @@ def select_backend(backend_name: str, no_cache: bool = False) -> Optional[Twitte
     if backend_name == "twitterapiio":
         key = os.getenv("TWITTERAPI_IO_KEY")
         if not key:
-            logging.error("TWITTERAPI_IO_KEY not set (required for twitterapiio backend)")
+            logging.info("TWITTERAPI_IO_KEY not set; twitterapi.io backend unavailable")
             return None
         logging.info("Using twitterapi.io backend")
         return TwitterApiIoBackend(key)
@@ -985,30 +986,55 @@ def select_backend(backend_name: str, no_cache: bool = False) -> Optional[Twitte
     if backend_name == "official":
         token = os.getenv("X_BEARER_TOKEN")
         if not token:
-            logging.error("X_BEARER_TOKEN not set (required for official backend)")
+            logging.info("X_BEARER_TOKEN not set; official backend unavailable")
             return None
         logging.info("Using official X API v2 backend")
         return OfficialBackend(token, no_cache=no_cache)
 
-    # auto: try getxapi first, then twitterapiio, then official
-    if backend_name == "auto":
-        getx_key = os.getenv("GETX_API_KEY")
-        if getx_key:
-            logging.info("Auto-selected GetXAPI backend (GETX_API_KEY set)")
-            return GetXApiBackend(getx_key)
-        key = os.getenv("TWITTERAPI_IO_KEY")
-        if key:
-            logging.info("Auto-selected twitterapi.io backend (TWITTERAPI_IO_KEY set)")
-            return TwitterApiIoBackend(key)
-        token = os.getenv("X_BEARER_TOKEN")
-        if token:
-            logging.info("Auto-selected official X API v2 backend (X_BEARER_TOKEN set)")
-            return OfficialBackend(token, no_cache=no_cache)
-        logging.warning("No Twitter API credentials found (checked GETX_API_KEY, TWITTERAPI_IO_KEY, X_BEARER_TOKEN)")
-        return None
-
     logging.error(f"Unknown backend: {backend_name}")
     return None
+
+
+def fetch_with_backend_chain(
+    backend_name: str,
+    sources: List[Dict[str, Any]],
+    cutoff: datetime,
+    no_cache: bool = False,
+) -> Tuple[str, List[Dict[str, Any]], List[Dict[str, str]]]:
+    """Fetch Twitter data using explicit backend or auto fallback chain."""
+    diagnostics: List[Dict[str, str]] = []
+    explicit = backend_name != "auto"
+
+    for candidate in get_backend_order(backend_name):
+        try:
+            backend = _instantiate_backend(candidate, no_cache=no_cache)
+        except OpenCliBackendError as exc:
+            diagnostics.append({"backend": candidate, "code": exc.code, "message": exc.message})
+            logging.warning(f"{candidate} unavailable: {exc.code}: {exc.message}")
+            if explicit:
+                return candidate, [], diagnostics
+            continue
+
+        if backend is None:
+            diagnostics.append({
+                "backend": candidate,
+                "code": "backend_unavailable",
+                "message": f"{candidate} backend is not configured",
+            })
+            if explicit:
+                return candidate, [], diagnostics
+            continue
+
+        try:
+            return candidate, backend.fetch_all(sources, cutoff), diagnostics
+        except OpenCliBackendError as exc:
+            diagnostics.append({"backend": candidate, "code": exc.code, "message": exc.message})
+            logging.warning(f"{candidate} failed globally: {exc.code}: {exc.message}")
+            if explicit:
+                return candidate, [], diagnostics
+            continue
+
+    return backend_name, [], diagnostics
 
 
 # ---------------------------------------------------------------------------
@@ -1049,7 +1075,7 @@ def main():
     """Main Twitter fetching function."""
     parser = argparse.ArgumentParser(
         description="Fetch recent tweets from Twitter/X KOL accounts. "
-                   "Supports official X API v2, GetXAPI, and twitterapi.io backends.",
+                   "Supports OpenCLI, GetXAPI, twitterapi.io, and official X API v2 backends.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -1107,10 +1133,10 @@ Examples:
 
     parser.add_argument(
         "--backend",
-        choices=["official", "twitterapiio", "getxapi", "auto"],
+        choices=["opencli", "official", "twitterapiio", "getxapi", "auto"],
         default=None,
-        help="Twitter API backend (overrides TWITTER_API_BACKEND env var). "
-             "auto = getxapi if GETX_API_KEY set, else twitterapiio if TWITTERAPI_IO_KEY set, else official if X_BEARER_TOKEN set"
+        help="Twitter backend (overrides TWITTER_API_BACKEND env var). "
+             "auto = opencli first, then getxapi, twitterapiio, official"
     )
 
     args = parser.parse_args()
@@ -1130,26 +1156,6 @@ Examples:
 
     # Resolve backend: CLI arg > env var > default (auto)
     backend_name = args.backend or os.getenv("TWITTER_API_BACKEND", "auto")
-
-    backend = select_backend(backend_name, no_cache=args.no_cache)
-    if not backend:
-        logger.warning("No Twitter backend available. Writing empty result and skipping Twitter fetch.")
-        empty_result = {
-            "generated": datetime.now(timezone.utc).isoformat(),
-            "source_type": "twitter",
-            "backend": backend_name,
-            "hours": args.hours,
-            "sources_total": 0,
-            "sources_ok": 0,
-            "total_articles": 0,
-            "sources": [],
-            "skipped_reason": f"No credentials for backend '{backend_name}'"
-        }
-        output_path = args.output or Path("/tmp/td-twitter.json")
-        with open(output_path, "w") as f:
-            json.dump(empty_result, f, indent=2)
-        print(f"Output (empty): {output_path}")
-        return 0
 
     # Auto-generate unique output path if not specified
     if not args.output:
@@ -1172,7 +1178,31 @@ Examples:
 
         logger.info(f"Fetching {len(sources)} Twitter accounts (window: {args.hours}h, backend: {backend_name})")
 
-        results = backend.fetch_all(sources, cutoff)
+        selected_backend, results, backend_diagnostics = fetch_with_backend_chain(
+            backend_name,
+            sources,
+            cutoff,
+            no_cache=args.no_cache,
+        )
+
+        if not results:
+            logger.warning("No Twitter backend available. Writing empty result and skipping Twitter fetch.")
+            empty_result = {
+                "generated": datetime.now(timezone.utc).isoformat(),
+                "source_type": "twitter",
+                "backend": selected_backend,
+                "hours": args.hours,
+                "sources_total": 0,
+                "sources_ok": 0,
+                "total_articles": 0,
+                "sources": [],
+                "skipped_reason": f"No usable backend for '{backend_name}'",
+                "backend_diagnostics": backend_diagnostics,
+            }
+            with open(args.output, "w", encoding='utf-8') as f:
+                json.dump(empty_result, f, ensure_ascii=False, indent=2)
+            print(f"Output (empty): {args.output}")
+            return 0
 
         # Sort: priority first, then by article count
         results.sort(key=lambda x: (not x.get("priority", False), -x.get("count", 0)))
@@ -1183,7 +1213,9 @@ Examples:
         output = {
             "generated": datetime.now(timezone.utc).isoformat(),
             "source_type": "twitter",
-            "backend": backend_name,
+            "backend": selected_backend,
+            "requested_backend": backend_name,
+            "backend_diagnostics": backend_diagnostics,
             "defaults_dir": str(args.defaults),
             "config_dir": str(args.config) if args.config else None,
             "hours": args.hours,

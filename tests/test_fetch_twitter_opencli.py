@@ -337,33 +337,39 @@ class TestBackendChain(unittest.TestCase):
         getx = getx_cls.return_value
         getx.fetch_all.return_value = [{"status": "ok", "count": 0, "articles": []}]
 
-        backend_name, results, diagnostics = fetch_twitter.fetch_with_backend_chain(
-            "auto", self.sources, self.cutoff, no_cache=False
-        )
+        with self.assertLogs(level="WARNING") as logs:
+            backend_name, results, diagnostics = fetch_twitter.fetch_with_backend_chain(
+                "auto", self.sources, self.cutoff, no_cache=False
+            )
 
         self.assertEqual(backend_name, "getxapi")
         self.assertEqual(results, [{"status": "ok", "count": 0, "articles": []}])
         self.assertEqual(diagnostics[0]["backend"], "opencli")
         self.assertEqual(diagnostics[0]["code"], "opencli_missing")
+        self.assertTrue(any("opencli_missing" in line for line in logs.output))
 
     @patch.dict(os.environ, {}, clear=True)
     @patch("fetch_twitter.OpenCliBackend", side_effect=fetch_twitter.OpenCliBackendError("opencli_missing", "missing"))
     def test_explicit_opencli_does_not_fallback(self, _opencli_cls):
-        backend_name, results, diagnostics = fetch_twitter.fetch_with_backend_chain(
-            "opencli", self.sources, self.cutoff, no_cache=False
-        )
+        with self.assertLogs(level="WARNING") as logs:
+            backend_name, results, diagnostics = fetch_twitter.fetch_with_backend_chain(
+                "opencli", self.sources, self.cutoff, no_cache=False
+            )
 
         self.assertEqual(backend_name, "opencli")
         self.assertEqual(results, [])
         self.assertEqual(diagnostics[0]["code"], "opencli_missing")
+        self.assertTrue(any("opencli_missing" in line for line in logs.output))
 
     @patch.dict(os.environ, {}, clear=True)
     @patch("fetch_twitter.OpenCliBackend", side_effect=fetch_twitter.OpenCliBackendError("opencli_missing", "missing"))
     def test_auto_returns_no_results_when_no_backend_available(self, _opencli_cls):
-        backend_name, results, diagnostics = fetch_twitter.fetch_with_backend_chain(
-            "auto", self.sources, self.cutoff, no_cache=False
-        )
+        with self.assertLogs(level="WARNING") as logs:
+            backend_name, results, diagnostics = fetch_twitter.fetch_with_backend_chain(
+                "auto", self.sources, self.cutoff, no_cache=False
+            )
 
         self.assertEqual(backend_name, "auto")
         self.assertEqual(results, [])
         self.assertTrue(any(item["backend"] == "opencli" for item in diagnostics))
+        self.assertTrue(any("opencli_missing" in line for line in logs.output))

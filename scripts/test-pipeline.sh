@@ -67,11 +67,13 @@ OPTIONS:
                     Example: --hours 48
 
   --twitter-backend NAME
-                    Force a specific Twitter API backend
-                    Values: official, twitterapiio, auto
-                    official     = X API v2 (needs X_BEARER_TOKEN)
+                    Force a specific Twitter backend
+                    Values: opencli, getxapi, official, twitterapiio, auto
+                    opencli     = OpenCLI browser-backed X/Twitter adapter
+                    getxapi     = GetXAPI (needs GETX_API_KEY)
+                    official    = X API v2 (needs X_BEARER_TOKEN)
                     twitterapiio = twitterapi.io (needs TWITTERAPI_IO_KEY)
-                    auto         = try twitterapiio first, fallback to official
+                    auto        = try opencli first, then API fallbacks
 
   --config DIR      User config overlay directory (optional)
                     Example: --config workspace/config
@@ -90,9 +92,11 @@ EXAMPLES:
   ./test-pipeline.sh --ids sama-twitter,karpathy-twitter --only twitter
 
 ENVIRONMENT:
-  X_BEARER_TOKEN      Official X API v2 bearer token (for --backend official)
-  TWITTERAPI_IO_KEY   twitterapi.io API key (for --backend twitterapiio)
-  TWITTER_API_BACKEND Default twitter backend if --backend not given (official|twitterapiio|auto)
+  OPENCLI_BIN        Optional path to OpenCLI executable
+  GETX_API_KEY       GetXAPI key (for --backend getxapi)
+  X_BEARER_TOKEN     Official X API v2 bearer token (for --backend official)
+  TWITTERAPI_IO_KEY  twitterapi.io API key (for --backend twitterapiio)
+  TWITTER_API_BACKEND Default twitter backend if --backend not given (auto|opencli|getxapi|twitterapiio|official)
   BRAVE_API_KEY       Brave Search API key (for web fetch)
   GITHUB_TOKEN        GitHub token (optional, increases GitHub API rate limits)
 HELP
@@ -223,11 +227,11 @@ if should_run "twitter"; then
     TWITTER_ARGS=("--defaults" "$DEFAULTS" "--hours" "$HOURS" "--output" "$OUTDIR/twitter.json" "--force" "${EXTRA_ARGS[@]}")
     [ -n "$TWITTER_BACKEND" ] && TWITTER_ARGS+=("--backend" "$TWITTER_BACKEND")
 
-    if [ -n "$X_BEARER_TOKEN" ] || [ -n "$TWITTERAPI_IO_KEY" ]; then
+    if [ -n "$OPENCLI_BIN" ] || command -v opencli >/dev/null 2>&1 || [ -n "$GETX_API_KEY" ] || [ -n "$X_BEARER_TOKEN" ] || [ -n "$TWITTERAPI_IO_KEY" ]; then
         run_step "fetch-twitter" python3 "$SCRIPT_DIR/fetch-twitter.py" "${TWITTER_ARGS[@]}"
         validate_json "$OUTDIR/twitter.json" "twitter"
     else
-        echo "⏭  fetch-twitter (no X_BEARER_TOKEN or TWITTERAPI_IO_KEY)"
+        echo "⏭  fetch-twitter (no opencli or Twitter API credentials)"
         SKIPPED=$((SKIPPED + 1))
     fi
 else
