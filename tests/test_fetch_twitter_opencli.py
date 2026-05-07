@@ -373,3 +373,59 @@ class TestBackendChain(unittest.TestCase):
         self.assertEqual(results, [])
         self.assertTrue(any(item["backend"] == "opencli" for item in diagnostics))
         self.assertTrue(any("opencli_missing" in line for line in logs.output))
+
+
+class TestOpenCliMergeCompatibility(unittest.TestCase):
+    def test_opencli_articles_keep_existing_merge_shape(self):
+        merge_spec = importlib.util.spec_from_file_location(
+            "merge_sources",
+            SCRIPTS_DIR / "merge-sources.py",
+        )
+        merge_mod = importlib.util.module_from_spec(merge_spec)
+        merge_spec.loader.exec_module(merge_mod)
+
+        source = {
+            "source_id": "sama-twitter",
+            "source_type": "twitter",
+            "name": "Sam Altman",
+            "handle": "sama",
+            "priority": True,
+            "topics": ["llm"],
+            "status": "ok",
+            "attempts": 1,
+            "count": 1,
+            "articles": [],
+        }
+        config_source = {
+            "id": "sama-twitter",
+            "type": "twitter",
+            "name": "Sam Altman",
+            "handle": "sama",
+            "enabled": True,
+            "priority": True,
+            "topics": ["llm"],
+        }
+        article = fetch_twitter.normalize_opencli_tweet(
+            {
+                "id": "123",
+                "author": "sama",
+                "text": "A high-signal tweet.",
+                "created_at": "2026-05-08T05:00:00Z",
+                "likes": 1000,
+                "retweets": 20,
+                "replies": 3,
+                "views": 5000,
+                "is_retweet": False,
+            },
+            config_source,
+            utc("2026-05-08T00:00:00Z"),
+        )
+        article["source_type"] = "twitter"
+
+        score = merge_mod.calculate_base_score(article, source)
+
+        self.assertIn("title", article)
+        self.assertIn("link", article)
+        self.assertIn("date", article)
+        self.assertIn("metrics", article)
+        self.assertGreaterEqual(score, 8)
