@@ -26,6 +26,8 @@ import time
 import tempfile
 import re
 import threading
+import subprocess
+import shutil
 from abc import ABC, abstractmethod
 from datetime import datetime, timedelta, timezone
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -33,13 +35,23 @@ from urllib.request import urlopen, Request
 from urllib.error import HTTPError
 from urllib.parse import urlencode, quote
 from pathlib import Path
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Tuple
 
 TIMEOUT = 30
 MAX_WORKERS = 5  # Lower for API rate limits
 RETRY_COUNT = 2
 RETRY_DELAY = 2.0
 MAX_TWEETS_PER_USER = 20
+OPENCLI_TIMEOUT = 90
+OPENCLI_MAX_WORKERS = 2
+OPENCLI_GLOBAL_ERROR_CODES = {
+    "opencli_missing",
+    "opencli_capability_missing",
+    "opencli_browser_unavailable",
+    "opencli_auth_required",
+    "opencli_timeout",
+    "opencli_parse_error",
+}
 ID_CACHE_PATH = "/tmp/follow-news-twitter-id-cache.json"
 ID_CACHE_TTL_DAYS = 7
 
@@ -71,6 +83,113 @@ def clean_tweet_text(text: str) -> str:
     if len(text) > 280:
         text = text[:277] + "..."
     return text
+
+
+class OpenCliBackendError(RuntimeError):
+    """Error raised when OpenCLI cannot be used as a backend."""
+
+    def __init__(self, code: str, message: str):
+        super().__init__(message)
+        self.code = code
+        self.message = message
+
+
+def _parse_opencli_date(date_str: str) -> Optional[datetime]:
+    """Parse OpenCLI Twitter date formats into an aware datetime."""
+    if not date_str:
+        return None
+
+    value = str(date_str).strip()
+    if value.endswith("Z"):
+        value = value[:-1] + "+00:00"
+
+    try:
+        parsed = datetime.fromisoformat(value)
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed
+    except ValueError:
+        pass
+
+    for fmt in ("%a %b %d %H:%M:%S %z %Y", "%Y-%m-%d %H:%M:%S"):
+        try:
+            parsed = datetime.strptime(str(date_str), fmt)
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=timezone.utc)
+            return parsed
+        except ValueError:
+            continue
+
+    logging.debug(f"Failed to parse OpenCLI date: {date_str}")
+    return None
+
+
+def _as_int(value: Any) -> int:
+    """Best-effort conversion for OpenCLI metric fields."""
+    if value is None:
+        return 0
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
+
+
+def extract_opencli_tweet_records(payload: Any) -> List[Dict[str, Any]]:
+    """Extract tweet records from common OpenCLI JSON output envelopes."""
+    if isinstance(payload, list):
+        return [item for item in payload if isinstance(item, dict)]
+
+    if not isinstance(payload, dict):
+        return []
+
+    for key in ("tweets", "items", "results"):
+        value = payload.get(key)
+        if isinstance(value, list):
+            return [item for item in value if isinstance(item, dict)]
+
+    data = payload.get("data")
+    if isinstance(data, list):
+        return [item for item in data if isinstance(item, dict)]
+    if isinstance(data, dict):
+        return extract_opencli_tweet_records(data)
+
+    return []
+
+
+def normalize_opencli_tweet(
+    record: Dict[str, Any],
+    source: Dict[str, Any],
+    cutoff: datetime,
+) -> Optional[Dict[str, Any]]:
+    """Normalize one OpenCLI tweet into the existing Twitter article shape."""
+    tweet_id = str(record.get("id") or record.get("tweet_id") or "").strip()
+    text = str(record.get("text") or record.get("full_text") or "").strip()
+    created_at = _parse_opencli_date(record.get("created_at") or record.get("date") or "")
+
+    if not tweet_id or not text or not created_at:
+        return None
+    if created_at < cutoff:
+        return None
+    if record.get("is_retweet") or text.startswith("RT @"):
+        return None
+
+    handle = source["handle"].lstrip("@")
+    link = record.get("url") or record.get("link") or f"https://x.com/{handle}/status/{tweet_id}"
+
+    return {
+        "title": clean_tweet_text(text),
+        "link": link,
+        "date": created_at.isoformat(),
+        "topics": source["topics"][:],
+        "metrics": {
+            "like_count": _as_int(record.get("likes") or record.get("like_count")),
+            "retweet_count": _as_int(record.get("retweets") or record.get("retweet_count")),
+            "reply_count": _as_int(record.get("replies") or record.get("reply_count")),
+            "quote_count": _as_int(record.get("quotes") or record.get("quote_count")),
+            "impression_count": _as_int(record.get("views") or record.get("impression_count")),
+        },
+        "tweet_id": tweet_id,
+    }
 
 
 # ---------------------------------------------------------------------------
