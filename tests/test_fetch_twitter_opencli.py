@@ -198,3 +198,116 @@ class TestBackendSelection(unittest.TestCase):
         self.assertEqual(fetch_twitter.get_backend_order("getxapi"), ["getxapi"])
         self.assertEqual(fetch_twitter.get_backend_order("twitterapiio"), ["twitterapiio"])
         self.assertEqual(fetch_twitter.get_backend_order("official"), ["official"])
+
+
+class TestOpenCliBackend(unittest.TestCase):
+    def setUp(self):
+        self.source = {
+            "id": "sama-twitter",
+            "type": "twitter",
+            "name": "Sam Altman",
+            "handle": "sama",
+            "enabled": True,
+            "priority": True,
+            "topics": ["llm"],
+        }
+        self.cutoff = utc("2026-05-08T00:00:00Z")
+
+    def _completed(self, stdout, returncode=0, stderr=""):
+        return subprocess.CompletedProcess(
+            args=["opencli"],
+            returncode=returncode,
+            stdout=stdout,
+            stderr=stderr,
+        )
+
+    @patch("fetch_twitter.resolve_opencli_bin", return_value="/bin/opencli")
+    @patch("subprocess.run")
+    def test_fetches_tweets_for_source(self, run_mock, _resolve_mock):
+        run_mock.side_effect = [
+            self._completed(json.dumps({"commands": [{"site": "twitter", "name": "tweets"}]})),
+            self._completed("OpenCLI doctor ok"),
+            self._completed(json.dumps([
+                {
+                    "id": "123",
+                    "author": "sama",
+                    "text": "A useful post.",
+                    "created_at": "2026-05-08T01:00:00Z",
+                    "likes": 5,
+                    "retweets": 1,
+                    "replies": 0,
+                    "views": 100,
+                    "url": "https://x.com/sama/status/123",
+                    "is_retweet": False,
+                }
+            ])),
+        ]
+
+        backend = fetch_twitter.OpenCliBackend()
+        results = backend.fetch_all([self.source], self.cutoff)
+
+        self.assertEqual(results[0]["status"], "ok")
+        self.assertEqual(results[0]["handle"], "sama")
+        self.assertEqual(results[0]["count"], 1)
+        self.assertEqual(results[0]["articles"][0]["tweet_id"], "123")
+        self.assertIn(
+            ["/bin/opencli", "twitter", "tweets", "sama", "--limit", "20", "-f", "json"],
+            [call.args[0] for call in run_mock.call_args_list],
+        )
+
+    @patch("fetch_twitter.resolve_opencli_bin", return_value="/bin/opencli")
+    @patch("subprocess.run")
+    def test_missing_capability_raises_global_error(self, run_mock, _resolve_mock):
+        run_mock.return_value = self._completed(json.dumps({"commands": [{"site": "twitter", "name": "search"}]}))
+
+        with self.assertRaises(fetch_twitter.OpenCliBackendError) as ctx:
+            fetch_twitter.OpenCliBackend()
+
+        self.assertEqual(ctx.exception.code, "opencli_capability_missing")
+
+    @patch("fetch_twitter.resolve_opencli_bin", return_value="/bin/opencli")
+    @patch("subprocess.run")
+    def test_auth_required_raises_global_error_on_probe(self, run_mock, _resolve_mock):
+        run_mock.side_effect = [
+            self._completed(json.dumps({"commands": [{"site": "twitter", "name": "tweets"}]})),
+            self._completed("OpenCLI doctor ok"),
+            self._completed("", returncode=77, stderr="Not logged into x.com"),
+        ]
+
+        backend = fetch_twitter.OpenCliBackend()
+
+        with self.assertRaises(fetch_twitter.OpenCliBackendError) as ctx:
+            backend.fetch_all([self.source], self.cutoff)
+
+        self.assertEqual(ctx.exception.code, "opencli_auth_required")
+
+    @patch("fetch_twitter.resolve_opencli_bin", return_value="/bin/opencli")
+    @patch("subprocess.run")
+    def test_single_source_error_does_not_raise_global_error(self, run_mock, _resolve_mock):
+        second_source = dict(self.source)
+        second_source["id"] = "openai-twitter"
+        second_source["name"] = "OpenAI"
+        second_source["handle"] = "OpenAI"
+
+        run_mock.side_effect = [
+            self._completed(json.dumps({"commands": [{"site": "twitter", "name": "tweets"}]})),
+            self._completed("OpenCLI doctor ok"),
+            self._completed(json.dumps([
+                {
+                    "id": "probe",
+                    "author": "sama",
+                    "text": "Probe works.",
+                    "created_at": "2026-05-08T01:00:00Z",
+                    "is_retweet": False,
+                }
+            ])),
+            self._completed("", returncode=1, stderr="Could not resolve @OpenAI"),
+        ]
+
+        backend = fetch_twitter.OpenCliBackend()
+        results = backend.fetch_all([self.source, second_source], self.cutoff)
+
+        by_handle = {item["handle"]: item for item in results}
+        self.assertEqual(by_handle["sama"]["status"], "ok")
+        self.assertEqual(by_handle["OpenAI"]["status"], "error")
+        self.assertIn("opencli_source_error", by_handle["OpenAI"]["error"])
