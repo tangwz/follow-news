@@ -43,7 +43,7 @@ RETRY_COUNT = 2
 RETRY_DELAY = 2.0
 MAX_TWEETS_PER_USER = 20
 OPENCLI_TIMEOUT = 90
-OPENCLI_MAX_WORKERS = 2
+OPENCLI_DEFAULT_MAX_WORKERS = 1
 OPENCLI_GLOBAL_ERROR_CODES = {
     "opencli_missing",
     "opencli_capability_missing",
@@ -243,6 +243,57 @@ def get_backend_order(backend_name: str) -> List[str]:
     return [backend_name]
 
 
+def get_opencli_max_workers() -> int:
+    """Return OpenCLI worker count, defaulting to serial browser access."""
+    raw_value = os.getenv("OPENCLI_MAX_WORKERS", "").strip()
+    if not raw_value:
+        return OPENCLI_DEFAULT_MAX_WORKERS
+
+    try:
+        value = int(raw_value)
+    except ValueError:
+        logging.warning("Invalid OPENCLI_MAX_WORKERS=%r; using %s", raw_value, OPENCLI_DEFAULT_MAX_WORKERS)
+        return OPENCLI_DEFAULT_MAX_WORKERS
+
+    if value < 1:
+        logging.warning("Invalid OPENCLI_MAX_WORKERS=%r; using %s", raw_value, OPENCLI_DEFAULT_MAX_WORKERS)
+        return OPENCLI_DEFAULT_MAX_WORKERS
+
+    return value
+
+
+def build_twitter_skipped_reason(backend_name: str, diagnostics: List[Dict[str, str]]) -> str:
+    """Build a human-readable reason for an empty Twitter output."""
+    opencli_diag = next((item for item in diagnostics if item.get("backend") == "opencli"), None)
+    unavailable = {item.get("backend") for item in diagnostics if item.get("code") == "backend_unavailable"}
+
+    parts = []
+    if opencli_diag:
+        message = opencli_diag.get("message", "").strip()
+        if len(message) > 160:
+            message = message[:157] + "..."
+        detail = opencli_diag.get("code", "unknown")
+        if message:
+            detail = f"{detail}: {message}"
+        parts.append(f"OpenCLI failed first ({detail})")
+
+    missing = []
+    if "getxapi" in unavailable:
+        missing.append("GETX_API_KEY")
+    if "twitterapiio" in unavailable:
+        missing.append("twitterapi.io/TWITTERAPI_IO_KEY")
+    if "official" in unavailable:
+        missing.append("official X API/X_BEARER_TOKEN")
+
+    if missing:
+        parts.append("API fallbacks unavailable: " + ", ".join(missing))
+
+    if parts:
+        return "; ".join(parts)
+
+    return f"No usable backend for '{backend_name}'"
+
+
 def _classify_opencli_failure(returncode: int, stderr: str) -> str:
     """Map OpenCLI process failures into stable backend error codes."""
     text = (stderr or "").lower()
@@ -413,7 +464,8 @@ class OpenCliBackend(TwitterBackend):
             return results
 
         done = 1
-        with ThreadPoolExecutor(max_workers=OPENCLI_MAX_WORKERS) as pool:
+        max_workers = get_opencli_max_workers()
+        with ThreadPoolExecutor(max_workers=max_workers) as pool:
             futures = {pool.submit(self._fetch_user_tweets, source, cutoff): source for source in remaining}
             for future in as_completed(futures):
                 source = futures[future]
@@ -1196,7 +1248,7 @@ Examples:
                 "sources_ok": 0,
                 "total_articles": 0,
                 "sources": [],
-                "skipped_reason": f"No usable backend for '{backend_name}'",
+                "skipped_reason": build_twitter_skipped_reason(backend_name, backend_diagnostics),
                 "backend_diagnostics": backend_diagnostics,
             }
             with open(args.output, "w", encoding='utf-8') as f:

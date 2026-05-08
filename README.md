@@ -100,6 +100,7 @@ All environment variables are optional. The pipeline runs with whatever sources 
 # Twitter/X Backend (auto priority: opencli > getxapi > twitterapiio > official)
 export TWITTER_API_BACKEND="auto"  # auto|opencli|getxapi|twitterapiio|official
 export OPENCLI_BIN="/path/to/opencli"  # optional; defaults to opencli on PATH
+export OPENCLI_MAX_WORKERS="1"  # optional; keep browser-backed OpenCLI serial by default
 export GETX_API_KEY="..."        # GetXAPI fallback
 export TWITTERAPI_IO_KEY="..."   # twitterapi.io fallback
 export X_BEARER_TOKEN="..."      # Official X API v2 fallback
@@ -117,6 +118,8 @@ export BRAVE_PLAN="free"           # Override Brave rate limit: free|pro
 OpenCLI is preferred because it can reuse an authenticated Chrome/Chromium session instead of requiring Twitter API credentials. API backends remain available for CI, headless machines, or users who already configured API keys.
 
 To use the OpenCLI backend, install the OpenCLI executable yourself and make it available on `PATH`, or set `OPENCLI_BIN` to its absolute path. In OpenClaw, also install the `jackwener/opencli` Skill so the agent can run `opencli doctor`, check the browser bridge, and guide X login-state troubleshooting.
+
+OpenCLI browser bridge stability depends on the local browser extension connection. The fetcher defaults to serial OpenCLI requests (`OPENCLI_MAX_WORKERS=1`) to avoid tab-id churn during large KOL runs. Increase this only after validating that your browser bridge remains stable.
 
 ## 📦 Dependencies
 

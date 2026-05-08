@@ -199,6 +199,48 @@ class TestBackendSelection(unittest.TestCase):
         self.assertEqual(fetch_twitter.get_backend_order("twitterapiio"), ["twitterapiio"])
         self.assertEqual(fetch_twitter.get_backend_order("official"), ["official"])
 
+    def test_opencli_defaults_to_serial_fetching(self):
+        with patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(fetch_twitter.get_opencli_max_workers(), 1)
+
+    def test_opencli_worker_count_can_be_configured(self):
+        with patch.dict(os.environ, {"OPENCLI_MAX_WORKERS": "3"}, clear=True):
+            self.assertEqual(fetch_twitter.get_opencli_max_workers(), 3)
+
+    def test_opencli_worker_count_rejects_invalid_values(self):
+        invalid_values = ["0", "-1", "abc"]
+        for value in invalid_values:
+            with self.subTest(value=value), patch.dict(os.environ, {"OPENCLI_MAX_WORKERS": value}, clear=True):
+                with self.assertLogs(level="WARNING"):
+                    self.assertEqual(fetch_twitter.get_opencli_max_workers(), 1)
+
+    def test_empty_reason_prioritizes_opencli_failure(self):
+        diagnostics = [
+            {
+                "backend": "opencli",
+                "code": "opencli_browser_unavailable",
+                "message": "No tab with id: 123",
+            },
+            {
+                "backend": "twitterapiio",
+                "code": "backend_unavailable",
+                "message": "twitterapiio backend is not configured",
+            },
+            {
+                "backend": "official",
+                "code": "backend_unavailable",
+                "message": "official backend is not configured",
+            },
+        ]
+
+        reason = fetch_twitter.build_twitter_skipped_reason("auto", diagnostics)
+
+        self.assertIn("OpenCLI failed first", reason)
+        self.assertIn("opencli_browser_unavailable", reason)
+        self.assertIn("No tab with id", reason)
+        self.assertIn("twitterapi.io", reason)
+        self.assertIn("X_BEARER_TOKEN", reason)
+
 
 class TestOpenCliBackend(unittest.TestCase):
     def setUp(self):
