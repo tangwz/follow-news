@@ -305,6 +305,8 @@ def _classify_opencli_failure(returncode: int, stderr: str) -> str:
         return "opencli_auth_required"
     if "not logged" in text or "auth" in text or "permission" in text:
         return "opencli_auth_required"
+    if "no tab with id" in text or ("securityerror" in text and "pushstate" in text):
+        return "opencli_browser_unavailable"
     if "browser" in text and ("unavailable" in text or "connect" in text):
         return "opencli_browser_unavailable"
     return "opencli_source_error"

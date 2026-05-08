@@ -241,6 +241,18 @@ class TestBackendSelection(unittest.TestCase):
         self.assertIn("twitterapi.io", reason)
         self.assertIn("X_BEARER_TOKEN", reason)
 
+    def test_stale_browser_bridge_errors_are_global_opencli_failures(self):
+        stale_errors = [
+            "No tab with id: 123",
+            "SecurityError: Failed to execute 'pushState' on 'History'",
+        ]
+
+        for message in stale_errors:
+            with self.subTest(message=message):
+                code = fetch_twitter._classify_opencli_failure(1, message)
+
+                self.assertEqual(code, "opencli_browser_unavailable")
+
 
 class TestOpenCliBackend(unittest.TestCase):
     def setUp(self):
