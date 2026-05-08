@@ -116,6 +116,8 @@ export BRAVE_PLAN="free"           # Override Brave rate limit: free|pro
 
 OpenCLI is preferred because it can reuse an authenticated Chrome/Chromium session instead of requiring Twitter API credentials. API backends remain available for CI, headless machines, or users who already configured API keys.
 
+To use the OpenCLI backend, install the OpenCLI executable yourself and make it available on `PATH`, or set `OPENCLI_BIN` to its absolute path. In OpenClaw, also install the `jackwener/opencli` Skill so the agent can run `opencli doctor`, check the browser bridge, and guide X login-state troubleshooting.
+
 ## 📦 Dependencies
 
 ### Core (required)

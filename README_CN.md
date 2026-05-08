@@ -112,6 +112,8 @@ export BRAVE_PLAN="free"           # 覆盖速率限制检测：free|pro
 
 OpenCLI 是默认优先后端，因为它可以复用已经登录的 Chrome/Chromium 会话，不再强制要求 Twitter API 凭据。CI、无浏览器环境，或已经配置 API key 的用户仍可通过 API 后端 fallback。
 
+如需使用 OpenCLI 后端，用户需要自行安装 OpenCLI 可执行文件，并确保它在 `PATH` 上，或通过 `OPENCLI_BIN` 指向其绝对路径。在 OpenClaw 中，还需要安装 `jackwener/opencli` Skill，这样 agent 才能运行 `opencli doctor`、检查浏览器桥接，并协助排查 X 登录态问题。
+
 ## 📦 依赖
 
 ### 核心依赖

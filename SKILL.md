@@ -93,6 +93,8 @@ Automated tech news digest system with unified data source model, quality scorin
 
    OpenCLI is the preferred Twitter/X backend in `auto` mode. In OpenClaw environments where `jackwener/opencli` is installed, the agent should use that skill to validate `opencli doctor`, browser bridge state, and X login before asking for API keys.
 
+   To use the OpenCLI backend, the user must install the OpenCLI executable and expose it on `PATH`, or set `OPENCLI_BIN` to its absolute path. OpenClaw users should also install the `jackwener/opencli` Skill so the agent can run `opencli doctor` and diagnose browser bridge or X login-state issues.
+
 3. **Generate Digest**:
    ```bash
    # Unified pipeline (recommended) — runs all 6 sources in parallel + merge

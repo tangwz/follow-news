@@ -196,6 +196,17 @@ class TestReadmeCounts(unittest.TestCase):
 
         self.assertIn("OPENCLI_BIN", skill)
 
+    def test_opencli_installation_requirements_are_documented(self):
+        readme_en = README_EN.read_text(encoding="utf-8")
+        readme_zh = README_ZH.read_text(encoding="utf-8")
+        skill = (Path(__file__).parent.parent / "SKILL.md").read_text(encoding="utf-8")
+
+        for content in (readme_en, readme_zh, skill):
+            lowered = content.lower()
+            self.assertIn("jackwener/opencli", lowered)
+            self.assertIn("install", lowered)
+            self.assertIn("opencli doctor", lowered)
+
 
 if __name__ == "__main__":
     unittest.main()
