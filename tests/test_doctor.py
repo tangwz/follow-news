@@ -151,10 +151,13 @@ class TestDoctorFailureModes(unittest.TestCase):
         self.assertEqual(report["status"], "warning")
         checks = {item["name"]: item for item in report["checks"]}
         self.assertEqual(checks["opencli"]["status"], "warning")
+        self.assertIn("API fallback", checks["opencli"]["action"])
+        self.assertIn("GETX_API_KEY", checks["opencli"]["action"])
         self.assertEqual(checks["opencli_browser_bridge"]["status"], "warning")
         self.assertEqual(checks["opencli_x_login"]["status"], "warning")
         self.assertEqual(checks["web_brave"]["status"], "warning")
         self.assertEqual(checks["web_tavily"]["status"], "warning")
+        self.assertIn("API fallback", checks["opencli_browser_bridge"]["action"])
 
     def test_x_login_auth_required(self):
         def _opencli(args, timeout):
