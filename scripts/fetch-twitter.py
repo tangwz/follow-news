@@ -631,34 +631,29 @@ class OpenCliBackend(TwitterBackend):
         if before_tabs is None or not get_opencli_close_tabs_after_run():
             return
 
-        for _ in range(8):
-            after_tabs = self._list_browser_tabs()
-            if after_tabs is None:
-                return
+        after_tabs = self._list_browser_tabs()
+        if after_tabs is None:
+            return
 
-            pending_targets = [
-                target_id
-                for target_id, url in after_tabs.items()
-                if target_id not in before_tabs and is_twitter_browser_tab(url)
-            ]
-            if not pending_targets:
-                return
+        pending_targets = [
+            target_id
+            for target_id, url in after_tabs.items()
+            if target_id not in before_tabs and is_twitter_browser_tab(url)
+        ]
+        if not pending_targets:
+            return
 
-            for target_id in pending_targets:
-                result = self._run_command(
-                    ["browser", "tab", "close", target_id],
-                    timeout=OPENCLI_TAB_COMMAND_TIMEOUT,
+        for target_id in pending_targets:
+            result = self._run_command(
+                ["browser", "tab", "close", target_id],
+                timeout=OPENCLI_TAB_COMMAND_TIMEOUT,
+            )
+            if result.returncode != 0:
+                logging.warning(
+                    "opencli browser tab close failed: %s",
+                    (result.stderr or result.stdout).strip()[:200],
                 )
-                if result.returncode != 0:
-                    logging.warning(
-                        "opencli browser tab close failed: %s",
-                        (result.stderr or result.stdout).strip()[:200],
-                    )
-            time.sleep(0.5)
-
-        logging.warning(
-            "opencli cleanup left browser tabs unmatched after retries, running browser-close fallback",
-        )
+        time.sleep(0.5)
 
     def _release_browser_lease(self) -> None:
         if not get_opencli_close_tabs_after_run():

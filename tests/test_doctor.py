@@ -14,6 +14,7 @@ sys.path.insert(0, str(SCRIPTS_DIR))
 spec = importlib.util.spec_from_file_location("doctor_module", SCRIPTS_DIR / "doctor.py")
 doctor = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(doctor)
+sys.modules.setdefault("doctor_module", doctor)
 
 
 def _ok_cp(args):

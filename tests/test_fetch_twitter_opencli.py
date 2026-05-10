@@ -384,6 +384,32 @@ class TestOpenCliBackend(unittest.TestCase):
         self.assertNotIn(["/bin/opencli", "browser", "tab", "close", "existing-x-tab"], commands)
         self.assertNotIn(["/bin/opencli", "browser", "tab", "close", "new-doc-tab"], commands)
 
+    @patch("fetch_twitter.time.sleep")
+    @patch("fetch_twitter.OpenCliBackend._run_command")
+    def test_closes_new_opencli_twitter_tabs_with_single_pass(self, run_command_mock, sleep_mock):
+        backend = fetch_twitter.OpenCliBackend.__new__(fetch_twitter.OpenCliBackend)
+        backend.command = "/bin/opencli"
+
+        run_command_mock.side_effect = [
+            self._completed(
+                json.dumps({
+                    "tabs": [
+                        {"targetId": "existing-x-tab", "url": "https://x.com/home"},
+                        {"targetId": "new-twitter-tab", "url": "https://twitter.com/sama/status/456"},
+                    ]
+                })
+            ),
+            self._completed("closed"),
+        ]
+
+        backend._cleanup_new_browser_tabs({"existing-x-tab": "https://x.com/home"})
+
+        calls = [call.args[0] for call in run_command_mock.call_args_list]
+        self.assertEqual(calls[0], ["browser", "tab", "list"])
+        self.assertEqual(calls[1:], [["browser", "tab", "close", "new-twitter-tab"]])
+        self.assertEqual(sleep_mock.call_count, 1)
+        self.assertEqual(len(calls), 2)
+
     @patch("fetch_twitter.resolve_opencli_bin", return_value="/bin/opencli")
     @patch("subprocess.run")
     def test_missing_capability_raises_global_error(self, run_mock, _resolve_mock):
