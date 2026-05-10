@@ -9,7 +9,7 @@ import unittest
 import importlib.util
 from datetime import datetime
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 SCRIPTS_DIR = Path(__file__).parent.parent / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
@@ -258,6 +258,16 @@ class TestBackendSelection(unittest.TestCase):
                 code = fetch_twitter._classify_opencli_failure(1, message)
 
                 self.assertEqual(code, "opencli_browser_unavailable")
+
+    def test_stale_browser_bridge_errors_in_stdout_are_global_opencli_failures(self):
+        code = fetch_twitter._classify_opencli_failure(1, stdout="No tab with id: 123")
+        self.assertEqual(code, "opencli_browser_unavailable")
+
+        code = fetch_twitter._classify_opencli_failure(
+            1,
+            stdout="SecurityError: Failed to execute 'pushState' on 'History'",
+        )
+        self.assertEqual(code, "opencli_browser_unavailable")
 
 
 class TestOpenCliBackend(unittest.TestCase):
@@ -572,6 +582,75 @@ class TestBackendChain(unittest.TestCase):
         self.assertEqual(diagnostics[0]["backend"], "opencli")
         self.assertEqual(diagnostics[0]["code"], "opencli_missing")
         self.assertTrue(any("opencli_missing" in line for line in logs.output))
+
+    @patch.dict(os.environ, {"GETX_API_KEY": "x" * 20}, clear=True)
+    @patch("fetch_twitter.GetXApiBackend")
+    @patch("fetch_twitter.OpenCliBackend")
+    def test_auto_opencli_stale_bridge_failure_retried_once_before_fallback(self, opencli_cls, getx_cls):
+        first_opencli_backend = MagicMock()
+        second_opencli_backend = MagicMock()
+        opencli_cls.side_effect = [first_opencli_backend, second_opencli_backend]
+        first_opencli_backend.fetch_all.side_effect = fetch_twitter.OpenCliBackendError(
+            "opencli_browser_unavailable",
+            "No tab with id: 123",
+        )
+        second_opencli_backend.fetch_all.side_effect = fetch_twitter.OpenCliBackendError(
+            "opencli_browser_unavailable",
+            "SecurityError: Failed to execute 'pushState' on 'History'",
+        )
+
+        getx = getx_cls.return_value
+        getx.fetch_all.return_value = [{"status": "ok", "count": 0, "articles": []}]
+
+        with self.assertLogs(level="WARNING") as logs:
+            backend_name, results, diagnostics = fetch_twitter.fetch_with_backend_chain(
+                "auto", self.sources, self.cutoff, no_cache=False
+            )
+
+        self.assertEqual(backend_name, "getxapi")
+        self.assertEqual(results, [{"status": "ok", "count": 0, "articles": []}])
+        self.assertEqual(opencli_cls.call_count, 2)
+        self.assertEqual(getx_cls.call_count, 1)
+        self.assertEqual(
+            [item for item in diagnostics if item["backend"] == "opencli"],
+            [
+                {
+                    "backend": "opencli",
+                    "code": "opencli_browser_unavailable",
+                    "message": "No tab with id: 123",
+                },
+                {
+                    "backend": "opencli",
+                    "code": "opencli_browser_unavailable",
+                    "message": "SecurityError: Failed to execute 'pushState' on 'History'",
+                },
+            ],
+        )
+        self.assertTrue(any("opencli recovery attempt" in line for line in logs.output))
+
+    @patch("fetch_twitter.OpenCliBackend")
+    def test_explicit_opencli_retries_once_and_still_fails(self, opencli_cls):
+        first_opencli_backend = MagicMock()
+        second_opencli_backend = MagicMock()
+        opencli_cls.side_effect = [first_opencli_backend, second_opencli_backend]
+        first_opencli_backend.fetch_all.side_effect = fetch_twitter.OpenCliBackendError(
+            "opencli_browser_unavailable",
+            "No tab with id: 123",
+        )
+        second_opencli_backend.fetch_all.side_effect = fetch_twitter.OpenCliBackendError(
+            "opencli_browser_unavailable",
+            "SecurityError: Failed to execute 'pushState' on 'History'",
+        )
+
+        backend_name, results, diagnostics = fetch_twitter.fetch_with_backend_chain(
+            "opencli", self.sources, self.cutoff, no_cache=False
+        )
+
+        self.assertEqual(backend_name, "opencli")
+        self.assertEqual(results, [])
+        self.assertEqual(opencli_cls.call_count, 2)
+        self.assertEqual(len([item for item in diagnostics if item["backend"] == "opencli"]), 2)
+        self.assertEqual(diagnostics[0]["code"], "opencli_browser_unavailable")
 
     @patch.dict(os.environ, {}, clear=True)
     @patch("fetch_twitter.OpenCliBackend", side_effect=fetch_twitter.OpenCliBackendError("opencli_missing", "missing"))

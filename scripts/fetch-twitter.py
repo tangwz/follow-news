@@ -49,6 +49,7 @@ OPENCLI_DEFAULT_MAX_WORKERS = 10
 OPENCLI_MAX_WORKERS_MAX = 10
 OPENCLI_CLOSE_TABS_AFTER_RUN_DEFAULT = True
 OPENCLI_CLOSE_CHROME_WINDOWS_AFTER_RUN_DEFAULT = True
+OPENCLI_BROWSER_RECOVERABLE_RETRIES = 1
 OPENCLI_GLOBAL_ERROR_CODES = {
     "opencli_missing",
     "opencli_capability_missing",
@@ -498,9 +499,9 @@ def build_twitter_skipped_reason(backend_name: str, diagnostics: List[Dict[str, 
     return f"No usable backend for '{backend_name}'"
 
 
-def _classify_opencli_failure(returncode: int, stderr: str) -> str:
+def _classify_opencli_failure(returncode: int, stderr: str = "", stdout: str = "") -> str:
     """Map OpenCLI process failures into stable backend error codes."""
-    text = (stderr or "").lower()
+    text = f"{stderr or ''} {stdout or ''}".lower()
     if returncode == 69:
         return "opencli_browser_unavailable"
     if returncode == 75:
@@ -514,6 +515,11 @@ def _classify_opencli_failure(returncode: int, stderr: str) -> str:
     if "browser" in text and ("unavailable" in text or "connect" in text):
         return "opencli_browser_unavailable"
     return "opencli_source_error"
+
+
+def _is_retriable_opencli_error(error_code: str) -> bool:
+    """Return true when OpenCLI failure should be retried once before fallback."""
+    return error_code == "opencli_browser_unavailable"
 
 
 # ---------------------------------------------------------------------------
@@ -681,7 +687,7 @@ class OpenCliBackend(TwitterBackend):
         result = self._run_command(["doctor"], timeout=30)
         if result.returncode == 0:
             return
-        code = _classify_opencli_failure(result.returncode, result.stderr)
+        code = _classify_opencli_failure(result.returncode, result.stderr, result.stdout)
         if code in {"opencli_browser_unavailable", "opencli_auth_required"}:
             raise OpenCliBackendError(code, result.stderr.strip() or "opencli doctor failed")
         logging.warning(f"opencli doctor returned {result.returncode}: {(result.stderr or result.stdout).strip()[:200]}")
@@ -714,7 +720,7 @@ class OpenCliBackend(TwitterBackend):
         )
 
         if result.returncode != 0:
-            code = _classify_opencli_failure(result.returncode, result.stderr)
+            code = _classify_opencli_failure(result.returncode, result.stderr, result.stdout)
             message = (result.stderr or result.stdout or "opencli twitter tweets failed").strip()
             if code in OPENCLI_GLOBAL_ERROR_CODES:
                 raise OpenCliBackendError(code, message)
@@ -1345,33 +1351,48 @@ def fetch_with_backend_chain(
     explicit = backend_name != "auto"
 
     for candidate in get_backend_order(backend_name):
-        try:
-            backend = _instantiate_backend(candidate, no_cache=no_cache, opencli_workers=opencli_workers)
-        except OpenCliBackendError as exc:
-            diagnostics.append({"backend": candidate, "code": exc.code, "message": exc.message})
-            logging.warning(f"{candidate} unavailable: {exc.code}: {exc.message}")
-            if explicit:
-                return candidate, [], diagnostics
-            continue
+        max_retries = OPENCLI_BROWSER_RECOVERABLE_RETRIES if candidate == "opencli" else 0
 
-        if backend is None:
-            diagnostics.append({
-                "backend": candidate,
-                "code": "backend_unavailable",
-                "message": f"{candidate} backend is not configured",
-            })
-            if explicit:
-                return candidate, [], diagnostics
-            continue
+        for attempt in range(max_retries + 1):
+            try:
+                backend = _instantiate_backend(candidate, no_cache=no_cache, opencli_workers=opencli_workers)
+            except OpenCliBackendError as exc:
+                diagnostics.append({"backend": candidate, "code": exc.code, "message": exc.message})
+                logging.warning(
+                    f"{candidate} unavailable: {exc.code}: {exc.message} "
+                    f"(attempt {attempt + 1}/{max_retries + 1})"
+                )
+                if _is_retriable_opencli_error(exc.code) and candidate == "opencli" and attempt < max_retries:
+                    logging.warning("opencli recovery attempt enabled after browser-bridge failure; retrying")
+                    continue
+                if explicit:
+                    return candidate, [], diagnostics
+                break
 
-        try:
-            return candidate, backend.fetch_all(sources, cutoff), diagnostics
-        except OpenCliBackendError as exc:
-            diagnostics.append({"backend": candidate, "code": exc.code, "message": exc.message})
-            logging.warning(f"{candidate} failed globally: {exc.code}: {exc.message}")
-            if explicit:
-                return candidate, [], diagnostics
-            continue
+            if backend is None:
+                diagnostics.append({
+                    "backend": candidate,
+                    "code": "backend_unavailable",
+                    "message": f"{candidate} backend is not configured",
+                })
+                if explicit:
+                    return candidate, [], diagnostics
+                break
+
+            try:
+                return candidate, backend.fetch_all(sources, cutoff), diagnostics
+            except OpenCliBackendError as exc:
+                diagnostics.append({"backend": candidate, "code": exc.code, "message": exc.message})
+                logging.warning(
+                    f"{candidate} failed globally: {exc.code}: {exc.message} "
+                    f"(attempt {attempt + 1}/{max_retries + 1})"
+                )
+                if _is_retriable_opencli_error(exc.code) and candidate == "opencli" and attempt < max_retries:
+                    logging.warning("opencli recovery attempt enabled after browser-bridge failure; retrying")
+                    continue
+                if explicit:
+                    return candidate, [], diagnostics
+                break
 
     return backend_name, [], diagnostics
 
