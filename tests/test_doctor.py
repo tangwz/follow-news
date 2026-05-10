@@ -17,6 +17,14 @@ spec.loader.exec_module(doctor)
 
 
 def _ok_cp(args):
+    if args and args[:2] == ["--version"]:
+        return _build_cp(args, stdout="opencli 0.2.0")
+    if args and args[:1] == ["version"]:
+        return _build_cp(args, stdout="opencli version 0.2.0")
+    if args and args[:1] == ["-v"]:
+        return _build_cp(args, stdout="0.2.0")
+    if args and args[:1] == ["-V"]:
+        return _build_cp(args, stdout="opencli 0.2.0")
     return subprocess.CompletedProcess(args=args, returncode=0, stdout='{"commands":[{"site":"twitter","name":"tweets"}]}', stderr="")
 
 
@@ -27,6 +35,14 @@ def _build_cp(args, returncode=0, stdout="", stderr=""):
 class TestDoctorSuccess(unittest.TestCase):
     def _make_opencli_success(self):
         def _opencli(args, timeout):
+            if args and args[:2] == ["--version"]:
+                return _build_cp(args, stdout="opencli 0.2.0")
+            if args and args[:1] == ["version"]:
+                return _build_cp(args, stdout="opencli version 0.2.0")
+            if args and args[:1] == ["-v"]:
+                return _build_cp(args, stdout="0.2.0")
+            if args and args[:1] == ["-V"]:
+                return _build_cp(args, stdout="opencli 0.2.0")
             if args[:3] == ["list", "-f", "json"]:
                 return _ok_cp(args)
             if args[:3] == ["browser", "tab", "list"]:
@@ -53,6 +69,52 @@ class TestDoctorSuccess(unittest.TestCase):
         self.assertEqual(checks["web_brave"]["status"], "ok")
         self.assertEqual(checks["web_tavily"]["status"], "ok")
 
+    def test_opencli_version_too_old_is_warning(self):
+        def _opencli(args, timeout):
+            if args and args[:2] == ["--version"]:
+                return _build_cp(args, stdout="opencli 0.0.1")
+            if args and args[:1] == ["version"]:
+                return _build_cp(args, stdout="opencli version 0.0.1")
+            if args and args[:1] == ["-v"]:
+                return _build_cp(args, stdout="0.0.1")
+            if args and args[:1] == ["-V"]:
+                return _build_cp(args, stdout="opencli 0.0.1")
+            return _ok_cp(args)
+
+        with patch("doctor_module._run_opencli_command", side_effect=_opencli), \
+                patch("doctor_module._fetch_web.get_brave_api_keys", return_value=["k1"]), \
+                patch("doctor_module._fetch_web.select_brave_key_and_limits", return_value=("k1", 5, 1)), \
+                patch("doctor_module._fetch_web.get_tavily_api_key", return_value="k1"), \
+                patch("doctor_module._fetch_web.search_tavily", return_value={"status": "ok", "total": 1}):
+            report = doctor.run_doctor()
+
+        checks = {item["name"]: item for item in report["checks"]}
+        self.assertEqual(checks["opencli"]["status"], "warning")
+        self.assertEqual(checks["opencli"]["code"], "opencli_version_too_old")
+
+
+    def test_opencli_version_not_parseable_is_warning(self):
+        def _opencli(args, timeout):
+            if args and args[:2] == ["--version"]:
+                return _build_cp(args, stdout="opencli dev")
+            if args and args[:1] == ["version"]:
+                return _build_cp(args, stdout="dev")
+            if args and args[:1] == ["-v"]:
+                return _build_cp(args, stdout="dev")
+            if args and args[:1] == ["-V"]:
+                return _build_cp(args, stdout="dev")
+            return _ok_cp(args)
+
+        with patch("doctor_module._run_opencli_command", side_effect=_opencli), \
+                patch("doctor_module._fetch_web.get_brave_api_keys", return_value=["k1"]), \
+                patch("doctor_module._fetch_web.select_brave_key_and_limits", return_value=("k1", 5, 1)), \
+                patch("doctor_module._fetch_web.get_tavily_api_key", return_value="k1"), \
+                patch("doctor_module._fetch_web.search_tavily", return_value={"status": "ok", "total": 1}):
+            report = doctor.run_doctor()
+
+        checks = {item["name"]: item for item in report["checks"]}
+        self.assertEqual(checks["opencli"]["status"], "warning")
+        self.assertEqual(checks["opencli"]["code"], "opencli_version_unknown")
 
 class TestDoctorFailureModes(unittest.TestCase):
     def test_opencli_missing_marks_warning(self):
@@ -74,6 +136,14 @@ class TestDoctorFailureModes(unittest.TestCase):
 
     def test_x_login_auth_required(self):
         def _opencli(args, timeout):
+            if args and args[:2] == ["--version"]:
+                return _build_cp(args, stdout="opencli 0.2.0")
+            if args and args[:1] == ["version"]:
+                return _build_cp(args, stdout="opencli version 0.2.0")
+            if args and args[:1] == ["-v"]:
+                return _build_cp(args, stdout="0.2.0")
+            if args and args[:1] == ["-V"]:
+                return _build_cp(args, stdout="opencli 0.2.0")
             if args[:3] == ["list", "-f", "json"]:
                 return _ok_cp(args)
             if args[:3] == ["browser", "tab", "list"]:
@@ -95,6 +165,14 @@ class TestDoctorFailureModes(unittest.TestCase):
 
     def test_browser_bridge_not_healthy(self):
         def _opencli(args, timeout):
+            if args and args[:2] == ["--version"]:
+                return _build_cp(args, stdout="opencli 0.2.0")
+            if args and args[:1] == ["version"]:
+                return _build_cp(args, stdout="opencli version 0.2.0")
+            if args and args[:1] == ["-v"]:
+                return _build_cp(args, stdout="0.2.0")
+            if args and args[:1] == ["-V"]:
+                return _build_cp(args, stdout="opencli 0.2.0")
             if args[:3] == ["list", "-f", "json"]:
                 return _ok_cp(args)
             if args[:3] == ["browser", "tab", "list"]:
@@ -139,6 +217,14 @@ class TestDoctorFailureModes(unittest.TestCase):
 
     @staticmethod
     def _opencli_ok(args, timeout):
+        if args and args[:2] == ["--version"]:
+            return _build_cp(args, stdout="opencli 0.2.0")
+        if args and args[:1] == ["version"]:
+            return _build_cp(args, stdout="opencli version 0.2.0")
+        if args and args[:1] == ["-v"]:
+            return _build_cp(args, stdout="0.2.0")
+        if args and args[:1] == ["-V"]:
+            return _build_cp(args, stdout="opencli 0.2.0")
         if args[:3] == ["list", "-f", "json"]:
             return _ok_cp(args)
         if args[:3] == ["browser", "tab", "list"]:

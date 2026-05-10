@@ -8,14 +8,16 @@ import importlib.util
 import json
 import logging
 import os
+import re
 import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 
 SCRIPTS_DIR = Path(__file__).resolve().parent
+OPENCLI_DEFAULT_MIN_VERSION = "0.1.0"
 
 
 def _load_script_module(module_name: str, file_name: str):
@@ -80,7 +82,7 @@ def _diagnostic(
     status: str,
     message: str,
     code: str = "",
-    details: Dict[str, Any] | None = None,
+    details: Optional[Dict[str, Any]] = None,
     action: str = "",
 ) -> Dict[str, Any]:
     payload: Dict[str, Any] = {
@@ -104,6 +106,88 @@ def _extract_snippet(text: str, limit: int = 140) -> str:
     return value if len(value) <= limit else f"{value[:limit - 3]}..."
 
 
+def _parse_opencli_version(value: str) -> Optional[List[int]]:
+    """Extract a semantic version tuple from an OpenCLI version string."""
+    match = re.search(r"\bv?(\d+)\.(\d+)\.(\d+)\b", value or "")
+    if not match:
+        return None
+    return [int(match.group(1)), int(match.group(2)), int(match.group(3))]
+
+
+def _min_opencli_version() -> List[int]:
+    raw_value = os.getenv("OPENCLI_MIN_VERSION", OPENCLI_DEFAULT_MIN_VERSION).strip()
+    parsed = _parse_opencli_version(raw_value)
+    if parsed:
+        return parsed
+    logging.warning("Invalid OPENCLI_MIN_VERSION=%r; using default %s", raw_value, OPENCLI_DEFAULT_MIN_VERSION)
+    return _parse_opencli_version(OPENCLI_DEFAULT_MIN_VERSION) or [0, 0, 0]
+
+
+def _get_opencli_version() -> Optional[str]:
+    """Probe OpenCLI version from common CLI flags."""
+    for args in (["--version"], ["version"], ["-v"], ["-V"]):
+        result = _run_opencli_command(args, timeout=10)
+        if result.returncode != 0:
+            continue
+        version_text = f"{result.stdout}\n{result.stderr}".strip()
+        parsed = _parse_opencli_version(version_text)
+        if parsed is None:
+            continue
+        return ".".join(str(item) for item in parsed)
+    return None
+
+
+def _version_to_str(version: List[int]) -> str:
+    return ".".join(map(str, version))
+
+
+def _check_opencli_version() -> Optional[Dict[str, Any]]:
+    """Return a warning diagnostic if local OpenCLI version is too old or unknown."""
+    version = _get_opencli_version()
+    minimum = _min_opencli_version()
+
+    if version is None:
+        return {
+            "status": "warning",
+            "code": "opencli_version_unknown",
+            "message": "Could not determine OpenCLI version.",
+            "details": {
+                "minimum": _version_to_str(minimum),
+            },
+            "action": f"Run `opencli --version` and ensure it is >= {_version_to_str(minimum)}.",
+        }
+
+    current = _parse_opencli_version(version)
+    if current is None:
+        return {
+            "status": "warning",
+            "code": "opencli_version_unknown",
+            "message": "Could not parse OpenCLI version output.",
+            "details": {
+                "minimum": _version_to_str(minimum),
+                "version": version,
+            },
+            "action": "Run `opencli --version` and ensure it is a semantic version.",
+        }
+
+    if current < minimum:
+        return {
+            "status": "warning",
+            "code": "opencli_version_too_old",
+            "message": "OpenCLI version is older than required.",
+            "details": {
+                "current": version,
+                "minimum": _version_to_str(minimum),
+            },
+            "action": "Upgrade OpenCLI and retry.",
+        }
+
+    return {
+        "status": "ok",
+        "version": version,
+    }
+
+
 def check_opencli_availability() -> Dict[str, Any]:
     """Verify OpenCLI binary exists and exposes the Twitter backend."""
     try:
@@ -116,6 +200,21 @@ def check_opencli_availability() -> Dict[str, Any]:
             message="OpenCLI binary is not discoverable.",
             details={"hint": "Set OPENCLI_BIN or install opencli on PATH"},
             action="Install opencli and set OPENCLI_BIN or PATH, or configure alternate Twitter backend.",
+        )
+
+    version_check = _check_opencli_version()
+    if version_check is not None and version_check.get("status") != "ok":
+        return _diagnostic(
+            name="opencli",
+            status="warning",
+            code=version_check.get("code", "opencli_version_unknown"),
+            message=version_check.get("message", "OpenCLI version check failed."),
+            details={
+                "binary": binary,
+                "minimum_version": _min_opencli_version() if version_check else None,
+                **(version_check.get("details") or {}),
+            },
+            action=version_check.get("action", "Upgrade OpenCLI before continuing."),
         )
 
     list_result = _run_opencli_command(["list", "-f", "json"], timeout=30)
