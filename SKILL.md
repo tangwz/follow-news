@@ -19,6 +19,12 @@ env:
   - name: OPENCLI_MAX_WORKERS
     required: false
     description: Optional OpenCLI concurrency limit. Defaults to 10.
+  - name: OPENCLI_CLOSE_TABS_AFTER_RUN
+    required: false
+    description: Close OpenCLI-created X/Twitter tabs after fetch when set to 1 (default: 1)
+  - name: OPENCLI_CLOSE_CHROME_WINDOWS_AFTER_RUN
+    required: false
+    description: Close OpenCLI-created Chrome automation windows on macOS when set to 1 (default: 1)
   - name: GETX_API_KEY
     required: false
     description: GetXAPI key for Twitter/X fallback (getxapi backend)
@@ -71,6 +77,30 @@ files:
 
 # Follow News
 
+## Execution Routing Policy
+
+Use one of the following paths according to user intent:
+
+1. **Default / on-demand digest**
+   - When user asks for a digest, report, or latest news aggregation.
+   - Run `run-pipeline.py` first, then render with the requested template.
+
+2. **Configuration check**
+   - When user asks about setup issues, source additions, or broken config.
+   - Run `validate-config.py` before any long pipeline run.
+
+3. **Single-source fallback**
+   - When full pipeline has an obvious source failure and user asks for partial results.
+   - Run only the requested source fetcher (e.g. `fetch-rss.py`, `fetch-web.py`, `fetch-github.py`).
+
+4. **Health / troubleshooting mode**
+   - When user reports errors, empty output, or stale data.
+   - Run: config validation -> targeted 1h smoke fetch -> pipeline with verbose logs.
+
+Priority rule:
+- Operational/config queries take precedence over full news generation.
+- When a source fails, keep the run result transparent: explicit success/failure source count and failure reason list.
+
 Automated tech news digest system with unified data source model, quality scoring pipeline, and template-based output generation.
 
 ## Quick Start
@@ -92,7 +122,7 @@ Automated tech news digest system with unified data source model, quality scorin
    - `TWITTERAPI_IO_KEY` - twitterapi.io API key for Twitter/X fallback (optional)
    - `X_BEARER_TOKEN` - Twitter/X official API bearer token for final fallback (optional)
    - `TAVILY_API_KEY` - Tavily Search API key, alternative to Brave (optional)
-   - `WEB_SEARCH_BACKEND` - Web search backend: auto|brave|tavily (optional, default: auto)
+   - `WEB_SEARCH_BACKEND` - Web search backend: auto|brave|tavily|browser (optional, default: auto)
    - `BRAVE_API_KEYS` - Brave Search API keys, comma-separated for rotation (optional)
    - `BRAVE_API_KEY` - Single Brave key fallback (optional)
    - `GITHUB_TOKEN` - GitHub personal access token (optional, improves rate limits)
@@ -183,6 +213,14 @@ python3 scripts/run-pipeline.py \
 - **GitHub Auth**: Auto-generates GitHub App token if `$GITHUB_TOKEN` not set
 - **Fallback**: If this fails, run individual scripts below
 
+### Global execution constraints
+
+- Concurrency defaults: use `OPENCLI_MAX_WORKERS=10` unless explicitly overridden.
+- Retry policy: use exponential backoff + jitter where scripts support it; prefer shorter windows (`--hours`) for smoke checks before full-window runs.
+- Failure behavior: mark partial completion explicitly (for example, sources succeeded/failed count and list).
+- Rate-limited or flaky sources: pause and serialize before retrying.
+- Output stability: keep report ordering deterministic so repeated runs produce stable section ordering.
+
 ### Individual Scripts (Fallback)
 
 #### `fetch-rss.py` - RSS Feed Fetcher
@@ -204,7 +242,7 @@ python3 scripts/fetch-twitter.py [--defaults DIR] [--config DIR] [--hours 48] [-
 python3 scripts/fetch-web.py [--defaults DIR] [--config DIR] [--freshness pd] [--output FILE]
 ```
 - Auto-detects Brave API rate limit: paid plans → parallel queries, free → sequential
-- Without API: generates search interface for agents
+- Without API/backend: falls back to browser-backed DuckDuckGo search for real articles
 
 #### `fetch-github.py` - GitHub Releases Monitor
 ```bash
@@ -314,6 +352,14 @@ Place custom configs in `workspace/config/` to override defaults:
 }
 ```
 
+## User-facing output contract
+
+- Keep outputs concise and structured for non-technical readers.
+- Never expose internal implementation details (raw commands, file paths, env var names, rate-limit internals, cache state, retry counters).
+- Preserve source links for every item.
+- Keep sectioned numbering stable and clear so users can reference items quickly.
+- In degraded mode, show scope explicitly (for example: `2/6 sources available`) and avoid claiming completeness.
+
 ## Templates & Output
 
 ### Discord Template (`references/templates/discord.md`)
@@ -367,6 +413,14 @@ python3 scripts/fetch-rss.py --hours 1 --verbose
 python3 scripts/fetch-twitter.py --hours 1 --verbose
 ```
 
+### Minimum sanity checklist (before long runs)
+
+1. `python3 scripts/validate-config.py --verbose`
+2. `python3 scripts/fetch-rss.py --hours 1 --verbose`
+3. `python3 scripts/run-pipeline.py --defaults config/defaults --hours 24 --freshness pd --archive-dir workspace/archive/follow-news/ --output /tmp/td-merged.json --verbose`
+
+If all pass, run the full windowed pipeline (`--hours 48` or `--hours 168`) with the requested template.
+
 ### Archive Management
 - Digests automatically archived to `<workspace>/archive/follow-news/`
 - Previous digest titles used for duplicate detection
@@ -378,6 +432,21 @@ python3 scripts/fetch-twitter.py --hours 1 --verbose
 - **Invalid Content**: Graceful degradation, detailed logging
 - **Configuration Errors**: Schema validation with helpful messages
 
+### Error playbook
+
+- `validate-config.py` fails:
+  - Return actionable schema errors and stop pipeline execution.
+  - Ask user to patch config first.
+- Empty result from one source fetcher:
+  - Continue with other sources.
+  - Continue with a `partial` status and surface affected source.
+- Pipeline succeeds but output is missing expected sections:
+  - Re-run source fetch for the missing category with narrower windows (e.g. `--hours 24`) and compare.
+- Repeated 429 / timeout:
+  - Serialize retries, increase delay, and rerun narrowed.
+- Single upstream provider failure:
+  - Produce best-effort digest from healthy sources and expose degraded scope in output.
+
 ## API Keys & Environment
 
 Set in `~/.zshenv` or similar:
@@ -388,7 +457,7 @@ export X_BEARER_TOKEN="your_bearer_token"  # Official X API v2 (fallback)
 export TWITTER_API_BACKEND="auto"          # auto|twitterapiio|official (default: auto)
 
 # Web Search (optional, enables web search layer)
-export WEB_SEARCH_BACKEND="auto"          # auto|brave|tavily (default: auto)
+export WEB_SEARCH_BACKEND="auto"          # auto|brave|tavily|browser (default: auto)
 export TAVILY_API_KEY="tvly-xxx"           # Tavily Search API (free 1000/mo)
 
 # Brave Search (alternative)
@@ -404,7 +473,7 @@ export GH_APP_KEY_FILE="/path/to/key.pem"
 ```
 
 - **Twitter**: OpenCLI is preferred in `auto` mode; API backends fallback in this order: `GETX_API_KEY`, `TWITTERAPI_IO_KEY`, `X_BEARER_TOKEN`
-- **Web Search**: Tavily (preferred in auto mode) or Brave; optional, fallback to agent web_search if unavailable
+- **Web Search**: Tavily (preferred in auto mode) or Brave; fallback to browser-backed DuckDuckGo search when API keys are missing, exhausted, or unavailable
 - **GitHub**: Auto-generates token from GitHub App if PAT not set; unauthenticated fallback (60 req/hr)
 - **Reddit**: No API key needed (uses public JSON API)
 
