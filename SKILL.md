@@ -16,6 +16,9 @@ env:
   - name: OPENCLI_BIN
     required: false
     description: Optional path to the OpenCLI executable. Used when OpenCLI is not available on PATH.
+  - name: OPENCLI_MAX_WORKERS
+    required: false
+    description: Optional OpenCLI concurrency limit. Defaults to 1 to keep browser-backed requests serial.
   - name: GETX_API_KEY
     required: false
     description: GetXAPI key for Twitter/X fallback (getxapi backend)
@@ -82,6 +85,7 @@ Automated tech news digest system with unified data source model, quality scorin
 2. **Environment Variables**: 
    - `TWITTER_API_BACKEND` - Twitter backend: auto|opencli|getxapi|twitterapiio|official (optional, default: auto)
    - `OPENCLI_BIN` - OpenCLI executable path override (optional)
+   - `OPENCLI_MAX_WORKERS` - OpenCLI concurrency limit (optional, default: 1)
    - `GETX_API_KEY` - GetXAPI key for Twitter/X fallback (optional)
    - `TWITTERAPI_IO_KEY` - twitterapi.io API key for Twitter/X fallback (optional)
    - `X_BEARER_TOKEN` - Twitter/X official API bearer token for final fallback (optional)
@@ -93,7 +97,7 @@ Automated tech news digest system with unified data source model, quality scorin
 
    OpenCLI is the preferred Twitter/X backend in `auto` mode. In OpenClaw environments where `jackwener/opencli` is installed, the agent should use that skill to validate `opencli doctor`, browser bridge state, and X login before asking for API keys.
 
-   To use the OpenCLI backend, the user must install the OpenCLI executable and expose it on `PATH`, or set `OPENCLI_BIN` to its absolute path. OpenClaw users should also install the `jackwener/opencli` Skill so the agent can run `opencli doctor` and diagnose browser bridge or X login-state issues.
+   To use the OpenCLI backend, the user must install the OpenCLI executable and expose it on `PATH`, or set `OPENCLI_BIN` to its absolute path. OpenClaw users should also install the `jackwener/opencli` Skill so the agent can run `opencli doctor` and diagnose browser bridge or X login-state issues. OpenCLI requests are serial by default (`OPENCLI_MAX_WORKERS=1`) because the browser extension bridge can disconnect under rapid tab switching.
 
 3. **Generate Digest**:
    ```bash
@@ -188,9 +192,9 @@ python3 scripts/fetch-rss.py [--defaults DIR] [--config DIR] [--hours 48] [--out
 
 #### `fetch-twitter.py` - Twitter/X KOL Monitor
 ```bash
-python3 scripts/fetch-twitter.py [--defaults DIR] [--config DIR] [--hours 48] [--output FILE] [--backend auto|official|twitterapiio]
+python3 scripts/fetch-twitter.py [--defaults DIR] [--config DIR] [--hours 48] [--output FILE] [--backend auto|opencli|getxapi|twitterapiio|official]
 ```
-- Backend auto-detection: uses twitterapi.io if `TWITTERAPI_IO_KEY` set, else official X API v2 if `X_BEARER_TOKEN` set
+- Backend auto-detection: tries OpenCLI first, then GetXAPI, twitterapi.io, and official X API v2
 - Rate limit handling, engagement metrics, retry with backoff
 
 #### `fetch-web.py` - Web Search Engine

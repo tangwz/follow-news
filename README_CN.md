@@ -97,6 +97,7 @@ cp config/defaults/topics.json workspace/config/follow-news-topics.json
 # Twitter/X 后端（自动优先级：opencli > getxapi > twitterapiio > official）
 export TWITTER_API_BACKEND="auto"  # auto|opencli|getxapi|twitterapiio|official
 export OPENCLI_BIN="/path/to/opencli"  # 可选；默认使用 PATH 上的 opencli
+export OPENCLI_MAX_WORKERS="1"  # 可选；浏览器后端默认串行，避免频繁切换标签页
 export GETX_API_KEY="..."        # GetXAPI fallback
 export TWITTERAPI_IO_KEY="..."   # twitterapi.io fallback
 export X_BEARER_TOKEN="..."      # Twitter/X 官方 API v2 fallback
@@ -113,6 +114,8 @@ export BRAVE_PLAN="free"           # 覆盖速率限制检测：free|pro
 OpenCLI 是默认优先后端，因为它可以复用已经登录的 Chrome/Chromium 会话，不再强制要求 Twitter API 凭据。CI、无浏览器环境，或已经配置 API key 的用户仍可通过 API 后端 fallback。
 
 如需使用 OpenCLI 后端，用户需要自行安装 OpenCLI 可执行文件，并确保它在 `PATH` 上，或通过 `OPENCLI_BIN` 指向其绝对路径。在 OpenClaw 中，还需要安装 `jackwener/opencli` Skill，这样 agent 才能运行 `opencli doctor`、检查浏览器桥接，并协助排查 X 登录态问题。
+
+OpenCLI 的稳定性取决于本机浏览器扩展桥接状态。抓取器默认使用串行 OpenCLI 请求（`OPENCLI_MAX_WORKERS=1`），避免大批量 KOL 抓取时频繁切换标签页导致 tab id 失效；只有确认浏览器桥接稳定后才建议调高。
 
 ## 📦 依赖
 

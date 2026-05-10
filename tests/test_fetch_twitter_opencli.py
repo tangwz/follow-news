@@ -169,19 +169,20 @@ class TestOpenCliDiscovery(unittest.TestCase):
                 fetch_twitter.resolve_opencli_bin()
         self.assertEqual(ctx.exception.code, "opencli_missing")
 
-    def test_detects_twitter_tweets_capability_from_list_json(self):
+    def test_detects_twitter_search_capability_from_list_json(self):
         payloads = [
-            [{"site": "twitter", "name": "tweets"}],
-            {"commands": [{"site": "twitter", "name": "tweets"}]},
-            {"twitter": ["search", "timeline", "tweets"]},
+            [{"site": "twitter", "name": "search"}],
+            {"commands": [{"site": "twitter", "name": "search"}]},
+            {"commands": [{"command": "twitter search"}]},
+            {"twitter": ["search", "timeline"]},
         ]
         for payload in payloads:
             with self.subTest(payload=payload):
-                self.assertTrue(fetch_twitter.opencli_has_twitter_tweets(payload))
+                self.assertTrue(fetch_twitter.opencli_has_twitter_search(payload))
 
-    def test_rejects_missing_twitter_tweets_capability(self):
-        payload = {"commands": [{"site": "twitter", "name": "search"}]}
-        self.assertFalse(fetch_twitter.opencli_has_twitter_tweets(payload))
+    def test_rejects_missing_twitter_search_capability(self):
+        payload = {"commands": [{"site": "twitter", "name": "timeline"}]}
+        self.assertFalse(fetch_twitter.opencli_has_twitter_search(payload))
 
 
 class TestBackendSelection(unittest.TestCase):
@@ -198,6 +199,60 @@ class TestBackendSelection(unittest.TestCase):
         self.assertEqual(fetch_twitter.get_backend_order("getxapi"), ["getxapi"])
         self.assertEqual(fetch_twitter.get_backend_order("twitterapiio"), ["twitterapiio"])
         self.assertEqual(fetch_twitter.get_backend_order("official"), ["official"])
+
+    def test_opencli_defaults_to_serial_fetching(self):
+        with patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(fetch_twitter.get_opencli_max_workers(), 1)
+
+    def test_opencli_worker_count_can_be_configured(self):
+        with patch.dict(os.environ, {"OPENCLI_MAX_WORKERS": "3"}, clear=True):
+            self.assertEqual(fetch_twitter.get_opencli_max_workers(), 3)
+
+    def test_opencli_worker_count_rejects_invalid_values(self):
+        invalid_values = ["0", "-1", "abc"]
+        for value in invalid_values:
+            with self.subTest(value=value), patch.dict(os.environ, {"OPENCLI_MAX_WORKERS": value}, clear=True):
+                with self.assertLogs(level="WARNING"):
+                    self.assertEqual(fetch_twitter.get_opencli_max_workers(), 1)
+
+    def test_empty_reason_prioritizes_opencli_failure(self):
+        diagnostics = [
+            {
+                "backend": "opencli",
+                "code": "opencli_browser_unavailable",
+                "message": "No tab with id: 123",
+            },
+            {
+                "backend": "twitterapiio",
+                "code": "backend_unavailable",
+                "message": "twitterapiio backend is not configured",
+            },
+            {
+                "backend": "official",
+                "code": "backend_unavailable",
+                "message": "official backend is not configured",
+            },
+        ]
+
+        reason = fetch_twitter.build_twitter_skipped_reason("auto", diagnostics)
+
+        self.assertIn("OpenCLI failed first", reason)
+        self.assertIn("opencli_browser_unavailable", reason)
+        self.assertIn("No tab with id", reason)
+        self.assertIn("twitterapi.io", reason)
+        self.assertIn("X_BEARER_TOKEN", reason)
+
+    def test_stale_browser_bridge_errors_are_global_opencli_failures(self):
+        stale_errors = [
+            "No tab with id: 123",
+            "SecurityError: Failed to execute 'pushState' on 'History'",
+        ]
+
+        for message in stale_errors:
+            with self.subTest(message=message):
+                code = fetch_twitter._classify_opencli_failure(1, message)
+
+                self.assertEqual(code, "opencli_browser_unavailable")
 
 
 class TestOpenCliBackend(unittest.TestCase):
@@ -225,7 +280,7 @@ class TestOpenCliBackend(unittest.TestCase):
     @patch("subprocess.run")
     def test_fetches_tweets_for_source(self, run_mock, _resolve_mock):
         run_mock.side_effect = [
-            self._completed(json.dumps({"commands": [{"site": "twitter", "name": "tweets"}]})),
+            self._completed(json.dumps({"commands": [{"site": "twitter", "name": "search"}]})),
             self._completed("OpenCLI doctor ok"),
             self._completed(json.dumps([
                 {
@@ -251,14 +306,25 @@ class TestOpenCliBackend(unittest.TestCase):
         self.assertEqual(results[0]["count"], 1)
         self.assertEqual(results[0]["articles"][0]["tweet_id"], "123")
         self.assertIn(
-            ["/bin/opencli", "twitter", "tweets", "sama", "--limit", "20", "-f", "json"],
+            [
+                "/bin/opencli",
+                "twitter",
+                "search",
+                "from:sama -is:reply",
+                "--filter",
+                "live",
+                "--limit",
+                "20",
+                "-f",
+                "json",
+            ],
             [call.args[0] for call in run_mock.call_args_list],
         )
 
     @patch("fetch_twitter.resolve_opencli_bin", return_value="/bin/opencli")
     @patch("subprocess.run")
     def test_missing_capability_raises_global_error(self, run_mock, _resolve_mock):
-        run_mock.return_value = self._completed(json.dumps({"commands": [{"site": "twitter", "name": "search"}]}))
+        run_mock.return_value = self._completed(json.dumps({"commands": [{"site": "twitter", "name": "timeline"}]}))
 
         with self.assertRaises(fetch_twitter.OpenCliBackendError) as ctx:
             fetch_twitter.OpenCliBackend()
@@ -269,7 +335,7 @@ class TestOpenCliBackend(unittest.TestCase):
     @patch("subprocess.run")
     def test_auth_required_raises_global_error_on_probe(self, run_mock, _resolve_mock):
         run_mock.side_effect = [
-            self._completed(json.dumps({"commands": [{"site": "twitter", "name": "tweets"}]})),
+            self._completed(json.dumps({"commands": [{"site": "twitter", "name": "search"}]})),
             self._completed("OpenCLI doctor ok"),
             self._completed("", returncode=77, stderr="Not logged into x.com"),
         ]
@@ -290,7 +356,7 @@ class TestOpenCliBackend(unittest.TestCase):
         second_source["handle"] = "OpenAI"
 
         run_mock.side_effect = [
-            self._completed(json.dumps({"commands": [{"site": "twitter", "name": "tweets"}]})),
+            self._completed(json.dumps({"commands": [{"site": "twitter", "name": "search"}]})),
             self._completed("OpenCLI doctor ok"),
             self._completed(json.dumps([
                 {

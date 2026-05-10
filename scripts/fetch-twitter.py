@@ -43,7 +43,7 @@ RETRY_COUNT = 2
 RETRY_DELAY = 2.0
 MAX_TWEETS_PER_USER = 20
 OPENCLI_TIMEOUT = 90
-OPENCLI_MAX_WORKERS = 2
+OPENCLI_DEFAULT_MAX_WORKERS = 1
 OPENCLI_GLOBAL_ERROR_CODES = {
     "opencli_missing",
     "opencli_capability_missing",
@@ -208,29 +208,36 @@ def resolve_opencli_bin() -> str:
     )
 
 
-def opencli_has_twitter_tweets(payload: Any) -> bool:
-    """Return true when `opencli list -f json` exposes twitter tweets."""
+def opencli_has_twitter_search(payload: Any) -> bool:
+    """Return true when `opencli list -f json` exposes twitter search."""
     if isinstance(payload, list):
         for item in payload:
-            if opencli_has_twitter_tweets(item):
+            if opencli_has_twitter_search(item):
                 return True
         return False
+
+    if isinstance(payload, str):
+        value = " ".join(payload.lower().strip().split())
+        return value in {"twitter search", "opencli twitter search"}
 
     if isinstance(payload, dict):
         site = str(payload.get("site") or payload.get("group") or "").lower()
         name = str(payload.get("name") or payload.get("command") or "").lower()
-        if site == "twitter" and name == "tweets":
+        command = " ".join(name.strip().split())
+        if site == "twitter" and command == "search":
+            return True
+        if command in {"twitter search", "opencli twitter search"}:
             return True
 
         if "twitter" in payload:
             twitter_value = payload["twitter"]
             if isinstance(twitter_value, list):
-                return "tweets" in [str(item).lower() for item in twitter_value]
+                return "search" in [str(item).lower() for item in twitter_value]
             if isinstance(twitter_value, dict):
-                return opencli_has_twitter_tweets(twitter_value)
+                return opencli_has_twitter_search(twitter_value)
 
         for key in ("commands", "items", "data", "sites"):
-            if key in payload and opencli_has_twitter_tweets(payload[key]):
+            if key in payload and opencli_has_twitter_search(payload[key]):
                 return True
 
     return False
@@ -241,6 +248,57 @@ def get_backend_order(backend_name: str) -> List[str]:
     if backend_name == "auto":
         return ["opencli", "getxapi", "twitterapiio", "official"]
     return [backend_name]
+
+
+def get_opencli_max_workers() -> int:
+    """Return OpenCLI worker count, defaulting to serial browser access."""
+    raw_value = os.getenv("OPENCLI_MAX_WORKERS", "").strip()
+    if not raw_value:
+        return OPENCLI_DEFAULT_MAX_WORKERS
+
+    try:
+        value = int(raw_value)
+    except ValueError:
+        logging.warning("Invalid OPENCLI_MAX_WORKERS=%r; using %s", raw_value, OPENCLI_DEFAULT_MAX_WORKERS)
+        return OPENCLI_DEFAULT_MAX_WORKERS
+
+    if value < 1:
+        logging.warning("Invalid OPENCLI_MAX_WORKERS=%r; using %s", raw_value, OPENCLI_DEFAULT_MAX_WORKERS)
+        return OPENCLI_DEFAULT_MAX_WORKERS
+
+    return value
+
+
+def build_twitter_skipped_reason(backend_name: str, diagnostics: List[Dict[str, str]]) -> str:
+    """Build a human-readable reason for an empty Twitter output."""
+    opencli_diag = next((item for item in diagnostics if item.get("backend") == "opencli"), None)
+    unavailable = {item.get("backend") for item in diagnostics if item.get("code") == "backend_unavailable"}
+
+    parts = []
+    if opencli_diag:
+        message = opencli_diag.get("message", "").strip()
+        if len(message) > 160:
+            message = message[:157] + "..."
+        detail = opencli_diag.get("code", "unknown")
+        if message:
+            detail = f"{detail}: {message}"
+        parts.append(f"OpenCLI failed first ({detail})")
+
+    missing = []
+    if "getxapi" in unavailable:
+        missing.append("GETX_API_KEY")
+    if "twitterapiio" in unavailable:
+        missing.append("twitterapi.io/TWITTERAPI_IO_KEY")
+    if "official" in unavailable:
+        missing.append("official X API/X_BEARER_TOKEN")
+
+    if missing:
+        parts.append("API fallbacks unavailable: " + ", ".join(missing))
+
+    if parts:
+        return "; ".join(parts)
+
+    return f"No usable backend for '{backend_name}'"
 
 
 def _classify_opencli_failure(returncode: int, stderr: str) -> str:
@@ -254,6 +312,8 @@ def _classify_opencli_failure(returncode: int, stderr: str) -> str:
         return "opencli_auth_required"
     if "not logged" in text or "auth" in text or "permission" in text:
         return "opencli_auth_required"
+    if "no tab with id" in text or ("securityerror" in text and "pushstate" in text):
+        return "opencli_browser_unavailable"
     if "browser" in text and ("unavailable" in text or "connect" in text):
         return "opencli_browser_unavailable"
     return "opencli_source_error"
@@ -323,7 +383,7 @@ class TwitterBackend(ABC):
 
 
 class OpenCliBackend(TwitterBackend):
-    """OpenCLI backend using the browser-backed twitter tweets adapter."""
+    """OpenCLI backend using the browser-backed twitter search adapter."""
 
     def __init__(self, command: Optional[str] = None):
         self.command = command or resolve_opencli_bin()
@@ -353,10 +413,10 @@ class OpenCliBackend(TwitterBackend):
         except json.JSONDecodeError as exc:
             raise OpenCliBackendError("opencli_parse_error", "opencli list returned invalid JSON") from exc
 
-        if not opencli_has_twitter_tweets(payload):
+        if not opencli_has_twitter_search(payload):
             raise OpenCliBackendError(
                 "opencli_capability_missing",
-                "OpenCLI does not expose the twitter tweets command.",
+                "OpenCLI does not expose the twitter search command.",
             )
 
     def _run_doctor(self) -> None:
@@ -372,7 +432,7 @@ class OpenCliBackend(TwitterBackend):
         try:
             payload = json.loads(stdout or "null")
         except json.JSONDecodeError as exc:
-            raise OpenCliBackendError("opencli_parse_error", "opencli twitter tweets returned invalid JSON") from exc
+            raise OpenCliBackendError("opencli_parse_error", "opencli twitter search returned invalid JSON") from exc
 
         articles = []
         for record in extract_opencli_tweet_records(payload):
@@ -383,13 +443,24 @@ class OpenCliBackend(TwitterBackend):
 
     def _fetch_user_tweets(self, source: Dict[str, Any], cutoff: datetime) -> Dict[str, Any]:
         handle = source["handle"].lstrip("@")
+        query = f"from:{handle} -is:reply"
         result = self._run_command(
-            ["twitter", "tweets", handle, "--limit", str(MAX_TWEETS_PER_USER), "-f", "json"]
+            [
+                "twitter",
+                "search",
+                query,
+                "--filter",
+                "live",
+                "--limit",
+                str(MAX_TWEETS_PER_USER),
+                "-f",
+                "json",
+            ]
         )
 
         if result.returncode != 0:
             code = _classify_opencli_failure(result.returncode, result.stderr)
-            message = (result.stderr or result.stdout or "opencli twitter tweets failed").strip()
+            message = (result.stderr or result.stdout or "opencli twitter search failed").strip()
             if code in OPENCLI_GLOBAL_ERROR_CODES:
                 raise OpenCliBackendError(code, message)
             return self._make_error(source, f"{code}: {message[:160]}", 0)
@@ -413,7 +484,8 @@ class OpenCliBackend(TwitterBackend):
             return results
 
         done = 1
-        with ThreadPoolExecutor(max_workers=OPENCLI_MAX_WORKERS) as pool:
+        max_workers = get_opencli_max_workers()
+        with ThreadPoolExecutor(max_workers=max_workers) as pool:
             futures = {pool.submit(self._fetch_user_tweets, source, cutoff): source for source in remaining}
             for future in as_completed(futures):
                 source = futures[future]
@@ -1196,7 +1268,7 @@ Examples:
                 "sources_ok": 0,
                 "total_articles": 0,
                 "sources": [],
-                "skipped_reason": f"No usable backend for '{backend_name}'",
+                "skipped_reason": build_twitter_skipped_reason(backend_name, backend_diagnostics),
                 "backend_diagnostics": backend_diagnostics,
             }
             with open(args.output, "w", encoding='utf-8') as f:
