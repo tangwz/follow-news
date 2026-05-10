@@ -12,6 +12,7 @@ Usage:
 Environment:
     TWITTER_API_BACKEND - Backend selection: "auto" (default), "getxapi", "twitterapiio", or "official"
                         Auto priority: getxapi ($0.001/call) > twitterapi.io (~$5/mo) > official X API
+    OPENCLI_MAX_WORKERS  - OpenCLI fetch concurrency for twitter tweets (1-10, default: 5)
     GETX_API_KEY        - GetXAPI API key (preferred backend, $0.001 per call)
     TWITTERAPI_IO_KEY   - twitterapi.io API key (alternative backend, ~$5/month)
     X_BEARER_TOKEN      - Twitter/X official API v2 bearer token (fallback)
@@ -44,7 +45,8 @@ RETRY_DELAY = 2.0
 MAX_TWEETS_PER_USER = 20
 OPENCLI_TIMEOUT = 90
 OPENCLI_TAB_COMMAND_TIMEOUT = 15
-OPENCLI_DEFAULT_MAX_WORKERS = 1
+OPENCLI_DEFAULT_MAX_WORKERS = 5
+OPENCLI_MAX_WORKERS_MAX = 10
 OPENCLI_CLOSE_TABS_AFTER_RUN_DEFAULT = True
 OPENCLI_CLOSE_CHROME_WINDOWS_AFTER_RUN_DEFAULT = True
 OPENCLI_GLOBAL_ERROR_CODES = {
@@ -358,9 +360,13 @@ def get_backend_order(backend_name: str) -> List[str]:
     return [backend_name]
 
 
-def get_opencli_max_workers() -> int:
-    """Return OpenCLI worker count, defaulting to serial browser access."""
-    raw_value = os.getenv("OPENCLI_MAX_WORKERS", "").strip()
+def get_opencli_max_workers(raw_value: Optional[str] = None) -> int:
+    """Return OpenCLI worker count, defaulting to parallel browser access."""
+    if raw_value is None:
+        raw_value = os.getenv("OPENCLI_MAX_WORKERS", "").strip()
+    else:
+        raw_value = str(raw_value).strip()
+
     if not raw_value:
         return OPENCLI_DEFAULT_MAX_WORKERS
 
@@ -373,6 +379,14 @@ def get_opencli_max_workers() -> int:
     if value < 1:
         logging.warning("Invalid OPENCLI_MAX_WORKERS=%r; using %s", raw_value, OPENCLI_DEFAULT_MAX_WORKERS)
         return OPENCLI_DEFAULT_MAX_WORKERS
+    if value > OPENCLI_MAX_WORKERS_MAX:
+        logging.warning(
+            "OPENCLI_MAX_WORKERS=%r exceeds max (%s); clamping to %s",
+            raw_value,
+            OPENCLI_MAX_WORKERS_MAX,
+            OPENCLI_MAX_WORKERS_MAX,
+        )
+        return OPENCLI_MAX_WORKERS_MAX
 
     return value
 
@@ -568,8 +582,9 @@ class TwitterBackend(ABC):
 class OpenCliBackend(TwitterBackend):
     """OpenCLI backend using the browser-backed twitter tweets adapter."""
 
-    def __init__(self, command: Optional[str] = None):
+    def __init__(self, command: Optional[str] = None, max_workers: Optional[int] = None):
         self.command = command or resolve_opencli_bin()
+        self._max_workers = max_workers
         self._before_chrome_windows = snapshot_chrome_windows()
         try:
             self._verify_capability()
@@ -713,7 +728,7 @@ class OpenCliBackend(TwitterBackend):
                 return results
 
             done = 1
-            max_workers = get_opencli_max_workers()
+            max_workers = self._max_workers if self._max_workers is not None else get_opencli_max_workers()
             with ThreadPoolExecutor(max_workers=max_workers) as pool:
                 futures = {pool.submit(self._fetch_user_tweets, source, cutoff): source for source in remaining}
                 for future in as_completed(futures):
@@ -1266,11 +1281,15 @@ class GetXApiBackend(TwitterBackend):
 # Backend selection
 # ---------------------------------------------------------------------------
 
-def _instantiate_backend(backend_name: str, no_cache: bool = False) -> Optional[TwitterBackend]:
+def _instantiate_backend(
+    backend_name: str,
+    no_cache: bool = False,
+    opencli_workers: Optional[int] = None,
+) -> Optional[TwitterBackend]:
     """Instantiate one backend without applying fallback policy."""
     if backend_name == "opencli":
         logging.info("Using OpenCLI backend")
-        return OpenCliBackend()
+        return OpenCliBackend(max_workers=opencli_workers)
 
     if backend_name == "getxapi":
         key = os.getenv("GETX_API_KEY")
@@ -1305,6 +1324,7 @@ def fetch_with_backend_chain(
     sources: List[Dict[str, Any]],
     cutoff: datetime,
     no_cache: bool = False,
+    opencli_workers: Optional[int] = None,
 ) -> Tuple[str, List[Dict[str, Any]], List[Dict[str, str]]]:
     """Fetch Twitter data using explicit backend or auto fallback chain."""
     diagnostics: List[Dict[str, str]] = []
@@ -1312,7 +1332,7 @@ def fetch_with_backend_chain(
 
     for candidate in get_backend_order(backend_name):
         try:
-            backend = _instantiate_backend(candidate, no_cache=no_cache)
+            backend = _instantiate_backend(candidate, no_cache=no_cache, opencli_workers=opencli_workers)
         except OpenCliBackendError as exc:
             diagnostics.append({"backend": candidate, "code": exc.code, "message": exc.message})
             logging.warning(f"{candidate} unavailable: {exc.code}: {exc.message}")
@@ -1444,6 +1464,14 @@ Examples:
              "auto = opencli first, then getxapi, twitterapiio, official"
     )
 
+    parser.add_argument(
+        "--opencli-workers",
+        type=int,
+        default=None,
+        help="OpenCLI concurrency for twitter tweets (1-10). "
+             f"Defaults to {OPENCLI_DEFAULT_MAX_WORKERS}.",
+    )
+
     args = parser.parse_args()
     logger = setup_logging(args.verbose)
 
@@ -1488,6 +1516,7 @@ Examples:
             sources,
             cutoff,
             no_cache=args.no_cache,
+            opencli_workers=args.opencli_workers,
         )
 
         if not results:

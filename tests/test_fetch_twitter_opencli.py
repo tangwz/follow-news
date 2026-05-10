@@ -200,9 +200,9 @@ class TestBackendSelection(unittest.TestCase):
         self.assertEqual(fetch_twitter.get_backend_order("twitterapiio"), ["twitterapiio"])
         self.assertEqual(fetch_twitter.get_backend_order("official"), ["official"])
 
-    def test_opencli_defaults_to_serial_fetching(self):
+    def test_opencli_defaults_to_parallel_fetching(self):
         with patch.dict(os.environ, {}, clear=True):
-            self.assertEqual(fetch_twitter.get_opencli_max_workers(), 1)
+            self.assertEqual(fetch_twitter.get_opencli_max_workers(), 5)
 
     def test_opencli_worker_count_can_be_configured(self):
         with patch.dict(os.environ, {"OPENCLI_MAX_WORKERS": "3"}, clear=True):
@@ -213,7 +213,12 @@ class TestBackendSelection(unittest.TestCase):
         for value in invalid_values:
             with self.subTest(value=value), patch.dict(os.environ, {"OPENCLI_MAX_WORKERS": value}, clear=True):
                 with self.assertLogs(level="WARNING"):
-                    self.assertEqual(fetch_twitter.get_opencli_max_workers(), 1)
+                    self.assertEqual(fetch_twitter.get_opencli_max_workers(), 5)
+
+    def test_opencli_worker_count_caps_to_max(self):
+        with patch.dict(os.environ, {"OPENCLI_MAX_WORKERS": "20"}, clear=True):
+            with self.assertLogs(level="WARNING"):
+                self.assertEqual(fetch_twitter.get_opencli_max_workers(), 10)
 
     def test_empty_reason_prioritizes_opencli_failure(self):
         diagnostics = [
@@ -433,6 +438,32 @@ class TestOpenCliBackend(unittest.TestCase):
         self.assertEqual(by_handle["OpenAI"]["status"], "error")
         self.assertIn("opencli_source_error", by_handle["OpenAI"]["error"])
         self.assertTrue(any("opencli_source_error" in line for line in logs.output))
+
+
+class TestFetchWithBackendChain(unittest.TestCase):
+    @patch("fetch_twitter.OpenCliBackend")
+    def test_fetch_with_backend_chain_passes_opencli_workers(self, backend_cls_mock):
+        source = {
+            "id": "sama-twitter",
+            "type": "twitter",
+            "name": "Sam Altman",
+            "handle": "sama",
+            "enabled": True,
+            "priority": True,
+            "topics": ["llm"],
+        }
+        backend = backend_cls_mock.return_value
+        backend.fetch_all.return_value = []
+        backend_cls_mock.return_value = backend
+
+        fetch_twitter.fetch_with_backend_chain(
+            "opencli",
+            [source],
+            utc("2026-05-08T00:00:00Z"),
+            opencli_workers=7,
+        )
+
+        backend_cls_mock.assert_called_once_with(max_workers=7)
 
 
 class TestOpenCliChromeCleanup(unittest.TestCase):
