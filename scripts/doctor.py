@@ -108,10 +108,13 @@ def _extract_snippet(text: str, limit: int = 140) -> str:
 
 def _parse_opencli_version(value: str) -> Optional[List[int]]:
     """Extract a semantic version tuple from an OpenCLI version string."""
-    match = re.search(r"\bv?(\d+)\.(\d+)\.(\d+)\b", value or "")
+    match = re.search(r"\bv?(\d+)\.(\d+)(?:\.(\d+))?\b", value or "")
     if not match:
         return None
-    return [int(match.group(1)), int(match.group(2)), int(match.group(3))]
+    major = int(match.group(1))
+    minor = int(match.group(2))
+    patch = int(match.group(3) or 0)
+    return [major, minor, patch]
 
 
 def _min_opencli_version() -> List[int]:

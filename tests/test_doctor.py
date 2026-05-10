@@ -116,6 +116,28 @@ class TestDoctorSuccess(unittest.TestCase):
         self.assertEqual(checks["opencli"]["status"], "warning")
         self.assertEqual(checks["opencli"]["code"], "opencli_version_unknown")
 
+    def test_opencli_version_with_two_part_number_is_accepted(self):
+        def _opencli(args, timeout):
+            if args and args[:2] == ["--version"]:
+                return _build_cp(args, stdout="opencli 0.2")
+            if args and args[:1] == ["version"]:
+                return _build_cp(args, stdout="opencli version 0.2")
+            if args and args[:1] == ["-v"]:
+                return _build_cp(args, stdout="0.2")
+            if args and args[:1] == ["-V"]:
+                return _build_cp(args, stdout="opencli 0.2")
+            return _ok_cp(args)
+
+        with patch("doctor_module._run_opencli_command", side_effect=_opencli), \
+                patch("doctor_module._fetch_web.get_brave_api_keys", return_value=["k1"]), \
+                patch("doctor_module._fetch_web.select_brave_key_and_limits", return_value=("k1", 5, 1)), \
+                patch("doctor_module._fetch_web.get_tavily_api_key", return_value="k1"), \
+                patch("doctor_module._fetch_web.search_tavily", return_value={"status": "ok", "total": 1}):
+            report = doctor.run_doctor()
+
+        checks = {item["name"]: item for item in report["checks"]}
+        self.assertEqual(checks["opencli"]["status"], "ok")
+
 class TestDoctorFailureModes(unittest.TestCase):
     def test_opencli_missing_marks_warning(self):
         with patch("doctor_module._fetch_twitter.resolve_opencli_bin", side_effect=doctor._fetch_twitter.OpenCliBackendError(
