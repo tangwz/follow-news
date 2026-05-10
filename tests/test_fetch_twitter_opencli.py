@@ -169,19 +169,20 @@ class TestOpenCliDiscovery(unittest.TestCase):
                 fetch_twitter.resolve_opencli_bin()
         self.assertEqual(ctx.exception.code, "opencli_missing")
 
-    def test_detects_twitter_tweets_capability_from_list_json(self):
+    def test_detects_twitter_search_capability_from_list_json(self):
         payloads = [
-            [{"site": "twitter", "name": "tweets"}],
-            {"commands": [{"site": "twitter", "name": "tweets"}]},
-            {"twitter": ["search", "timeline", "tweets"]},
+            [{"site": "twitter", "name": "search"}],
+            {"commands": [{"site": "twitter", "name": "search"}]},
+            {"commands": [{"command": "twitter search"}]},
+            {"twitter": ["search", "timeline"]},
         ]
         for payload in payloads:
             with self.subTest(payload=payload):
-                self.assertTrue(fetch_twitter.opencli_has_twitter_tweets(payload))
+                self.assertTrue(fetch_twitter.opencli_has_twitter_search(payload))
 
-    def test_rejects_missing_twitter_tweets_capability(self):
-        payload = {"commands": [{"site": "twitter", "name": "search"}]}
-        self.assertFalse(fetch_twitter.opencli_has_twitter_tweets(payload))
+    def test_rejects_missing_twitter_search_capability(self):
+        payload = {"commands": [{"site": "twitter", "name": "timeline"}]}
+        self.assertFalse(fetch_twitter.opencli_has_twitter_search(payload))
 
 
 class TestBackendSelection(unittest.TestCase):
@@ -279,7 +280,7 @@ class TestOpenCliBackend(unittest.TestCase):
     @patch("subprocess.run")
     def test_fetches_tweets_for_source(self, run_mock, _resolve_mock):
         run_mock.side_effect = [
-            self._completed(json.dumps({"commands": [{"site": "twitter", "name": "tweets"}]})),
+            self._completed(json.dumps({"commands": [{"site": "twitter", "name": "search"}]})),
             self._completed("OpenCLI doctor ok"),
             self._completed(json.dumps([
                 {
@@ -305,14 +306,25 @@ class TestOpenCliBackend(unittest.TestCase):
         self.assertEqual(results[0]["count"], 1)
         self.assertEqual(results[0]["articles"][0]["tweet_id"], "123")
         self.assertIn(
-            ["/bin/opencli", "twitter", "tweets", "sama", "--limit", "20", "-f", "json"],
+            [
+                "/bin/opencli",
+                "twitter",
+                "search",
+                "from:sama -is:reply",
+                "--filter",
+                "live",
+                "--limit",
+                "20",
+                "-f",
+                "json",
+            ],
             [call.args[0] for call in run_mock.call_args_list],
         )
 
     @patch("fetch_twitter.resolve_opencli_bin", return_value="/bin/opencli")
     @patch("subprocess.run")
     def test_missing_capability_raises_global_error(self, run_mock, _resolve_mock):
-        run_mock.return_value = self._completed(json.dumps({"commands": [{"site": "twitter", "name": "search"}]}))
+        run_mock.return_value = self._completed(json.dumps({"commands": [{"site": "twitter", "name": "timeline"}]}))
 
         with self.assertRaises(fetch_twitter.OpenCliBackendError) as ctx:
             fetch_twitter.OpenCliBackend()
@@ -323,7 +335,7 @@ class TestOpenCliBackend(unittest.TestCase):
     @patch("subprocess.run")
     def test_auth_required_raises_global_error_on_probe(self, run_mock, _resolve_mock):
         run_mock.side_effect = [
-            self._completed(json.dumps({"commands": [{"site": "twitter", "name": "tweets"}]})),
+            self._completed(json.dumps({"commands": [{"site": "twitter", "name": "search"}]})),
             self._completed("OpenCLI doctor ok"),
             self._completed("", returncode=77, stderr="Not logged into x.com"),
         ]
@@ -344,7 +356,7 @@ class TestOpenCliBackend(unittest.TestCase):
         second_source["handle"] = "OpenAI"
 
         run_mock.side_effect = [
-            self._completed(json.dumps({"commands": [{"site": "twitter", "name": "tweets"}]})),
+            self._completed(json.dumps({"commands": [{"site": "twitter", "name": "search"}]})),
             self._completed("OpenCLI doctor ok"),
             self._completed(json.dumps([
                 {

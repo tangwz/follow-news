@@ -208,29 +208,36 @@ def resolve_opencli_bin() -> str:
     )
 
 
-def opencli_has_twitter_tweets(payload: Any) -> bool:
-    """Return true when `opencli list -f json` exposes twitter tweets."""
+def opencli_has_twitter_search(payload: Any) -> bool:
+    """Return true when `opencli list -f json` exposes twitter search."""
     if isinstance(payload, list):
         for item in payload:
-            if opencli_has_twitter_tweets(item):
+            if opencli_has_twitter_search(item):
                 return True
         return False
+
+    if isinstance(payload, str):
+        value = " ".join(payload.lower().strip().split())
+        return value in {"twitter search", "opencli twitter search"}
 
     if isinstance(payload, dict):
         site = str(payload.get("site") or payload.get("group") or "").lower()
         name = str(payload.get("name") or payload.get("command") or "").lower()
-        if site == "twitter" and name == "tweets":
+        command = " ".join(name.strip().split())
+        if site == "twitter" and command == "search":
+            return True
+        if command in {"twitter search", "opencli twitter search"}:
             return True
 
         if "twitter" in payload:
             twitter_value = payload["twitter"]
             if isinstance(twitter_value, list):
-                return "tweets" in [str(item).lower() for item in twitter_value]
+                return "search" in [str(item).lower() for item in twitter_value]
             if isinstance(twitter_value, dict):
-                return opencli_has_twitter_tweets(twitter_value)
+                return opencli_has_twitter_search(twitter_value)
 
         for key in ("commands", "items", "data", "sites"):
-            if key in payload and opencli_has_twitter_tweets(payload[key]):
+            if key in payload and opencli_has_twitter_search(payload[key]):
                 return True
 
     return False
@@ -376,7 +383,7 @@ class TwitterBackend(ABC):
 
 
 class OpenCliBackend(TwitterBackend):
-    """OpenCLI backend using the browser-backed twitter tweets adapter."""
+    """OpenCLI backend using the browser-backed twitter search adapter."""
 
     def __init__(self, command: Optional[str] = None):
         self.command = command or resolve_opencli_bin()
@@ -406,10 +413,10 @@ class OpenCliBackend(TwitterBackend):
         except json.JSONDecodeError as exc:
             raise OpenCliBackendError("opencli_parse_error", "opencli list returned invalid JSON") from exc
 
-        if not opencli_has_twitter_tweets(payload):
+        if not opencli_has_twitter_search(payload):
             raise OpenCliBackendError(
                 "opencli_capability_missing",
-                "OpenCLI does not expose the twitter tweets command.",
+                "OpenCLI does not expose the twitter search command.",
             )
 
     def _run_doctor(self) -> None:
@@ -425,7 +432,7 @@ class OpenCliBackend(TwitterBackend):
         try:
             payload = json.loads(stdout or "null")
         except json.JSONDecodeError as exc:
-            raise OpenCliBackendError("opencli_parse_error", "opencli twitter tweets returned invalid JSON") from exc
+            raise OpenCliBackendError("opencli_parse_error", "opencli twitter search returned invalid JSON") from exc
 
         articles = []
         for record in extract_opencli_tweet_records(payload):
@@ -436,13 +443,24 @@ class OpenCliBackend(TwitterBackend):
 
     def _fetch_user_tweets(self, source: Dict[str, Any], cutoff: datetime) -> Dict[str, Any]:
         handle = source["handle"].lstrip("@")
+        query = f"from:{handle} -is:reply"
         result = self._run_command(
-            ["twitter", "tweets", handle, "--limit", str(MAX_TWEETS_PER_USER), "-f", "json"]
+            [
+                "twitter",
+                "search",
+                query,
+                "--filter",
+                "live",
+                "--limit",
+                str(MAX_TWEETS_PER_USER),
+                "-f",
+                "json",
+            ]
         )
 
         if result.returncode != 0:
             code = _classify_opencli_failure(result.returncode, result.stderr)
-            message = (result.stderr or result.stdout or "opencli twitter tweets failed").strip()
+            message = (result.stderr or result.stdout or "opencli twitter search failed").strip()
             if code in OPENCLI_GLOBAL_ERROR_CODES:
                 raise OpenCliBackendError(code, message)
             return self._make_error(source, f"{code}: {message[:160]}", 0)
