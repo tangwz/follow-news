@@ -30,7 +30,7 @@ from pathlib import Path
 from typing import Dict, Any
 
 SCRIPTS_DIR = Path(__file__).parent
-DEFAULT_TIMEOUT = 180  # per-step timeout in seconds
+DEFAULT_TIMEOUT = 900  # per-step timeout in seconds
 
 
 def setup_logging(verbose: bool) -> logging.Logger:
@@ -282,7 +282,7 @@ def main() -> int:
 
     # Write pipeline metadata alongside output for agent consumption
     meta = {
-        "pipeline_version": "1.1.5",
+        "pipeline_version": "1.1.6",
         "total_elapsed_s": round(total_elapsed, 1),
         "fetch_elapsed_s": round(fetch_elapsed, 1),
         "steps": step_results,
