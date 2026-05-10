@@ -169,20 +169,20 @@ class TestOpenCliDiscovery(unittest.TestCase):
                 fetch_twitter.resolve_opencli_bin()
         self.assertEqual(ctx.exception.code, "opencli_missing")
 
-    def test_detects_twitter_search_capability_from_list_json(self):
+    def test_detects_twitter_tweets_capability_from_list_json(self):
         payloads = [
-            [{"site": "twitter", "name": "search"}],
-            {"commands": [{"site": "twitter", "name": "search"}]},
-            {"commands": [{"command": "twitter search"}]},
-            {"twitter": ["search", "timeline"]},
+            [{"site": "twitter", "name": "tweets"}],
+            {"commands": [{"site": "twitter", "name": "tweets"}]},
+            {"commands": [{"command": "twitter tweets"}]},
+            {"twitter": ["tweets", "timeline"]},
         ]
         for payload in payloads:
             with self.subTest(payload=payload):
-                self.assertTrue(fetch_twitter.opencli_has_twitter_search(payload))
+                self.assertTrue(fetch_twitter.opencli_has_twitter_tweets(payload))
 
-    def test_rejects_missing_twitter_search_capability(self):
-        payload = {"commands": [{"site": "twitter", "name": "timeline"}]}
-        self.assertFalse(fetch_twitter.opencli_has_twitter_search(payload))
+    def test_rejects_missing_twitter_tweets_capability(self):
+        payload = {"commands": [{"site": "twitter", "name": "search"}]}
+        self.assertFalse(fetch_twitter.opencli_has_twitter_tweets(payload))
 
 
 class TestBackendSelection(unittest.TestCase):
@@ -257,6 +257,9 @@ class TestBackendSelection(unittest.TestCase):
 
 class TestOpenCliBackend(unittest.TestCase):
     def setUp(self):
+        self._env_patch = patch.dict(os.environ, {"OPENCLI_CLOSE_CHROME_WINDOWS_AFTER_RUN": "0"})
+        self._env_patch.start()
+        self.addCleanup(self._env_patch.stop)
         self.source = {
             "id": "sama-twitter",
             "type": "twitter",
@@ -280,8 +283,9 @@ class TestOpenCliBackend(unittest.TestCase):
     @patch("subprocess.run")
     def test_fetches_tweets_for_source(self, run_mock, _resolve_mock):
         run_mock.side_effect = [
-            self._completed(json.dumps({"commands": [{"site": "twitter", "name": "search"}]})),
+            self._completed("Usage: opencli twitter tweets <username> [options]"),
             self._completed("OpenCLI doctor ok"),
+            self._completed(json.dumps({"tabs": []})),
             self._completed(json.dumps([
                 {
                     "id": "123",
@@ -296,6 +300,8 @@ class TestOpenCliBackend(unittest.TestCase):
                     "is_retweet": False,
                 }
             ])),
+            self._completed(json.dumps({"tabs": []})),
+            self._completed("lease released"),
         ]
 
         backend = fetch_twitter.OpenCliBackend()
@@ -309,10 +315,8 @@ class TestOpenCliBackend(unittest.TestCase):
             [
                 "/bin/opencli",
                 "twitter",
-                "search",
-                "from:sama -is:reply",
-                "--filter",
-                "live",
+                "tweets",
+                "sama",
                 "--limit",
                 "20",
                 "-f",
@@ -323,8 +327,52 @@ class TestOpenCliBackend(unittest.TestCase):
 
     @patch("fetch_twitter.resolve_opencli_bin", return_value="/bin/opencli")
     @patch("subprocess.run")
+    def test_closes_new_twitter_tabs_after_fetch(self, run_mock, _resolve_mock):
+        run_mock.side_effect = [
+            self._completed("Usage: opencli twitter tweets <username> [options]"),
+            self._completed("OpenCLI doctor ok"),
+            self._completed(json.dumps({
+                "tabs": [
+                    {"targetId": "existing-x-tab", "url": "https://x.com/home"},
+                ],
+            })),
+            self._completed(json.dumps([
+                {
+                    "id": "123",
+                    "author": "sama",
+                    "text": "A useful post.",
+                    "created_at": "2026-05-08T01:00:00Z",
+                    "url": "https://x.com/sama/status/123",
+                    "is_retweet": False,
+                }
+            ])),
+            self._completed(json.dumps({
+                "tabs": [
+                    {"targetId": "existing-x-tab", "url": "https://x.com/home"},
+                    {"targetId": "new-x-tab", "url": "https://x.com/sama/status/123"},
+                    {"page": "new-doc-tab", "url": "https://example.com/docs"},
+                    {"page": "new-twitter-tab", "url": "https://twitter.com/sama/status/456"},
+                ],
+            })),
+            self._completed("closed"),
+            self._completed("closed"),
+            self._completed("lease released"),
+        ]
+
+        backend = fetch_twitter.OpenCliBackend()
+        backend.fetch_all([self.source], self.cutoff)
+
+        commands = [call.args[0] for call in run_mock.call_args_list]
+        self.assertIn(["/bin/opencli", "browser", "tab", "close", "new-x-tab"], commands)
+        self.assertIn(["/bin/opencli", "browser", "tab", "close", "new-twitter-tab"], commands)
+        self.assertIn(["/bin/opencli", "browser", "close"], commands)
+        self.assertNotIn(["/bin/opencli", "browser", "tab", "close", "existing-x-tab"], commands)
+        self.assertNotIn(["/bin/opencli", "browser", "tab", "close", "new-doc-tab"], commands)
+
+    @patch("fetch_twitter.resolve_opencli_bin", return_value="/bin/opencli")
+    @patch("subprocess.run")
     def test_missing_capability_raises_global_error(self, run_mock, _resolve_mock):
-        run_mock.return_value = self._completed(json.dumps({"commands": [{"site": "twitter", "name": "timeline"}]}))
+        run_mock.return_value = self._completed("", returncode=1, stderr="Unknown command: tweets")
 
         with self.assertRaises(fetch_twitter.OpenCliBackendError) as ctx:
             fetch_twitter.OpenCliBackend()
@@ -335,9 +383,12 @@ class TestOpenCliBackend(unittest.TestCase):
     @patch("subprocess.run")
     def test_auth_required_raises_global_error_on_probe(self, run_mock, _resolve_mock):
         run_mock.side_effect = [
-            self._completed(json.dumps({"commands": [{"site": "twitter", "name": "search"}]})),
+            self._completed("Usage: opencli twitter tweets <username> [options]"),
             self._completed("OpenCLI doctor ok"),
+            self._completed(json.dumps({"tabs": []})),
             self._completed("", returncode=77, stderr="Not logged into x.com"),
+            self._completed(json.dumps({"tabs": []})),
+            self._completed("lease released"),
         ]
 
         backend = fetch_twitter.OpenCliBackend()
@@ -356,8 +407,9 @@ class TestOpenCliBackend(unittest.TestCase):
         second_source["handle"] = "OpenAI"
 
         run_mock.side_effect = [
-            self._completed(json.dumps({"commands": [{"site": "twitter", "name": "search"}]})),
+            self._completed("Usage: opencli twitter tweets <username> [options]"),
             self._completed("OpenCLI doctor ok"),
+            self._completed(json.dumps({"tabs": []})),
             self._completed(json.dumps([
                 {
                     "id": "probe",
@@ -368,6 +420,8 @@ class TestOpenCliBackend(unittest.TestCase):
                 }
             ])),
             self._completed("", returncode=1, stderr="Could not resolve @OpenAI"),
+            self._completed(json.dumps({"tabs": []})),
+            self._completed("lease released"),
         ]
 
         backend = fetch_twitter.OpenCliBackend()
@@ -379,6 +433,80 @@ class TestOpenCliBackend(unittest.TestCase):
         self.assertEqual(by_handle["OpenAI"]["status"], "error")
         self.assertIn("opencli_source_error", by_handle["OpenAI"]["error"])
         self.assertTrue(any("opencli_source_error" in line for line in logs.output))
+
+
+class TestOpenCliChromeCleanup(unittest.TestCase):
+    def test_parses_chrome_window_snapshot(self):
+        raw = (
+            "101\thttps://github.com/tangwz/follow-news ||| https://x.com/home\n"
+            "202\tabout:blank ||| chrome://newtab/\n"
+            "303tabhttps://x.com/explore\n"
+        )
+
+        windows = fetch_twitter.parse_chrome_window_snapshot(raw)
+
+        self.assertEqual(
+            windows,
+            {
+                "101": ["https://github.com/tangwz/follow-news", "https://x.com/home"],
+                "202": ["about:blank", "chrome://newtab/"],
+                "303": ["https://x.com/explore"],
+            },
+        )
+
+    def test_identifies_opencli_chrome_windows(self):
+        self.assertTrue(fetch_twitter.is_opencli_chrome_window(["about:blank"]))
+        self.assertTrue(fetch_twitter.is_opencli_chrome_window(["chrome://newtab/", "https://x.com/explore"]))
+        self.assertTrue(fetch_twitter.is_opencli_chrome_window(["https://twitter.com/sama/status/123"]))
+        self.assertFalse(fetch_twitter.is_opencli_chrome_window(["https://github.com/tangwz/follow-news"]))
+        self.assertFalse(fetch_twitter.is_opencli_chrome_window(["https://x.com/home", "https://github.com/"]))
+
+    @patch("fetch_twitter.time.sleep")
+    @patch("fetch_twitter.close_chrome_windows")
+    @patch("fetch_twitter.snapshot_chrome_windows")
+    def test_closes_only_new_opencli_chrome_windows(self, snapshot_mock, close_mock, _sleep_mock):
+        before = {
+            "1": ["https://github.com/tangwz/follow-news"],
+            "2": ["about:blank"],
+        }
+        snapshot_mock.side_effect = [
+            {
+                "1": ["https://github.com/tangwz/follow-news"],
+                "2": ["about:blank"],
+                "3": ["about:blank", "https://x.com/explore"],
+                "4": ["https://github.com/new"],
+            },
+            {
+                "1": ["https://github.com/tangwz/follow-news"],
+                "2": ["about:blank"],
+                "4": ["https://github.com/new"],
+            },
+        ]
+
+        fetch_twitter.cleanup_new_opencli_chrome_windows(before)
+
+        close_mock.assert_called_once_with(["3"])
+
+    @patch("fetch_twitter.time.sleep")
+    @patch("fetch_twitter.close_chrome_windows")
+    @patch("fetch_twitter.snapshot_chrome_windows")
+    def test_retries_delayed_opencli_chrome_window_cleanup(self, snapshot_mock, close_mock, sleep_mock):
+        before = {
+            "1": ["https://github.com/tangwz/follow-news"],
+        }
+        snapshot_mock.side_effect = [
+            before,
+            {
+                "1": ["https://github.com/tangwz/follow-news"],
+                "2": ["about:blank"],
+            },
+            before,
+        ]
+
+        fetch_twitter.cleanup_new_opencli_chrome_windows(before)
+
+        sleep_mock.assert_any_call(0.5)
+        close_mock.assert_called_once_with(["2"])
 
 
 class TestBackendChain(unittest.TestCase):

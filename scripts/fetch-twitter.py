@@ -43,7 +43,10 @@ RETRY_COUNT = 2
 RETRY_DELAY = 2.0
 MAX_TWEETS_PER_USER = 20
 OPENCLI_TIMEOUT = 90
+OPENCLI_TAB_COMMAND_TIMEOUT = 15
 OPENCLI_DEFAULT_MAX_WORKERS = 1
+OPENCLI_CLOSE_TABS_AFTER_RUN_DEFAULT = True
+OPENCLI_CLOSE_CHROME_WINDOWS_AFTER_RUN_DEFAULT = True
 OPENCLI_GLOBAL_ERROR_CODES = {
     "opencli_missing",
     "opencli_capability_missing",
@@ -62,6 +65,47 @@ USER_LOOKUP_ENDPOINT = f"{OFFICIAL_API_BASE}/users/by"
 # twitterapi.io endpoints
 TWITTERAPIIO_BASE = "https://api.twitterapi.io"
 GETXAPI_BASE = "https://api.getxapi.com"
+
+CHROME_WINDOW_SNAPSHOT_SCRIPT = r'''
+tell application "Google Chrome"
+  if it is not running then return ""
+  set rows to {}
+  repeat with chromeWindow in windows
+    set tabUrls to {}
+    repeat with chromeTab in tabs of chromeWindow
+      set end of tabUrls to URL of chromeTab
+    end repeat
+    set oldDelimiters to AppleScript's text item delimiters
+    set AppleScript's text item delimiters to " ||| "
+    set urlText to tabUrls as text
+    set AppleScript's text item delimiters to oldDelimiters
+    set end of rows to ((id of chromeWindow as text) & (character id 9) & urlText)
+  end repeat
+  set oldDelimiters to AppleScript's text item delimiters
+  set AppleScript's text item delimiters to linefeed
+  set outputText to rows as text
+  set AppleScript's text item delimiters to oldDelimiters
+  return outputText
+end tell
+'''
+
+CHROME_WINDOW_CLOSE_SCRIPT = r'''
+on run argv
+  tell application "Google Chrome"
+    if it is not running then return "Chrome not running"
+    repeat with rawWindowId in argv
+      try
+        repeat with chromeWindow in windows
+          if (id of chromeWindow as text) is (rawWindowId as text) then
+            close chromeWindow
+            exit repeat
+          end if
+        end repeat
+      end try
+    end repeat
+  end tell
+end run
+'''
 
 
 def setup_logging(verbose: bool) -> logging.Logger:
@@ -156,6 +200,70 @@ def extract_opencli_tweet_records(payload: Any) -> List[Dict[str, Any]]:
     return []
 
 
+def extract_opencli_browser_tabs(payload: Any) -> Dict[str, str]:
+    """Extract browser tab target IDs and URLs from OpenCLI tab-list JSON."""
+    if isinstance(payload, list):
+        tabs = {}
+        for item in payload:
+            tabs.update(extract_opencli_browser_tabs(item))
+        return tabs
+
+    if isinstance(payload, dict):
+        target_id = payload.get("targetId") or payload.get("target_id") or payload.get("page") or payload.get("id")
+        if target_id:
+            url = payload.get("url") or payload.get("href") or payload.get("location") or ""
+            return {str(target_id): str(url)}
+
+        tabs = {}
+        for key in ("tabs", "items", "data", "targets"):
+            if key in payload:
+                tabs.update(extract_opencli_browser_tabs(payload[key]))
+        return tabs
+
+    return {}
+
+
+def is_twitter_browser_tab(url: str) -> bool:
+    """Return true for X/Twitter browser tabs created by OpenCLI."""
+    value = (url or "").lower()
+    return value.startswith(("https://x.com/", "https://twitter.com/", "https://mobile.twitter.com/"))
+
+
+def parse_chrome_window_snapshot(raw_value: str) -> Dict[str, List[str]]:
+    """Parse Chrome window snapshots emitted by the AppleScript helper."""
+    windows: Dict[str, List[str]] = {}
+    for line in (raw_value or "").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        if "\t" in line:
+            window_id, urls = line.split("\t", 1)
+        elif "tab" in line:
+            window_id, urls = line.split("tab", 1)
+        else:
+            continue
+        window_id = window_id.strip()
+        if not window_id:
+            continue
+        windows[window_id] = [url.strip() for url in urls.split(" ||| ") if url.strip()]
+    return windows
+
+
+def is_opencli_chrome_window(urls: List[str]) -> bool:
+    """Return true for Chrome windows that look like OpenCLI automation leftovers."""
+    if not urls:
+        return False
+    automation_urls = {"about:blank", "chrome://newtab/"}
+    for url in urls:
+        value = (url or "").lower()
+        if value in automation_urls:
+            continue
+        if is_twitter_browser_tab(value):
+            continue
+        return False
+    return True
+
+
 def normalize_opencli_tweet(
     record: Dict[str, Any],
     source: Dict[str, Any],
@@ -208,36 +316,36 @@ def resolve_opencli_bin() -> str:
     )
 
 
-def opencli_has_twitter_search(payload: Any) -> bool:
-    """Return true when `opencli list -f json` exposes twitter search."""
+def opencli_has_twitter_tweets(payload: Any) -> bool:
+    """Return true when `opencli list -f json` exposes twitter tweets."""
     if isinstance(payload, list):
         for item in payload:
-            if opencli_has_twitter_search(item):
+            if opencli_has_twitter_tweets(item):
                 return True
         return False
 
     if isinstance(payload, str):
         value = " ".join(payload.lower().strip().split())
-        return value in {"twitter search", "opencli twitter search"}
+        return value in {"twitter tweets", "opencli twitter tweets"}
 
     if isinstance(payload, dict):
         site = str(payload.get("site") or payload.get("group") or "").lower()
         name = str(payload.get("name") or payload.get("command") or "").lower()
         command = " ".join(name.strip().split())
-        if site == "twitter" and command == "search":
+        if site == "twitter" and command == "tweets":
             return True
-        if command in {"twitter search", "opencli twitter search"}:
+        if command in {"twitter tweets", "opencli twitter tweets"}:
             return True
 
         if "twitter" in payload:
             twitter_value = payload["twitter"]
             if isinstance(twitter_value, list):
-                return "search" in [str(item).lower() for item in twitter_value]
+                return "tweets" in [str(item).lower() for item in twitter_value]
             if isinstance(twitter_value, dict):
-                return opencli_has_twitter_search(twitter_value)
+                return opencli_has_twitter_tweets(twitter_value)
 
         for key in ("commands", "items", "data", "sites"):
-            if key in payload and opencli_has_twitter_search(payload[key]):
+            if key in payload and opencli_has_twitter_tweets(payload[key]):
                 return True
 
     return False
@@ -267,6 +375,81 @@ def get_opencli_max_workers() -> int:
         return OPENCLI_DEFAULT_MAX_WORKERS
 
     return value
+
+
+def get_opencli_close_tabs_after_run() -> bool:
+    """Return whether OpenCLI-created Twitter tabs should be closed after fetch."""
+    raw_value = os.getenv("OPENCLI_CLOSE_TABS_AFTER_RUN", "").strip().lower()
+    if not raw_value:
+        return OPENCLI_CLOSE_TABS_AFTER_RUN_DEFAULT
+    return raw_value not in {"0", "false", "no", "off"}
+
+
+def get_opencli_close_chrome_windows_after_run() -> bool:
+    """Return whether OpenCLI-created Chrome windows should be closed after fetch."""
+    raw_value = os.getenv("OPENCLI_CLOSE_CHROME_WINDOWS_AFTER_RUN", "").strip().lower()
+    if not raw_value:
+        return OPENCLI_CLOSE_CHROME_WINDOWS_AFTER_RUN_DEFAULT
+    return raw_value not in {"0", "false", "no", "off"}
+
+
+def snapshot_chrome_windows() -> Optional[Dict[str, List[str]]]:
+    """Return a best-effort snapshot of Chrome windows on macOS."""
+    if not get_opencli_close_chrome_windows_after_run():
+        return None
+    if sys.platform != "darwin" or not shutil.which("osascript"):
+        return None
+
+    result = subprocess.run(
+        ["osascript", "-e", CHROME_WINDOW_SNAPSHOT_SCRIPT],
+        capture_output=True,
+        text=True,
+        timeout=OPENCLI_TAB_COMMAND_TIMEOUT,
+    )
+    if result.returncode != 0:
+        logging.warning("Chrome window snapshot failed: %s", (result.stderr or result.stdout).strip()[:200])
+        return None
+    return parse_chrome_window_snapshot(result.stdout)
+
+
+def close_chrome_windows(window_ids: List[str]) -> None:
+    """Close Chrome windows by id on macOS."""
+    if not window_ids or sys.platform != "darwin" or not shutil.which("osascript"):
+        return
+
+    result = subprocess.run(
+        ["osascript", "-e", CHROME_WINDOW_CLOSE_SCRIPT] + window_ids,
+        capture_output=True,
+        text=True,
+        timeout=OPENCLI_TAB_COMMAND_TIMEOUT,
+    )
+    if result.returncode != 0:
+        logging.warning("Chrome window close failed: %s", (result.stderr or result.stdout).strip()[:200])
+
+
+def cleanup_new_opencli_chrome_windows(before_windows: Optional[Dict[str, List[str]]]) -> None:
+    """Close Chrome automation windows created during the OpenCLI fetch."""
+    if before_windows is None:
+        return
+
+    closed_any = False
+    for _ in range(6):
+        time.sleep(0.5)
+        after_windows = snapshot_chrome_windows()
+        if after_windows is None:
+            return
+
+        new_window_ids = [
+            window_id
+            for window_id, urls in after_windows.items()
+            if window_id not in before_windows and is_opencli_chrome_window(urls)
+        ]
+        if new_window_ids:
+            close_chrome_windows(new_window_ids)
+            closed_any = True
+            continue
+        if closed_any:
+            return
 
 
 def build_twitter_skipped_reason(backend_name: str, diagnostics: List[Dict[str, str]]) -> str:
@@ -383,12 +566,17 @@ class TwitterBackend(ABC):
 
 
 class OpenCliBackend(TwitterBackend):
-    """OpenCLI backend using the browser-backed twitter search adapter."""
+    """OpenCLI backend using the browser-backed twitter tweets adapter."""
 
     def __init__(self, command: Optional[str] = None):
         self.command = command or resolve_opencli_bin()
-        self._verify_capability()
-        self._run_doctor()
+        self._before_chrome_windows = snapshot_chrome_windows()
+        try:
+            self._verify_capability()
+            self._run_doctor()
+        except Exception:
+            cleanup_new_opencli_chrome_windows(self._before_chrome_windows)
+            raise
 
     def _run_command(self, args: List[str], timeout: int = OPENCLI_TIMEOUT) -> subprocess.CompletedProcess:
         try:
@@ -402,21 +590,62 @@ class OpenCliBackend(TwitterBackend):
         except subprocess.TimeoutExpired as exc:
             raise OpenCliBackendError("opencli_timeout", f"OpenCLI command timed out: {exc}") from exc
 
-    def _verify_capability(self) -> None:
-        result = self._run_command(["list", "-f", "json"], timeout=30)
+    def _list_browser_tabs(self) -> Optional[Dict[str, str]]:
+        if not get_opencli_close_tabs_after_run():
+            return {}
+
+        result = self._run_command(["browser", "tab", "list"], timeout=OPENCLI_TAB_COMMAND_TIMEOUT)
         if result.returncode != 0:
-            code = _classify_opencli_failure(result.returncode, result.stderr)
-            raise OpenCliBackendError(code, result.stderr.strip() or "opencli list failed")
+            logging.warning("opencli browser tab list failed: %s", (result.stderr or result.stdout).strip()[:200])
+            return None
 
         try:
             payload = json.loads(result.stdout or "null")
-        except json.JSONDecodeError as exc:
-            raise OpenCliBackendError("opencli_parse_error", "opencli list returned invalid JSON") from exc
+        except json.JSONDecodeError:
+            logging.warning("opencli browser tab list returned invalid JSON")
+            return None
+        return extract_opencli_browser_tabs(payload)
 
-        if not opencli_has_twitter_search(payload):
+    def _cleanup_new_browser_tabs(self, before_tabs: Optional[Dict[str, str]]) -> None:
+        if before_tabs is None:
+            return
+
+        after_tabs = self._list_browser_tabs()
+        if after_tabs is None:
+            return
+
+        for target_id, url in after_tabs.items():
+            if target_id in before_tabs or not is_twitter_browser_tab(url):
+                continue
+
+            result = self._run_command(
+                ["browser", "tab", "close", target_id],
+                timeout=OPENCLI_TAB_COMMAND_TIMEOUT,
+            )
+            if result.returncode != 0:
+                logging.warning("opencli browser tab close failed: %s", (result.stderr or result.stdout).strip()[:200])
+
+    def _release_browser_lease(self) -> None:
+        if not get_opencli_close_tabs_after_run():
+            return
+
+        result = self._run_command(["browser", "close"], timeout=OPENCLI_TAB_COMMAND_TIMEOUT)
+        if result.returncode != 0:
+            logging.warning("opencli browser close failed: %s", (result.stderr or result.stdout).strip()[:200])
+
+    def _verify_capability(self) -> None:
+        result = self._run_command(["twitter", "tweets", "--help"], timeout=30)
+        if result.returncode != 0:
             raise OpenCliBackendError(
                 "opencli_capability_missing",
-                "OpenCLI does not expose the twitter search command.",
+                (result.stderr or result.stdout or "OpenCLI does not expose the twitter tweets command.").strip(),
+            )
+
+        help_text = f"{result.stdout}\n{result.stderr}".lower()
+        if "twitter tweets" not in help_text:
+            raise OpenCliBackendError(
+                "opencli_capability_missing",
+                "OpenCLI does not expose the twitter tweets command.",
             )
 
     def _run_doctor(self) -> None:
@@ -432,7 +661,7 @@ class OpenCliBackend(TwitterBackend):
         try:
             payload = json.loads(stdout or "null")
         except json.JSONDecodeError as exc:
-            raise OpenCliBackendError("opencli_parse_error", "opencli twitter search returned invalid JSON") from exc
+            raise OpenCliBackendError("opencli_parse_error", "opencli twitter tweets returned invalid JSON") from exc
 
         articles = []
         for record in extract_opencli_tweet_records(payload):
@@ -443,14 +672,11 @@ class OpenCliBackend(TwitterBackend):
 
     def _fetch_user_tweets(self, source: Dict[str, Any], cutoff: datetime) -> Dict[str, Any]:
         handle = source["handle"].lstrip("@")
-        query = f"from:{handle} -is:reply"
         result = self._run_command(
             [
                 "twitter",
-                "search",
-                query,
-                "--filter",
-                "live",
+                "tweets",
+                handle,
                 "--limit",
                 str(MAX_TWEETS_PER_USER),
                 "-f",
@@ -460,7 +686,7 @@ class OpenCliBackend(TwitterBackend):
 
         if result.returncode != 0:
             code = _classify_opencli_failure(result.returncode, result.stderr)
-            message = (result.stderr or result.stdout or "opencli twitter search failed").strip()
+            message = (result.stderr or result.stdout or "opencli twitter tweets failed").strip()
             if code in OPENCLI_GLOBAL_ERROR_CODES:
                 raise OpenCliBackendError(code, message)
             return self._make_error(source, f"{code}: {message[:160]}", 0)
@@ -472,35 +698,42 @@ class OpenCliBackend(TwitterBackend):
         if not sources:
             return []
 
+        before_chrome_windows = self._before_chrome_windows
+        before_tabs = self._list_browser_tabs()
         results: List[Dict[str, Any]] = []
         total = len(sources)
 
-        first = self._fetch_user_tweets(sources[0], cutoff)
-        results.append(first)
-        logging.info(f"[1/{total}] @{first['handle']}: {first['count']} tweets via OpenCLI")
+        try:
+            first = self._fetch_user_tweets(sources[0], cutoff)
+            results.append(first)
+            logging.info(f"[1/{total}] @{first['handle']}: {first['count']} tweets via OpenCLI")
 
-        remaining = sources[1:]
-        if not remaining:
+            remaining = sources[1:]
+            if not remaining:
+                return results
+
+            done = 1
+            max_workers = get_opencli_max_workers()
+            with ThreadPoolExecutor(max_workers=max_workers) as pool:
+                futures = {pool.submit(self._fetch_user_tweets, source, cutoff): source for source in remaining}
+                for future in as_completed(futures):
+                    source = futures[future]
+                    try:
+                        result = future.result()
+                    except OpenCliBackendError as exc:
+                        result = self._make_error(source, f"{exc.code}: {exc.message[:160]}", 0)
+                    results.append(result)
+                    done += 1
+                    if result["status"] == "ok":
+                        logging.info(f"[{done}/{total}] ✅ @{result['handle']}: {result['count']} tweets via OpenCLI")
+                    else:
+                        logging.warning(f"[{done}/{total}] ❌ @{result['handle']}: {result.get('error', 'unknown')}")
+
             return results
-
-        done = 1
-        max_workers = get_opencli_max_workers()
-        with ThreadPoolExecutor(max_workers=max_workers) as pool:
-            futures = {pool.submit(self._fetch_user_tweets, source, cutoff): source for source in remaining}
-            for future in as_completed(futures):
-                source = futures[future]
-                try:
-                    result = future.result()
-                except OpenCliBackendError as exc:
-                    result = self._make_error(source, f"{exc.code}: {exc.message[:160]}", 0)
-                results.append(result)
-                done += 1
-                if result["status"] == "ok":
-                    logging.info(f"[{done}/{total}] ✅ @{result['handle']}: {result['count']} tweets via OpenCLI")
-                else:
-                    logging.warning(f"[{done}/{total}] ❌ @{result['handle']}: {result.get('error', 'unknown')}")
-
-        return results
+        finally:
+            self._cleanup_new_browser_tabs(before_tabs)
+            self._release_browser_lease()
+            cleanup_new_opencli_chrome_windows(before_chrome_windows)
 
 
 class OfficialBackend(TwitterBackend):

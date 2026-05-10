@@ -101,6 +101,8 @@ All environment variables are optional. The pipeline runs with whatever sources 
 export TWITTER_API_BACKEND="auto"  # auto|opencli|getxapi|twitterapiio|official
 export OPENCLI_BIN="/path/to/opencli"  # optional; defaults to opencli on PATH
 export OPENCLI_MAX_WORKERS="1"  # optional; keep browser-backed OpenCLI serial by default
+export OPENCLI_CLOSE_TABS_AFTER_RUN="1"  # optional; close OpenCLI-created X/Twitter tabs after fetch
+export OPENCLI_CLOSE_CHROME_WINDOWS_AFTER_RUN="1"  # optional; close Chrome automation windows opened by OpenCLI
 export GETX_API_KEY="..."        # GetXAPI fallback
 export TWITTERAPI_IO_KEY="..."   # twitterapi.io fallback
 export X_BEARER_TOKEN="..."      # Official X API v2 fallback
@@ -119,7 +121,7 @@ OpenCLI is preferred because it can reuse an authenticated Chrome/Chromium sessi
 
 To use the OpenCLI backend, install the OpenCLI executable yourself and make it available on `PATH`, or set `OPENCLI_BIN` to its absolute path. In OpenClaw, also install the `jackwener/opencli` Skill so the agent can run `opencli doctor`, check the browser bridge, and guide X login-state troubleshooting.
 
-OpenCLI browser bridge stability depends on the local browser extension connection. The fetcher defaults to serial OpenCLI requests (`OPENCLI_MAX_WORKERS=1`) to avoid tab-id churn during large KOL runs. Increase this only after validating that your browser bridge remains stable.
+OpenCLI browser bridge stability depends on the local browser extension connection. The fetcher defaults to serial OpenCLI requests (`OPENCLI_MAX_WORKERS=1`) to avoid tab-id churn during large KOL runs. It also closes X/Twitter tabs created during the OpenCLI fetch (`OPENCLI_CLOSE_TABS_AFTER_RUN=1` by default) and, on macOS, closes Chrome automation windows that OpenCLI opened during the run (`OPENCLI_CLOSE_CHROME_WINDOWS_AFTER_RUN=1` by default) while leaving pre-existing windows alone. Increase concurrency only after validating that your browser bridge remains stable.
 
 ## 📦 Dependencies
 

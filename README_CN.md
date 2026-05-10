@@ -98,6 +98,8 @@ cp config/defaults/topics.json workspace/config/follow-news-topics.json
 export TWITTER_API_BACKEND="auto"  # auto|opencli|getxapi|twitterapiio|official
 export OPENCLI_BIN="/path/to/opencli"  # 可选；默认使用 PATH 上的 opencli
 export OPENCLI_MAX_WORKERS="1"  # 可选；浏览器后端默认串行，避免频繁切换标签页
+export OPENCLI_CLOSE_TABS_AFTER_RUN="1"  # 可选；抓取后关闭 OpenCLI 新建的 X/Twitter 标签页
+export OPENCLI_CLOSE_CHROME_WINDOWS_AFTER_RUN="1"  # 可选；关闭 OpenCLI 本次打开的 Chrome 自动化窗口
 export GETX_API_KEY="..."        # GetXAPI fallback
 export TWITTERAPI_IO_KEY="..."   # twitterapi.io fallback
 export X_BEARER_TOKEN="..."      # Twitter/X 官方 API v2 fallback
@@ -115,7 +117,7 @@ OpenCLI 是默认优先后端，因为它可以复用已经登录的 Chrome/Chro
 
 如需使用 OpenCLI 后端，用户需要自行安装 OpenCLI 可执行文件，并确保它在 `PATH` 上，或通过 `OPENCLI_BIN` 指向其绝对路径。在 OpenClaw 中，还需要安装 `jackwener/opencli` Skill，这样 agent 才能运行 `opencli doctor`、检查浏览器桥接，并协助排查 X 登录态问题。
 
-OpenCLI 的稳定性取决于本机浏览器扩展桥接状态。抓取器默认使用串行 OpenCLI 请求（`OPENCLI_MAX_WORKERS=1`），避免大批量 KOL 抓取时频繁切换标签页导致 tab id 失效；只有确认浏览器桥接稳定后才建议调高。
+OpenCLI 的稳定性取决于本机浏览器扩展桥接状态。抓取器默认使用串行 OpenCLI 请求（`OPENCLI_MAX_WORKERS=1`），避免大批量 KOL 抓取时频繁切换标签页导致 tab id 失效；同时默认会关闭本次 OpenCLI 抓取中新建的 X/Twitter 标签页（`OPENCLI_CLOSE_TABS_AFTER_RUN=1`），并在 macOS 上关闭 OpenCLI 本次打开的 Chrome 自动化窗口（`OPENCLI_CLOSE_CHROME_WINDOWS_AFTER_RUN=1`），不会关闭执行前已经存在的窗口。只有确认浏览器桥接稳定后才建议调高并发。
 
 ## 📦 依赖
 

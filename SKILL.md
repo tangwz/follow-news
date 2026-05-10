@@ -86,6 +86,8 @@ Automated tech news digest system with unified data source model, quality scorin
    - `TWITTER_API_BACKEND` - Twitter backend: auto|opencli|getxapi|twitterapiio|official (optional, default: auto)
    - `OPENCLI_BIN` - OpenCLI executable path override (optional)
    - `OPENCLI_MAX_WORKERS` - OpenCLI concurrency limit (optional, default: 1)
+   - `OPENCLI_CLOSE_TABS_AFTER_RUN` - close OpenCLI-created X/Twitter tabs after fetch (optional, default: 1)
+   - `OPENCLI_CLOSE_CHROME_WINDOWS_AFTER_RUN` - close Chrome automation windows opened by OpenCLI on macOS (optional, default: 1)
    - `GETX_API_KEY` - GetXAPI key for Twitter/X fallback (optional)
    - `TWITTERAPI_IO_KEY` - twitterapi.io API key for Twitter/X fallback (optional)
    - `X_BEARER_TOKEN` - Twitter/X official API bearer token for final fallback (optional)
@@ -97,7 +99,7 @@ Automated tech news digest system with unified data source model, quality scorin
 
    OpenCLI is the preferred Twitter/X backend in `auto` mode. In OpenClaw environments where `jackwener/opencli` is installed, the agent should use that skill to validate `opencli doctor`, browser bridge state, and X login before asking for API keys.
 
-   To use the OpenCLI backend, the user must install the OpenCLI executable and expose it on `PATH`, or set `OPENCLI_BIN` to its absolute path. OpenClaw users should also install the `jackwener/opencli` Skill so the agent can run `opencli doctor` and diagnose browser bridge or X login-state issues. OpenCLI requests are serial by default (`OPENCLI_MAX_WORKERS=1`) because the browser extension bridge can disconnect under rapid tab switching.
+   To use the OpenCLI backend, the user must install the OpenCLI executable and expose it on `PATH`, or set `OPENCLI_BIN` to its absolute path. OpenClaw users should also install the `jackwener/opencli` Skill so the agent can run `opencli doctor` and diagnose browser bridge or X login-state issues. OpenCLI requests are serial by default (`OPENCLI_MAX_WORKERS=1`) because the browser extension bridge can disconnect under rapid tab switching. The fetcher closes X/Twitter tabs created during an OpenCLI run by default (`OPENCLI_CLOSE_TABS_AFTER_RUN=1`) and closes Chrome automation windows opened by OpenCLI on macOS (`OPENCLI_CLOSE_CHROME_WINDOWS_AFTER_RUN=1`) while preserving tabs and windows that existed before the run.
 
 3. **Generate Digest**:
    ```bash
