@@ -34,6 +34,14 @@ def _build_cp(args, returncode=0, stdout="", stderr=""):
 
 
 class TestDoctorSuccess(unittest.TestCase):
+    def setUp(self):
+        self._opencli_bin_patch = patch(
+            "doctor_module._fetch_twitter.resolve_opencli_bin",
+            return_value="/bin/opencli",
+        )
+        self._opencli_bin_patch.start()
+        self.addCleanup(self._opencli_bin_patch.stop)
+
     def _make_opencli_success(self):
         def _opencli(args, timeout):
             if args and args[:2] == ["--version"]:
@@ -140,6 +148,14 @@ class TestDoctorSuccess(unittest.TestCase):
         self.assertEqual(checks["opencli"]["status"], "ok")
 
 class TestDoctorFailureModes(unittest.TestCase):
+    def setUp(self):
+        self._opencli_bin_patch = patch(
+            "doctor_module._fetch_twitter.resolve_opencli_bin",
+            return_value="/bin/opencli",
+        )
+        self._opencli_bin_patch.start()
+        self.addCleanup(self._opencli_bin_patch.stop)
+
     def test_opencli_missing_marks_warning(self):
         with patch("doctor_module._fetch_twitter.resolve_opencli_bin", side_effect=doctor._fetch_twitter.OpenCliBackendError(
             "opencli_missing",
