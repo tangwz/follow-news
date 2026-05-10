@@ -12,7 +12,7 @@ Usage:
 Environment:
     TWITTER_API_BACKEND - Backend selection: "auto" (default), "getxapi", "twitterapiio", or "official"
                         Auto priority: getxapi ($0.001/call) > twitterapi.io (~$5/mo) > official X API
-    OPENCLI_MAX_WORKERS  - OpenCLI fetch concurrency for twitter tweets (1-10, default: 5)
+    OPENCLI_MAX_WORKERS  - OpenCLI fetch concurrency for twitter tweets (1-10, default: 10)
     GETX_API_KEY        - GetXAPI API key (preferred backend, $0.001 per call)
     TWITTERAPI_IO_KEY   - twitterapi.io API key (alternative backend, ~$5/month)
     X_BEARER_TOKEN      - Twitter/X official API v2 bearer token (fallback)
@@ -45,7 +45,7 @@ RETRY_DELAY = 2.0
 MAX_TWEETS_PER_USER = 20
 OPENCLI_TIMEOUT = 90
 OPENCLI_TAB_COMMAND_TIMEOUT = 15
-OPENCLI_DEFAULT_MAX_WORKERS = 5
+OPENCLI_DEFAULT_MAX_WORKERS = 10
 OPENCLI_MAX_WORKERS_MAX = 10
 OPENCLI_CLOSE_TABS_AFTER_RUN_DEFAULT = True
 OPENCLI_CLOSE_CHROME_WINDOWS_AFTER_RUN_DEFAULT = True

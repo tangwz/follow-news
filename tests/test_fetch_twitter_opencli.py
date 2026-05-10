@@ -202,7 +202,7 @@ class TestBackendSelection(unittest.TestCase):
 
     def test_opencli_defaults_to_parallel_fetching(self):
         with patch.dict(os.environ, {}, clear=True):
-            self.assertEqual(fetch_twitter.get_opencli_max_workers(), 5)
+            self.assertEqual(fetch_twitter.get_opencli_max_workers(), 10)
 
     def test_opencli_worker_count_can_be_configured(self):
         with patch.dict(os.environ, {"OPENCLI_MAX_WORKERS": "3"}, clear=True):
@@ -213,7 +213,7 @@ class TestBackendSelection(unittest.TestCase):
         for value in invalid_values:
             with self.subTest(value=value), patch.dict(os.environ, {"OPENCLI_MAX_WORKERS": value}, clear=True):
                 with self.assertLogs(level="WARNING"):
-                    self.assertEqual(fetch_twitter.get_opencli_max_workers(), 5)
+                    self.assertEqual(fetch_twitter.get_opencli_max_workers(), 10)
 
     def test_opencli_worker_count_caps_to_max(self):
         with patch.dict(os.environ, {"OPENCLI_MAX_WORKERS": "20"}, clear=True):

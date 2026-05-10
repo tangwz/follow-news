@@ -282,7 +282,7 @@ def main() -> int:
 
     # Write pipeline metadata alongside output for agent consumption
     meta = {
-        "pipeline_version": "1.1.4",
+        "pipeline_version": "1.1.5",
         "total_elapsed_s": round(total_elapsed, 1),
         "fetch_elapsed_s": round(fetch_elapsed, 1),
         "steps": step_results,
