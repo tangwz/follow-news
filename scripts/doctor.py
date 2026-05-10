@@ -202,7 +202,11 @@ def check_opencli_availability() -> Dict[str, Any]:
             code=exc.code,
             message="OpenCLI binary is not discoverable.",
             details={"hint": "Set OPENCLI_BIN or install opencli on PATH"},
-            action="Install opencli and set OPENCLI_BIN or PATH, or configure alternate Twitter backend.",
+            action=(
+                "OpenCLI is not installed. Install it (or set OPENCLI_BIN), "
+                "or configure a Twitter API fallback yourself using "
+                "GETX_API_KEY, TWITTERAPI_IO_KEY, or X_BEARER_TOKEN."
+            ),
         )
 
     version_check = _check_opencli_version()
@@ -274,7 +278,11 @@ def _skip_due_to_opencli_unavailable() -> Dict[str, Any]:
         status="warning",
         code="dependency_unavailable",
         message="Skipped this check because OpenCLI is unavailable.",
-        action="Install OpenCLI or select API fallback backends.",
+        action=(
+            "OpenCLI is unavailable. Install it (or set OPENCLI_BIN), "
+            "or configure a Twitter API fallback yourself using "
+            "GETX_API_KEY, TWITTERAPI_IO_KEY, or X_BEARER_TOKEN."
+        ),
     )
 
 
