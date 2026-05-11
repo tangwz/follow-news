@@ -221,6 +221,19 @@ class TestBackendSelection(unittest.TestCase):
             with self.assertLogs(level="WARNING"):
                 self.assertEqual(fetch_twitter.get_opencli_max_workers(), 10)
 
+    def test_parses_opencli_update_command_override(self):
+        parser = getattr(fetch_twitter, "_parse_opencli_update_command_spec", None)
+        self.assertIsNotNone(
+            parser,
+            "Expected _parse_opencli_update_command_spec in scripts/fetch-twitter.py",
+        )
+        with patch.dict(os.environ, {"OPENCLI_UPDATE_COMMAND": "self-update --yes"}, clear=True):
+            self.assertEqual(
+                parser(),
+                [["self-update", "--yes"]],
+            )
+
+
 class TestOpenCliAutoUpdate(unittest.TestCase):
     @patch("fetch_twitter._run_opencli_update_command")
     @patch("fetch_twitter._record_opencli_update_state")
