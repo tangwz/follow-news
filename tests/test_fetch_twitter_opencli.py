@@ -255,6 +255,18 @@ class TestOpenCliAutoUpdate(unittest.TestCase):
         self.assertEqual(result["command"], "/bin/opencli self-update --yes")
         run_mock.assert_called_once_with("/bin/opencli", ["self-update", "--yes"])
 
+    @patch("fetch_twitter._run_opencli_update_command")
+    @patch.dict(os.environ, {"OPENCLI_NO_UPDATE": "1"}, clear=True)
+    def test_ensure_opencli_latest_skips_when_no_update_enabled(
+        self,
+        run_mock,
+    ):
+        result = fetch_twitter._ensure_opencli_latest("/bin/opencli")
+
+        self.assertEqual(result["status"], "skipped")
+        self.assertIn("OpenCLI auto-update is disabled", result["message"])
+        run_mock.assert_not_called()
+
 
 class TestOpenCliSelectionDiagnostics(unittest.TestCase):
     def test_empty_reason_prioritizes_opencli_failure(self):
@@ -534,12 +546,14 @@ class TestFetchWithBackendChain(unittest.TestCase):
 
 class TestMainOpenCliOptions(unittest.TestCase):
     @patch("fetch_twitter.open", new_callable=mock_open)
+    @patch("fetch_twitter._opencli_auto_update_enabled", return_value=True)
     @patch("fetch_twitter.fetch_with_backend_chain")
     @patch("fetch_twitter.load_twitter_sources")
     def test_no_update_flag_disables_opencli_auto_update(
         self,
         load_sources_mock,
         backend_chain_mock,
+        opencli_auto_update_mock,
         _open_mock,
     ):
         load_sources_mock.return_value = []
@@ -549,6 +563,30 @@ class TestMainOpenCliOptions(unittest.TestCase):
             self.assertEqual(fetch_twitter.main(), 0)
 
         self.assertEqual(backend_chain_mock.call_args[1]["opencli_auto_update"], False)
+        self.assertEqual(opencli_auto_update_mock.call_count, 1)
+
+    @patch("fetch_twitter.open", new_callable=mock_open)
+    @patch("fetch_twitter._opencli_auto_update_enabled", return_value=True)
+    @patch("fetch_twitter.fetch_with_backend_chain")
+    @patch("fetch_twitter.load_twitter_sources")
+    def test_no_update_flag_controls_update_toggle(
+        self,
+        load_sources_mock,
+        backend_chain_mock,
+        opencli_auto_update_mock,
+        _open_mock,
+    ):
+        load_sources_mock.return_value = []
+        backend_chain_mock.return_value = ("opencli", [], [])
+
+        with patch.object(sys, "argv", ["fetch-twitter.py", "--backend", "opencli"]):
+            self.assertEqual(fetch_twitter.main(), 0)
+        self.assertEqual(backend_chain_mock.call_args[1]["opencli_auto_update"], True)
+
+        with patch.object(sys, "argv", ["fetch-twitter.py", "--backend", "opencli", "--no-update"]):
+            self.assertEqual(fetch_twitter.main(), 0)
+        self.assertEqual(backend_chain_mock.call_args_list[1][1]["opencli_auto_update"], False)
+        self.assertEqual(opencli_auto_update_mock.call_count, 2)
 
 
 
