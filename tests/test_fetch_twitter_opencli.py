@@ -3,6 +3,7 @@
 
 import json
 import os
+import inspect
 import subprocess
 import sys
 import unittest
@@ -20,6 +21,26 @@ spec = importlib.util.spec_from_file_location("fetch_twitter", SCRIPTS_DIR / "fe
 fetch_twitter = importlib.util.module_from_spec(spec)
 sys.modules["fetch_twitter"] = fetch_twitter
 spec.loader.exec_module(fetch_twitter)
+
+_FETCH_WITH_BACKEND_CHAIN_PARAMS = list(inspect.signature(fetch_twitter.fetch_with_backend_chain).parameters.keys())
+_OPENCLI_AUTO_UPDATE_PARAM_INDEX = (
+    _FETCH_WITH_BACKEND_CHAIN_PARAMS.index("opencli_auto_update")
+    if "opencli_auto_update" in _FETCH_WITH_BACKEND_CHAIN_PARAMS
+    else None
+)
+
+
+def _read_opencli_auto_update_arg(mock_call):
+    args, kwargs = mock_call
+    if "opencli_auto_update" in kwargs:
+        return kwargs["opencli_auto_update"]
+    if _OPENCLI_AUTO_UPDATE_PARAM_INDEX is None:
+        raise AssertionError("fetch_with_backend_chain does not accept opencli_auto_update")
+    if len(args) <= _OPENCLI_AUTO_UPDATE_PARAM_INDEX:
+        raise AssertionError(
+            "fetch_with_backend_chain was called without expected opencli_auto_update positional arg"
+        )
+    return args[_OPENCLI_AUTO_UPDATE_PARAM_INDEX]
 
 
 def utc(value):
@@ -591,7 +612,7 @@ class TestMainOpenCliOptions(unittest.TestCase):
             with patch.object(sys, "argv", ["fetch-twitter.py", "--backend", "opencli", "--no-update"]):
                 self.assertEqual(fetch_twitter.main(), 0)
 
-        self.assertEqual(backend_chain_mock.call_args[1]["opencli_auto_update"], False)
+        self.assertEqual(_read_opencli_auto_update_arg(backend_chain_mock.call_args), False)
 
     @patch("fetch_twitter.open", new_callable=mock_open)
     @patch("fetch_twitter.fetch_with_backend_chain")
@@ -609,7 +630,7 @@ class TestMainOpenCliOptions(unittest.TestCase):
             with patch.object(sys, "argv", ["fetch-twitter.py", "--backend", "opencli"]):
                 self.assertEqual(fetch_twitter.main(), 0)
 
-        self.assertEqual(backend_chain_mock.call_args[1]["opencli_auto_update"], False)
+        self.assertEqual(_read_opencli_auto_update_arg(backend_chain_mock.call_args), False)
 
     @patch("fetch_twitter.open", new_callable=mock_open)
     @patch("fetch_twitter.fetch_with_backend_chain")
@@ -626,12 +647,12 @@ class TestMainOpenCliOptions(unittest.TestCase):
         with patch.dict(os.environ, {"OPENCLI_AUTO_UPDATE": "1"}, clear=True):
             with patch.object(sys, "argv", ["fetch-twitter.py", "--backend", "opencli"]):
                 self.assertEqual(fetch_twitter.main(), 0)
-        self.assertEqual(backend_chain_mock.call_args[1]["opencli_auto_update"], True)
+        self.assertEqual(_read_opencli_auto_update_arg(backend_chain_mock.call_args), True)
 
         with patch.dict(os.environ, {"OPENCLI_AUTO_UPDATE": "1", "OPENCLI_NO_UPDATE": "1"}, clear=True):
             with patch.object(sys, "argv", ["fetch-twitter.py", "--backend", "opencli"]):
                 self.assertEqual(fetch_twitter.main(), 0)
-        self.assertEqual(backend_chain_mock.call_args_list[1][1]["opencli_auto_update"], False)
+        self.assertEqual(_read_opencli_auto_update_arg(backend_chain_mock.call_args_list[1]), False)
 
     @patch("fetch_twitter.open", new_callable=mock_open)
     @patch("fetch_twitter.fetch_with_backend_chain")
@@ -648,7 +669,7 @@ class TestMainOpenCliOptions(unittest.TestCase):
         with patch.dict(os.environ, {"OPENCLI_NO_UPDATE": "1", "OPENCLI_AUTO_UPDATE": "1"}, clear=True):
             with patch.object(sys, "argv", ["fetch-twitter.py", "--backend", "opencli"]):
                 self.assertEqual(fetch_twitter.main(), 0)
-            self.assertEqual(backend_chain_mock.call_args_list[0][1]["opencli_auto_update"], False)
+            self.assertEqual(_read_opencli_auto_update_arg(backend_chain_mock.call_args_list[0]), False)
 
 
 
