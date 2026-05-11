@@ -225,15 +225,16 @@ class TestOpenCliAutoUpdate(unittest.TestCase):
     @patch("fetch_twitter._run_opencli_update_command")
     @patch("fetch_twitter._record_opencli_update_state")
     @patch("fetch_twitter._opencli_update_state_path", return_value=Path("/tmp/opencli-update-state.json"))
-    @patch("fetch_twitter._is_opencli_update_due", return_value=True)
     @patch.dict(os.environ, {"OPENCLI_UPDATE_COMMAND": "self-update --yes"}, clear=True)
     def test_ensure_opencli_latest_uses_custom_update_command(
         self,
-        is_due_mock,
         state_path_mock,
         record_state_mock,
         run_mock,
     ):
+        state_path = state_path_mock.return_value
+        if state_path.exists():
+            state_path.unlink()
         run_mock.return_value = subprocess.CompletedProcess(
             args=["/bin/opencli", "self-update", "--yes"],
             returncode=0,
