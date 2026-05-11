@@ -241,25 +241,23 @@ class TestOpenCliAutoUpdate(unittest.TestCase):
         self,
     ):
         with ExitStack() as stack:
-            run_mock = None
-            if hasattr(fetch_twitter, "_run_opencli_update_command"):
-                run_mock = stack.enter_context(
-                    patch("fetch_twitter._run_opencli_update_command")
-                )
-            if hasattr(fetch_twitter, "_record_opencli_update_state"):
-                stack.enter_context(patch("fetch_twitter._record_opencli_update_state"))
-            if hasattr(fetch_twitter, "_opencli_update_state_path"):
-                state_path_mock = stack.enter_context(
-                    patch(
-                        "fetch_twitter._opencli_update_state_path",
-                        return_value=Path("/tmp/opencli-update-state.json"),
-                    )
-                )
-            else:
-                state_path_mock = MagicMock(return_value=Path("/tmp/opencli-update-state.json"))
-
-            if run_mock is None:
+            if not hasattr(fetch_twitter, "_run_opencli_update_command"):
                 self.skipTest("fetch_twitter._run_opencli_update_command is not available")
+            if not hasattr(fetch_twitter, "_record_opencli_update_state"):
+                self.skipTest("fetch_twitter._record_opencli_update_state is not available")
+            if not hasattr(fetch_twitter, "_opencli_update_state_path"):
+                self.skipTest("fetch_twitter._opencli_update_state_path is not available")
+
+            run_mock = stack.enter_context(
+                patch("fetch_twitter._run_opencli_update_command")
+            )
+            stack.enter_context(patch("fetch_twitter._record_opencli_update_state"))
+            state_path_mock = stack.enter_context(
+                patch(
+                    "fetch_twitter._opencli_update_state_path",
+                    return_value=Path("/tmp/opencli-update-state.json"),
+                )
+            )
 
             state_path = state_path_mock.return_value
             if state_path.exists():
