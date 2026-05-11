@@ -13,6 +13,10 @@ Environment:
     TWITTER_API_BACKEND - Backend selection: "auto" (default), "getxapi", "twitterapiio", or "official"
                         Auto priority: getxapi ($0.001/call) > twitterapi.io (~$5/mo) > official X API
     OPENCLI_MAX_WORKERS  - OpenCLI fetch concurrency for twitter tweets (1-10, default: 10)
+    OPENCLI_AUTO_UPDATE  - Enable OpenCLI automatic update check (default: 1/true)
+    OPENCLI_NO_UPDATE    - Disable OpenCLI automatic update for this run/environment (0/1)
+    OPENCLI_UPDATE_COMMAND - Override OpenCLI update command, e.g. "self-update" or "update --yes"
+    OPENCLI_UPDATE_CHECK_INTERVAL_SECONDS - Minimum seconds between checks (default: 86400)
     GETX_API_KEY        - GetXAPI API key (preferred backend, $0.001 per call)
     TWITTERAPI_IO_KEY   - twitterapi.io API key (alternative backend, ~$5/month)
     X_BEARER_TOKEN      - Twitter/X official API v2 bearer token (fallback)
@@ -29,6 +33,7 @@ import re
 import threading
 import subprocess
 import shutil
+import shlex
 from abc import ABC, abstractmethod
 from datetime import datetime, timedelta, timezone
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -50,6 +55,16 @@ OPENCLI_MAX_WORKERS_MAX = 10
 OPENCLI_CLOSE_TABS_AFTER_RUN_DEFAULT = True
 OPENCLI_CLOSE_CHROME_WINDOWS_AFTER_RUN_DEFAULT = True
 OPENCLI_BROWSER_RECOVERABLE_RETRIES = 1
+OPENCLI_AUTO_UPDATE_DEFAULT = True
+OPENCLI_UPDATE_CHECK_INTERVAL_SECONDS = 24 * 60 * 60
+OPENCLI_UPDATE_COMMAND_CANDIDATES = ("self-update", "update", "upgrade")
+OPENCLI_UPDATE_ALREADY_UP_TO_DATE_MARKERS = (
+    "already up to date",
+    "already up-to-date",
+    "already latest",
+    "no updates available",
+    "nothing to update",
+)
 OPENCLI_GLOBAL_ERROR_CODES = {
     "opencli_missing",
     "opencli_capability_missing",
@@ -317,6 +332,234 @@ def resolve_opencli_bin() -> str:
         "opencli_missing",
         "OpenCLI executable not found. Set OPENCLI_BIN or install opencli on PATH.",
     )
+
+
+def _env_bool(name: str, default: bool = False) -> bool:
+    """Read a boolean environment variable."""
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+
+    return raw.strip().lower() not in {"", "0", "false", "off", "no", "disabled"}
+
+
+def _opencli_auto_update_enabled() -> bool:
+    """Return whether automatic OpenCLI update is enabled."""
+    if not _env_bool("OPENCLI_AUTO_UPDATE", OPENCLI_AUTO_UPDATE_DEFAULT):
+        return False
+    if _env_bool("OPENCLI_NO_UPDATE", False):
+        return False
+    return True
+
+
+def _get_opencli_update_interval_seconds() -> int:
+    """Get update-throttle interval in seconds."""
+    raw = os.getenv("OPENCLI_UPDATE_CHECK_INTERVAL_SECONDS")
+    if not raw:
+        return OPENCLI_UPDATE_CHECK_INTERVAL_SECONDS
+
+    try:
+        value = int(raw.strip())
+    except ValueError:
+        logging.warning(
+            "Invalid OPENCLI_UPDATE_CHECK_INTERVAL_SECONDS=%r; using %s",
+            raw,
+            OPENCLI_UPDATE_CHECK_INTERVAL_SECONDS,
+        )
+        return OPENCLI_UPDATE_CHECK_INTERVAL_SECONDS
+
+    if value <= 0:
+        return OPENCLI_UPDATE_CHECK_INTERVAL_SECONDS
+    return value
+
+
+def _opencli_update_state_path() -> Path:
+    """Path used to remember when the last update attempt happened."""
+    cache_root = os.getenv("XDG_CACHE_HOME", os.path.expanduser("~/.cache"))
+    return Path(cache_root) / "follow-news" / "opencli-update-state.json"
+
+
+def _is_opencli_update_due(state_path: Path, interval_seconds: int) -> bool:
+    """Return True when an update check should be retried."""
+    if not state_path.exists():
+        return True
+    try:
+        return (time.time() - state_path.stat().st_mtime) >= interval_seconds
+    except OSError:
+        return True
+
+
+def _record_opencli_update_state(state_path: Path, status: str, details: Dict[str, Any]) -> None:
+    """Persist last OpenCLI update attempt metadata."""
+    try:
+        state_path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "last_attempt": int(time.time()),
+            "status": status,
+            **details,
+        }
+        state_path.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+    except Exception as exc:  # pragma: no cover - best effort
+        logging.debug("Failed to persist OpenCLI update state: %s", exc)
+
+
+def _parse_opencli_update_command_spec() -> List[List[str]]:
+    """Resolve candidate update commands from environment."""
+    explicit = os.getenv("OPENCLI_UPDATE_COMMAND", "").strip()
+    if explicit:
+        try:
+            parts = shlex.split(explicit)
+        except ValueError:
+            parts = explicit.split()
+        if parts:
+            return [parts]
+        return []
+
+    return [[command] for command in OPENCLI_UPDATE_COMMAND_CANDIDATES]
+
+
+def _looks_like_unsupported_opencli_command(stderr: str, stdout: str) -> bool:
+    text = f"{stderr or ''} {stdout or ''}".lower()
+    return any(
+        marker in text
+        for marker in (
+            "unknown command",
+            "unknown subcommand",
+            "not found",
+            "unrecognized args",
+            "unrecognized argument",
+            "no such command",
+        )
+    )
+
+
+def _looks_like_unknown_update_flag(stderr: str, stdout: str) -> bool:
+    text = f"{stderr or ''} {stdout or ''}".lower()
+    return "unknown argument" in text or "unrecognized args" in text or "unknown option" in text
+
+
+def _looks_like_already_latest(stderr: str, stdout: str) -> bool:
+    text = f"{stderr or ''} {stdout or ''}".lower()
+    return any(marker in text for marker in OPENCLI_UPDATE_ALREADY_UP_TO_DATE_MARKERS)
+
+
+def _extract_snippet(text: str, limit: int = 200) -> str:
+    if not text:
+        return ""
+    return text if len(text) <= limit else f"{text[:limit - 3]}..."
+
+
+def _run_opencli_update_command(binary: str, args: List[str], timeout: int = 120) -> subprocess.CompletedProcess:
+    """Run one OpenCLI update command variant."""
+    try:
+        return subprocess.run(
+            [binary] + args,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            env=os.environ,
+        )
+    except subprocess.TimeoutExpired as exc:
+        return subprocess.CompletedProcess(
+            args=[binary] + args,
+            returncode=75,
+            stdout="",
+            stderr=f"OpenCLI update command timed out: {exc}",
+        )
+    except Exception as exc:  # pragma: no cover - defensive
+        return subprocess.CompletedProcess(
+            args=[binary] + args,
+            returncode=1,
+            stdout="",
+            stderr=str(exc),
+        )
+
+
+def _ensure_opencli_latest(binary: str) -> Dict[str, Any]:
+    """Optionally check for and apply OpenCLI updates.
+
+    Returns a structured result suitable for logging. This helper never raises.
+    """
+    result: Dict[str, Any] = {"status": "skipped", "command": None, "message": ""}
+    if not _opencli_auto_update_enabled():
+        result["message"] = "OpenCLI auto-update is disabled."
+        return result
+
+    state_path = _opencli_update_state_path()
+    interval_seconds = _get_opencli_update_interval_seconds()
+    if not _is_opencli_update_due(state_path, interval_seconds):
+        result["status"] = "throttled"
+        result["message"] = f"OpenCLI update check throttled to every {interval_seconds}s."
+        return result
+
+    candidates = _parse_opencli_update_command_spec()
+    if not candidates:
+        result["status"] = "unsupported"
+        result["message"] = "No OpenCLI update command candidate is configured."
+        _record_opencli_update_state(state_path, result["status"], result)
+        return result
+
+    command_attempts: List[Dict[str, Any]] = []
+    for candidate in candidates:
+        arg_variants: List[List[str]] = [candidate]
+        if "--yes" not in candidate:
+            arg_variants.append(candidate + ["--yes"])
+        if "-y" not in candidate:
+            arg_variants.append(candidate + ["-y"])
+
+        for args in arg_variants:
+            cp = _run_opencli_update_command(binary, args)
+            output = {
+                "command": [binary] + args,
+                "returncode": cp.returncode,
+                "stdout": _extract_snippet(cp.stdout or "", 220),
+                "stderr": _extract_snippet(cp.stderr or "", 220),
+            }
+            command_attempts.append(output)
+            combined_stderr = cp.stderr or ""
+            combined_stdout = cp.stdout or ""
+
+            if cp.returncode == 0:
+                if _looks_like_already_latest(combined_stderr, combined_stdout):
+                    result["status"] = "already_latest"
+                    result["message"] = f"OpenCLI already on latest version ({' '.join(output['command'])})."
+                else:
+                    result["status"] = "updated"
+                    result["message"] = f"OpenCLI updated successfully via {' '.join(output['command'])}."
+                result["command"] = " ".join(output["command"])
+                result["attempts"] = command_attempts
+                _record_opencli_update_state(state_path, result["status"], result)
+                return result
+
+            if _looks_like_already_latest(combined_stderr, combined_stdout):
+                result["status"] = "already_latest"
+                result["message"] = "OpenCLI reports already on latest version."
+                result["command"] = " ".join(output["command"])
+                result["attempts"] = command_attempts
+                _record_opencli_update_state(state_path, result["status"], result)
+                return result
+
+            if _looks_like_unsupported_opencli_command(combined_stderr, combined_stdout):
+                break
+
+            if _looks_like_unknown_update_flag(combined_stderr, combined_stdout):
+                continue
+
+            result["status"] = "failed"
+            result["message"] = output["stderr"] or output["stdout"] or "OpenCLI update failed."
+            result["command"] = " ".join(output["command"])
+            result["attempts"] = command_attempts
+            _record_opencli_update_state(state_path, result["status"], result)
+            return result
+
+    result["status"] = "unsupported"
+    result["message"] = "No usable OpenCLI update sub-command was found."
+    result["attempts"] = command_attempts
+    _record_opencli_update_state(state_path, result["status"], result)
+    return result
 
 
 def opencli_has_twitter_tweets(payload: Any) -> bool:
@@ -588,11 +831,34 @@ class TwitterBackend(ABC):
 class OpenCliBackend(TwitterBackend):
     """OpenCLI backend using the browser-backed twitter tweets adapter."""
 
-    def __init__(self, command: Optional[str] = None, max_workers: Optional[int] = None):
+    def __init__(
+        self,
+        command: Optional[str] = None,
+        max_workers: Optional[int] = None,
+        auto_update: bool = False,
+    ):
         self.command = command or resolve_opencli_bin()
         self._max_workers = max_workers
+        self._auto_update = auto_update
         self._before_chrome_windows = snapshot_chrome_windows()
         try:
+            if self._auto_update:
+                update_result = _ensure_opencli_latest(self.command)
+                if update_result["status"] == "updated":
+                    logging.info(update_result["message"])
+                elif update_result["status"] == "already_latest":
+                    logging.info(update_result["message"])
+                elif update_result["status"] == "throttled":
+                    logging.debug(update_result["message"])
+                elif update_result["status"] == "disabled":
+                    logging.debug(update_result["message"])
+                elif update_result["status"] == "unsupported":
+                    logging.warning(update_result["message"])
+                else:
+                    logging.warning(
+                        "OpenCLI auto-update check did not complete successfully: %s",
+                        update_result["message"],
+                    )
             self._verify_capability()
             self._run_doctor()
         except Exception:
@@ -1300,10 +1566,13 @@ def _instantiate_backend(
     backend_name: str,
     no_cache: bool = False,
     opencli_workers: Optional[int] = None,
+    opencli_auto_update: bool = False,
 ) -> Optional[TwitterBackend]:
     """Instantiate one backend without applying fallback policy."""
     if backend_name == "opencli":
         logging.info("Using OpenCLI backend")
+        if opencli_auto_update:
+            return OpenCliBackend(max_workers=opencli_workers, auto_update=True)
         return OpenCliBackend(max_workers=opencli_workers)
 
     if backend_name == "getxapi":
@@ -1340,6 +1609,7 @@ def fetch_with_backend_chain(
     cutoff: datetime,
     no_cache: bool = False,
     opencli_workers: Optional[int] = None,
+    opencli_auto_update: bool = False,
 ) -> Tuple[str, List[Dict[str, Any]], List[Dict[str, str]]]:
     """Fetch Twitter data using explicit backend or auto fallback chain."""
     diagnostics: List[Dict[str, str]] = []
@@ -1350,7 +1620,12 @@ def fetch_with_backend_chain(
 
         for attempt in range(max_retries + 1):
             try:
-                backend = _instantiate_backend(candidate, no_cache=no_cache, opencli_workers=opencli_workers)
+                backend = _instantiate_backend(
+                    candidate,
+                    no_cache=no_cache,
+                    opencli_workers=opencli_workers,
+                    opencli_auto_update=opencli_auto_update,
+                )
             except OpenCliBackendError as exc:
                 diagnostics.append({"backend": candidate, "code": exc.code, "message": exc.message})
                 logging.warning(
@@ -1487,6 +1762,12 @@ Examples:
     )
 
     parser.add_argument(
+        "--no-update",
+        action="store_true",
+        help="Skip OpenCLI self-update check/update on this run.",
+    )
+
+    parser.add_argument(
         "--backend",
         choices=["opencli", "official", "twitterapiio", "getxapi", "auto"],
         default=None,
@@ -1547,6 +1828,7 @@ Examples:
             cutoff,
             no_cache=args.no_cache,
             opencli_workers=args.opencli_workers,
+            opencli_auto_update=(not args.no_update) and _opencli_auto_update_enabled(),
         )
 
         if not results:
