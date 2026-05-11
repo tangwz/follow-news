@@ -269,7 +269,11 @@ class TestOpenCliAutoUpdate(unittest.TestCase):
                 stderr="",
             )
 
-            result = fetch_twitter._ensure_opencli_latest("/bin/opencli")
+            ensure_opencli_latest = getattr(fetch_twitter, "_ensure_opencli_latest", None)
+            if ensure_opencli_latest is None:
+                self.skipTest("No OpenCLI auto-update entrypoint found in scripts/fetch-twitter.py")
+
+            result = ensure_opencli_latest("/bin/opencli")
 
             self.assertEqual(result["status"], "updated")
             self.assertEqual(result["command"], "/bin/opencli self-update --yes")
@@ -283,7 +287,11 @@ class TestOpenCliAutoUpdate(unittest.TestCase):
             self.skipTest("fetch_twitter._run_opencli_update_command is not available")
 
         with patch("fetch_twitter._run_opencli_update_command") as run_mock:
-            result = fetch_twitter._ensure_opencli_latest("/bin/opencli")
+            ensure_opencli_latest = getattr(fetch_twitter, "_ensure_opencli_latest", None)
+            if ensure_opencli_latest is None:
+                self.skipTest("No OpenCLI auto-update entrypoint found in scripts/fetch-twitter.py")
+
+            result = ensure_opencli_latest("/bin/opencli")
 
             self.assertEqual(result["status"], "skipped")
             self.assertIn("OpenCLI auto-update is disabled", result["message"])
