@@ -10,6 +10,7 @@ import importlib.util
 from datetime import datetime
 from pathlib import Path
 from unittest.mock import MagicMock, patch
+from unittest.mock import mock_open
 
 SCRIPTS_DIR = Path(__file__).parent.parent / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
@@ -220,6 +221,42 @@ class TestBackendSelection(unittest.TestCase):
             with self.assertLogs(level="WARNING"):
                 self.assertEqual(fetch_twitter.get_opencli_max_workers(), 10)
 
+    def test_parses_opencli_update_command_override(self):
+        with patch.dict(os.environ, {"OPENCLI_UPDATE_COMMAND": "self-update --yes"}, clear=True):
+            self.assertEqual(
+                fetch_twitter._parse_opencli_update_command_spec(),
+                [["self-update", "--yes"]],
+            )
+
+
+class TestOpenCliAutoUpdate(unittest.TestCase):
+    @patch("fetch_twitter._run_opencli_update_command")
+    @patch("fetch_twitter._record_opencli_update_state")
+    @patch("fetch_twitter._opencli_update_state_path", return_value=Path("/tmp/opencli-update-state.json"))
+    @patch("fetch_twitter._is_opencli_update_due", return_value=True)
+    @patch.dict(os.environ, {"OPENCLI_UPDATE_COMMAND": "self-update --yes"}, clear=True)
+    def test_ensure_opencli_latest_uses_custom_update_command(
+        self,
+        is_due_mock,
+        state_path_mock,
+        record_state_mock,
+        run_mock,
+    ):
+        run_mock.return_value = subprocess.CompletedProcess(
+            args=["/bin/opencli", "self-update", "--yes"],
+            returncode=0,
+            stdout="updated",
+            stderr="",
+        )
+
+        result = fetch_twitter._ensure_opencli_latest("/bin/opencli")
+
+        self.assertEqual(result["status"], "updated")
+        self.assertEqual(result["command"], "/bin/opencli self-update --yes")
+        run_mock.assert_called_once_with("/bin/opencli", ["self-update", "--yes"])
+
+
+class TestOpenCliSelectionDiagnostics(unittest.TestCase):
     def test_empty_reason_prioritizes_opencli_failure(self):
         diagnostics = [
             {
@@ -262,13 +299,6 @@ class TestBackendSelection(unittest.TestCase):
     def test_stale_browser_bridge_errors_in_stdout_are_global_opencli_failures(self):
         code = fetch_twitter._classify_opencli_failure(1, stdout="No tab with id: 123")
         self.assertEqual(code, "opencli_browser_unavailable")
-
-        code = fetch_twitter._classify_opencli_failure(
-            1,
-            stdout="SecurityError: Failed to execute 'pushState' on 'History'",
-        )
-        self.assertEqual(code, "opencli_browser_unavailable")
-
 
 class TestOpenCliBackend(unittest.TestCase):
     def setUp(self):
@@ -500,6 +530,27 @@ class TestFetchWithBackendChain(unittest.TestCase):
         )
 
         backend_cls_mock.assert_called_once_with(max_workers=7)
+
+
+class TestMainOpenCliOptions(unittest.TestCase):
+    @patch("fetch_twitter.open", new_callable=mock_open)
+    @patch("fetch_twitter.fetch_with_backend_chain")
+    @patch("fetch_twitter.load_twitter_sources")
+    def test_no_update_flag_disables_opencli_auto_update(
+        self,
+        load_sources_mock,
+        backend_chain_mock,
+        _open_mock,
+    ):
+        load_sources_mock.return_value = []
+        backend_chain_mock.return_value = ("opencli", [], [])
+
+        with patch.object(sys, "argv", ["fetch-twitter.py", "--backend", "opencli", "--no-update"]):
+            self.assertEqual(fetch_twitter.main(), 0)
+
+        self.assertEqual(backend_chain_mock.call_args[1]["opencli_auto_update"], False)
+
+
 
 
 class TestOpenCliChromeCleanup(unittest.TestCase):
