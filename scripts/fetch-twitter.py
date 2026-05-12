@@ -2306,7 +2306,7 @@ def _instantiate_backend(
             logging.info("GETX_API_KEY not set; getxapi backend unavailable")
             return None
         logging.info("Using GetXAPI backend")
-        return GetXApiBackend(key)
+        return GetXApiBackend(key, no_cache=no_cache)
 
     if backend_name == "twitterapiio":
         key = os.getenv("TWITTERAPI_IO_KEY")
