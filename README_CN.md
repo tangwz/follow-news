@@ -13,7 +13,7 @@
 
 跟你的 [OpenClaw](https://openclaw.ai) AI 助手说：
 
-> **"安装 follow-news，每天早上 9 点发科技日报到 #tech-news 频道"**
+> **"安装 follow-news，每天早上 9 点发送一份科技日报。"**
 
 搞定。Bot 会自动安装、配置、定时、推送——全程对话完成。
 

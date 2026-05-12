@@ -13,7 +13,7 @@
 
 Tell your [OpenClaw](https://openclaw.ai) AI assistant:
 
-> **"Install follow-news and send a daily digest to #tech-news every morning at 9am"**
+> **"Install follow-news and send a daily digest every morning at 9am"**
 
 That's it. Your bot handles installation, configuration, scheduling, and delivery — all through conversation.
 
@@ -38,7 +38,7 @@ A quality-scored, deduplicated tech digest built from **168 built-in sources** p
 |-------|---------|------|
 | 📡 RSS | 78 feeds | OpenAI, Anthropic, Ben's Bites, HN, 36氪, CoinDesk… |
 | 🐦 Twitter/X | 48 KOLs | @karpathy, @VitalikButerin, @sama, @elonmusk… |
-| 🔍 Web Search | 4 topics | Tavily or Brave Search API with freshness filters |
+| 🔍 Web Search | 4 topics | Tavily or Brave Search API with freshness filters, browser fallback when unavailable |
 | 🐙 GitHub | 29 repos | Releases from key projects (LangChain, vLLM, DeepSeek, Llama…) |
 | 🗣️ Reddit | 13 subs | r/MachineLearning, r/LocalLLaMA, r/CryptoCurrency… |
 
@@ -101,6 +101,10 @@ All environment variables are optional. The pipeline runs with whatever sources 
 export TWITTER_API_BACKEND="auto"  # auto|opencli|getxapi|twitterapiio|official
 export OPENCLI_BIN="/path/to/opencli"  # optional; defaults to opencli on PATH
 export OPENCLI_MAX_WORKERS="10"  # optional; increase parallel OpenCLI workers
+export OPENCLI_AUTO_UPDATE="1"      # auto-update OpenCLI if support exists (default: 1)
+export OPENCLI_NO_UPDATE="0"        # set 1 to skip OpenCLI auto-update
+export OPENCLI_UPDATE_COMMAND="self-update"  # optional; try this command if auto-update
+export OPENCLI_UPDATE_CHECK_INTERVAL_SECONDS="86400"  # optional; defaults to 24h
 export OPENCLI_CLOSE_TABS_AFTER_RUN="1"  # optional; close OpenCLI-created X/Twitter tabs after fetch
 export OPENCLI_CLOSE_CHROME_WINDOWS_AFTER_RUN="1"  # optional; close Chrome automation windows opened by OpenCLI
 export GETX_API_KEY="..."        # GetXAPI fallback
@@ -110,7 +114,7 @@ export X_BEARER_TOKEN="..."      # Official X API v2 fallback
 export TAVILY_API_KEY="tvly-xxx"   # Tavily Search API
 export BRAVE_API_KEYS="k1,k2,k3"   # Brave Search API keys (comma-separated for rotation)
 export BRAVE_API_KEY="..."         # Single Brave key
-export WEB_SEARCH_BACKEND="auto"   # auto|brave|tavily
+export WEB_SEARCH_BACKEND="auto"   # auto|brave|tavily|browser
 # GitHub
 export GITHUB_TOKEN="..."          # GitHub API
 # Other
