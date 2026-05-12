@@ -1523,6 +1523,35 @@ class TestXFileCacheAndRateLimits(unittest.TestCase):
 
             self.assertEqual(cache.index_store.load(), {})
 
+    def test_cache_entry_size_cap_uses_written_json_size(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cache = fetch_twitter.XFileCache("official", cache_dir=Path(tmp))
+            endpoint = "GET /2/users/by"
+            params = {"usernames": "sama"}
+            body = {"data": "x" * 120}
+            current = 1000
+            ttl = 3600
+            payload = {
+                "backend": "official",
+                "credential_id": "anonymous",
+                "endpoint": endpoint,
+                "params": params,
+                "status_code": 200,
+                "headers": {},
+                "body": body,
+                "fetched_at": current,
+                "expires_at": current + ttl,
+            }
+            compact_size = len(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8"))
+            written_size = len(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True).encode("utf-8"))
+            self.assertGreater(written_size, compact_size)
+
+            with patch.dict(os.environ, {"X_CACHE_MAX_ENTRY_BYTES": str(compact_size)}):
+                with patch("fetch_twitter.time.time", return_value=current):
+                    cache.put(endpoint, params, 200, {}, body, ttl_seconds=ttl)
+
+            self.assertEqual(cache.index_store.load(), {})
+
     def test_response_cache_persistence_failure_is_non_fatal(self):
         with tempfile.TemporaryDirectory() as tmp:
             cache = fetch_twitter.XFileCache("official", cache_dir=Path(tmp))

@@ -903,7 +903,7 @@ def _atomic_json_write(path: Path, value: Any) -> None:
     fd, temp_path = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=str(path.parent))
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
-            json.dump(value, f, ensure_ascii=False, indent=2, sort_keys=True)
+            f.write(_pretty_json_text(value))
         os.replace(temp_path, path)
     finally:
         try:
@@ -911,6 +911,16 @@ def _atomic_json_write(path: Path, value: Any) -> None:
                 os.unlink(temp_path)
         except OSError:
             pass
+
+
+def _pretty_json_text(value: Any) -> str:
+    """Return the exact JSON text used for project-local state files."""
+    return json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True)
+
+
+def _pretty_json_size(value: Any) -> int:
+    """Return the exact UTF-8 byte size written by _atomic_json_write."""
+    return len(_pretty_json_text(value).encode("utf-8"))
 
 
 class JsonStateStore:
@@ -1285,9 +1295,9 @@ class XFileCache:
             "fetched_at": current,
             "expires_at": current + ttl,
         }
-        encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
-        if len(encoded) > get_x_cache_max_entry_bytes():
-            logging.debug("Skipping X cache write for %s: response is %s bytes", endpoint, len(encoded))
+        payload_size = _pretty_json_size(payload)
+        if payload_size > get_x_cache_max_entry_bytes():
+            logging.debug("Skipping X cache write for %s: response is %s bytes", endpoint, payload_size)
             return
 
         try:
@@ -1300,7 +1310,7 @@ class XFileCache:
                     "credential_id": self.credential_id,
                     "endpoint": endpoint,
                     "path": str(path.relative_to(self.cache_dir)),
-                    "size": len(encoded),
+                    "size": payload_size,
                     "fetched_at": current,
                     "expires_at": current + ttl,
                     "last_accessed_at": current,
