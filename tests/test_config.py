@@ -15,6 +15,23 @@ from config_loader import load_merged_sources, load_merged_topics
 DEFAULTS_DIR = Path(__file__).parent.parent / "config" / "defaults"
 README_EN = Path(__file__).parent.parent / "README.md"
 README_ZH = Path(__file__).parent.parent / "README_CN.md"
+SKILL_FILE = Path(__file__).parent.parent / "SKILL.md"
+
+
+def read_skill_frontmatter():
+    content = SKILL_FILE.read_text(encoding="utf-8")
+    marker = "---"
+    parts = content.split(marker, 2)
+    if len(parts) < 3:
+        raise AssertionError("SKILL.md is missing frontmatter")
+    return parts[1].strip().splitlines()
+
+
+def read_skill_metadata():
+    for line in read_skill_frontmatter():
+        if line.startswith("metadata:"):
+            return json.loads(line.split(":", 1)[1].strip())
+    raise AssertionError("SKILL.md frontmatter is missing metadata")
 
 
 def get_source_counts():
@@ -206,6 +223,69 @@ class TestReadmeCounts(unittest.TestCase):
             self.assertIn("jackwener/opencli", lowered)
             self.assertIn("install", lowered)
             self.assertIn("opencli doctor", lowered)
+
+
+class TestSkillFrontmatter(unittest.TestCase):
+    def test_frontmatter_keeps_description_unambiguous_for_single_line_parsers(self):
+        lines = read_skill_frontmatter()
+        descriptions = [line for line in lines if line.lstrip().startswith("description:")]
+
+        self.assertEqual(len(descriptions), 1)
+        self.assertTrue(descriptions[0].startswith("description:"))
+        self.assertTrue(descriptions[0].split(":", 1)[1].strip())
+        self.assertNotIn("\n", descriptions[0])
+
+    def test_frontmatter_uses_single_line_top_level_entries(self):
+        lines = read_skill_frontmatter()
+        top_level_keys = []
+
+        for line in lines:
+            self.assertFalse(line.startswith(" "), f"frontmatter entry is not top-level: {line}")
+            self.assertIn(":", line, f"frontmatter entry is missing key separator: {line}")
+            key, value = line.split(":", 1)
+            self.assertTrue(key, f"frontmatter entry is missing key: {line}")
+            self.assertTrue(value.strip(), f"frontmatter entry must be single-line key/value: {line}")
+            top_level_keys.append(key)
+
+        self.assertGreaterEqual(set(top_level_keys), {"name", "description", "version", "metadata"})
+
+    def test_metadata_declares_runtime_env_tools_and_files(self):
+        metadata = read_skill_metadata()
+        openclaw = metadata["openclaw"]
+
+        env_names = {entry["name"] for entry in openclaw["env"]}
+        self.assertGreaterEqual(
+            env_names,
+            {
+                "TWITTER_API_BACKEND",
+                "OPENCLI_BIN",
+                "TAVILY_API_KEY",
+                "WEB_SEARCH_BACKEND",
+                "BRAVE_API_KEYS",
+                "BRAVE_API_KEY",
+                "GITHUB_TOKEN",
+                "GH_APP_ID",
+                "GH_APP_INSTALL_ID",
+                "GH_APP_KEY_FILE",
+            },
+        )
+        self.assertEqual(openclaw["files"]["read"][0]["path"], "config/defaults/")
+        tools_by_bin = {entry["bin"]: entry for entry in openclaw["tools"]}
+        self.assertTrue(tools_by_bin["python3"]["required"])
+        self.assertIn("python3", openclaw["requires"]["bins"])
+
+    def test_skill_web_search_docs_do_not_advertise_unimplemented_backends(self):
+        skill = SKILL_FILE.read_text(encoding="utf-8")
+        fetch_web_section = skill.split("#### `fetch-web.py` - Web Search Engine", 1)[1].split(
+            "#### `fetch-github.py`",
+            1,
+        )[0]
+        web_backend_lines = [line for line in skill.splitlines() if "WEB_SEARCH_BACKEND" in line]
+
+        for line in web_backend_lines:
+            self.assertNotIn("browser", line)
+        self.assertNotIn("browser-backed", fetch_web_section)
+        self.assertIn("auto|brave|tavily", skill)
 
 
 if __name__ == "__main__":
