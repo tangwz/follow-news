@@ -1746,7 +1746,7 @@ class OfficialBackend(TwitterBackend):
                     headers,
                     {"user_id": user_id, **params},
                     credential=self.bearer_token,
-                    no_cache=self.no_cache,
+                    no_cache=False,
                     cache_ttl_seconds=get_x_timeline_cache_ttl_seconds(),
                 )
 
@@ -1901,7 +1901,7 @@ class TwitterApiIoBackend(TwitterBackend):
                     headers,
                     {"userName": handle, "includeReplies": "false"},
                     credential=self.api_key,
-                    no_cache=self.no_cache,
+                    no_cache=False,
                     cache_ttl_seconds=get_x_timeline_cache_ttl_seconds(),
                 )
 
@@ -1932,7 +1932,7 @@ class TwitterApiIoBackend(TwitterBackend):
                             headers,
                             {"userName": handle, "includeReplies": "false", "cursor": next_cursor},
                             credential=self.api_key,
-                            no_cache=self.no_cache,
+                            no_cache=False,
                             cache_ttl_seconds=get_x_timeline_cache_ttl_seconds(),
                         )
                         data2 = raw2.get("data", raw2)
@@ -2083,7 +2083,7 @@ class GetXApiBackend(TwitterBackend):
                     headers,
                     {"userName": handle},
                     credential=self.api_key,
-                    no_cache=self.no_cache,
+                    no_cache=False,
                     cache_ttl_seconds=get_x_timeline_cache_ttl_seconds(),
                 )
 
@@ -2111,7 +2111,7 @@ class GetXApiBackend(TwitterBackend):
                                     headers,
                                     {"userName": handle, "cursor": next_cursor},
                                     credential=self.api_key,
-                                    no_cache=self.no_cache,
+                                    no_cache=False,
                                     cache_ttl_seconds=get_x_timeline_cache_ttl_seconds(),
                                 )
                                 if raw2.get("error"):
@@ -2195,7 +2195,6 @@ def _instantiate_backend(
         return OpenCliBackend(
             max_workers=opencli_workers,
             auto_update=opencli_auto_update,
-            no_cache=no_cache,
         )
 
     if backend_name == "getxapi":
@@ -2204,7 +2203,7 @@ def _instantiate_backend(
             logging.info("GETX_API_KEY not set; getxapi backend unavailable")
             return None
         logging.info("Using GetXAPI backend")
-        return GetXApiBackend(key, no_cache=no_cache)
+        return GetXApiBackend(key)
 
     if backend_name == "twitterapiio":
         key = os.getenv("TWITTERAPI_IO_KEY")
@@ -2212,7 +2211,7 @@ def _instantiate_backend(
             logging.info("TWITTERAPI_IO_KEY not set; twitterapi.io backend unavailable")
             return None
         logging.info("Using twitterapi.io backend")
-        return TwitterApiIoBackend(key, no_cache=no_cache)
+        return TwitterApiIoBackend(key)
 
     if backend_name == "official":
         token = os.getenv("X_BEARER_TOKEN")
