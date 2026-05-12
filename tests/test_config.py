@@ -235,14 +235,19 @@ class TestSkillFrontmatter(unittest.TestCase):
         self.assertIn("Generate tech news digests", descriptions[0])
         self.assertNotIn("\n", descriptions[0])
 
-    def test_frontmatter_uses_only_single_line_top_level_fields(self):
+    def test_frontmatter_uses_single_line_top_level_entries(self):
         lines = read_skill_frontmatter()
-        top_level_keys = [line.split(":", 1)[0] for line in lines if line and not line.startswith(" ")]
+        top_level_keys = []
 
-        self.assertEqual(
-            top_level_keys,
-            ["name", "description", "version", "homepage", "source", "metadata"],
-        )
+        for line in lines:
+            self.assertFalse(line.startswith(" "), f"frontmatter entry is not top-level: {line}")
+            self.assertIn(":", line, f"frontmatter entry is missing key separator: {line}")
+            key, value = line.split(":", 1)
+            self.assertTrue(key, f"frontmatter entry is missing key: {line}")
+            self.assertTrue(value.strip(), f"frontmatter entry must be single-line key/value: {line}")
+            top_level_keys.append(key)
+
+        self.assertGreaterEqual(set(top_level_keys), {"name", "description", "version", "metadata"})
 
     def test_metadata_declares_runtime_env_tools_and_files(self):
         metadata = read_skill_metadata()
