@@ -1135,6 +1135,24 @@ class TestXFileCacheAndRateLimits(unittest.TestCase):
 
             self.assertEqual(first, second)
 
+    def test_file_cache_key_is_scoped_by_credential(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            first_cache = fetch_twitter.XFileCache("official", cache_dir=Path(tmp), credential="token-a")
+            second_cache = fetch_twitter.XFileCache("official", cache_dir=Path(tmp), credential="token-b")
+
+            first = first_cache.make_key("GET /2/users/by", {"usernames": "sama"})
+            second = second_cache.make_key("GET /2/users/by", {"usernames": "sama"})
+
+            self.assertNotEqual(first, second)
+
+    def test_file_cache_does_not_share_bodies_between_credentials(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            first_cache = fetch_twitter.XFileCache("official", cache_dir=Path(tmp), credential="token-a")
+            second_cache = fetch_twitter.XFileCache("official", cache_dir=Path(tmp), credential="token-b")
+            first_cache.put("GET /2/users/by", {"usernames": "sama"}, 200, {}, {"data": [{"id": "1"}]})
+
+            self.assertIsNone(second_cache.get("GET /2/users/by", {"usernames": "sama"}))
+
     def test_file_cache_returns_fresh_response(self):
         with tempfile.TemporaryDirectory() as tmp:
             cache = fetch_twitter.XFileCache("official", cache_dir=Path(tmp))

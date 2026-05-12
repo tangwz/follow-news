@@ -1034,8 +1034,15 @@ class XRateLimitManager:
 class XFileCache:
     """File response cache for X/Twitter fetchers."""
 
-    def __init__(self, backend: str, cache_dir: Optional[Path] = None, no_cache: bool = False):
+    def __init__(
+        self,
+        backend: str,
+        cache_dir: Optional[Path] = None,
+        no_cache: bool = False,
+        credential: Optional[str] = None,
+    ):
         self.backend = backend
+        self.credential_id = _credential_id(credential)
         self.cache_dir = Path(cache_dir) if cache_dir is not None else get_x_cache_dir()
         self.no_cache = no_cache
         self.index_store = JsonStateStore(self.cache_dir / "cache_index.json")
@@ -1051,6 +1058,7 @@ class XFileCache:
         """Return a stable request cache key."""
         payload = {
             "backend": self.backend,
+            "credential_id": self.credential_id,
             "endpoint": endpoint,
             "params": _stable_json(params or {}),
         }
@@ -1105,6 +1113,7 @@ class XFileCache:
         path = self._entry_path(endpoint, cache_key)
         payload = {
             "backend": self.backend,
+            "credential_id": self.credential_id,
             "endpoint": endpoint,
             "params": _stable_json(params or {}),
             "status_code": status_code,
@@ -1124,6 +1133,7 @@ class XFileCache:
             index = self.index_store.load()
             index[cache_key] = {
                 "backend": self.backend,
+                "credential_id": self.credential_id,
                 "endpoint": endpoint,
                 "path": str(path.relative_to(self.cache_dir)),
                 "size": len(encoded),
@@ -1202,7 +1212,7 @@ def x_request_json(
     cache_ttl_seconds: Optional[int] = None,
 ) -> Any:
     """Fetch JSON with project-local response caching and rate-limit tracking."""
-    cache = XFileCache(backend, no_cache=no_cache)
+    cache = XFileCache(backend, no_cache=no_cache, credential=credential)
     cached = cache.get(endpoint, params)
     if cached is not None:
         return cached
