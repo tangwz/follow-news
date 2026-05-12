@@ -2314,7 +2314,7 @@ def _instantiate_backend(
             logging.info("TWITTERAPI_IO_KEY not set; twitterapi.io backend unavailable")
             return None
         logging.info("Using twitterapi.io backend")
-        return TwitterApiIoBackend(key)
+        return TwitterApiIoBackend(key, no_cache=no_cache)
 
     if backend_name == "official":
         token = os.getenv("X_BEARER_TOKEN")
