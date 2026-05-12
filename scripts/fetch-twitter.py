@@ -1951,7 +1951,7 @@ class TwitterApiIoBackend(TwitterBackend):
                     headers,
                     {"userName": handle, "includeReplies": "false"},
                     credential=self.api_key,
-                    no_cache=False,
+                    no_cache=self.no_cache,
                     cache_ttl_seconds=get_source_timeline_cache_ttl_seconds(source),
                     before_network=self._limiter.wait,
                 )
@@ -1982,7 +1982,7 @@ class TwitterApiIoBackend(TwitterBackend):
                             headers,
                             {"userName": handle, "includeReplies": "false", "cursor": next_cursor},
                             credential=self.api_key,
-                            no_cache=False,
+                            no_cache=self.no_cache,
                             cache_ttl_seconds=get_source_timeline_cache_ttl_seconds(source),
                             before_network=self._limiter.wait,
                         )
