@@ -1052,7 +1052,10 @@ class XRateLimitManager:
                 bucket["paused_until"] = None
             bucket["updated_at"] = int(current)
             state[key] = bucket
-            self.store.save(state)
+            try:
+                self.store.save(state)
+            except Exception as exc:
+                logging.warning("Failed to persist X rate-limit state: %s", exc)
 
 
 def get_x_rate_limit_manager(cache_dir: Optional[Path] = None) -> "XRateLimitManager":

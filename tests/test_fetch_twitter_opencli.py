@@ -1302,6 +1302,25 @@ class TestXFileCacheAndRateLimits(unittest.TestCase):
             self.assertFalse(allowed)
             self.assertEqual(deferred_until, 1300)
 
+    def test_rate_limit_persistence_failure_is_non_fatal(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            manager = fetch_twitter.XRateLimitManager(cache_dir=Path(tmp), now_func=lambda: 1000)
+            with patch.object(manager.store, "save", side_effect=OSError("read-only filesystem")):
+                with self.assertLogs(level="WARNING") as logs:
+                    manager.update_from_headers(
+                        "official",
+                        "GET /2/users/:id/tweets",
+                        "secret-token",
+                        {
+                            "x-rate-limit-limit": "15",
+                            "x-rate-limit-remaining": "14",
+                            "x-rate-limit-reset": "1300",
+                        },
+                        status_code=200,
+                    )
+
+            self.assertTrue(any("Failed to persist X rate-limit state" in line for line in logs.output))
+
     def test_file_cache_instances_share_index_lock_for_same_cache_dir(self):
         with tempfile.TemporaryDirectory() as tmp:
             first = fetch_twitter.XFileCache("official", cache_dir=Path(tmp), credential="token-a")
