@@ -429,8 +429,6 @@ def _looks_like_unsupported_opencli_command(stderr: str, stdout: str) -> bool:
             "unknown command",
             "unknown subcommand",
             "not found",
-            "unrecognized args",
-            "unrecognized argument",
             "no such command",
         )
     )
@@ -543,9 +541,6 @@ def _ensure_opencli_latest(binary: str) -> Dict[str, Any]:
                 _record_opencli_update_state(state_path, result["status"], result)
                 return result
 
-            if _looks_like_unsupported_opencli_command(combined_stderr, combined_stdout):
-                break
-
             if _looks_like_unknown_update_flag(combined_stderr, combined_stdout):
                 if has_more_variants:
                     continue
@@ -555,6 +550,9 @@ def _ensure_opencli_latest(binary: str) -> Dict[str, Any]:
                 result["attempts"] = command_attempts
                 _record_opencli_update_state(state_path, result["status"], result)
                 return result
+
+            if _looks_like_unsupported_opencli_command(combined_stderr, combined_stdout):
+                break
 
             if has_more_variants:
                 continue
