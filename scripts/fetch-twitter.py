@@ -1127,6 +1127,22 @@ class XFileCache:
     def _entry_path(self, endpoint: str, cache_key: str) -> Path:
         return self.cache_dir / "responses" / self.backend / self.endpoint_slug(endpoint) / f"{cache_key}.json"
 
+    def _indexed_entry_path(self, entry: Dict[str, Any]) -> Optional[Path]:
+        """Return a cache-index path only when it stays inside cache_dir."""
+        raw_path = str(entry.get("path") or "")
+        if not raw_path:
+            return None
+        candidate = Path(raw_path)
+        if candidate.is_absolute():
+            return None
+        try:
+            cache_root = self.cache_dir.resolve()
+            resolved = (self.cache_dir / candidate).resolve()
+            resolved.relative_to(cache_root)
+            return resolved
+        except (OSError, ValueError):
+            return None
+
     def get(self, endpoint: str, params: Optional[Dict[str, Any]] = None) -> Optional[Any]:
         """Return cached response body when present and fresh."""
         if self.no_cache or is_x_response_cache_disabled():
@@ -1139,7 +1155,9 @@ class XFileCache:
             entry = index.get(cache_key)
             if not entry:
                 return None
-            path = self.cache_dir / entry.get("path", "")
+            path = self._indexed_entry_path(entry)
+            if path is None:
+                return None
             expires_at = float(entry.get("expires_at") or 0)
             if expires_at and expires_at <= current:
                 return None
@@ -1223,8 +1241,11 @@ class XCacheJanitor:
         index = self.index_store.load()
         kept: Dict[str, Dict[str, Any]] = {}
 
+        cache_path_guard = XFileCache("janitor", cache_dir=self.cache_dir)
         for cache_key, entry in index.items():
-            path = self.cache_dir / entry.get("path", "")
+            path = cache_path_guard._indexed_entry_path(entry)
+            if path is None:
+                continue
             fetched_at = int(entry.get("fetched_at") or 0)
             expires_at = int(entry.get("expires_at") or 0)
             if not path.exists():
@@ -1248,7 +1269,10 @@ class XCacheJanitor:
             for cache_key, entry in ordered:
                 if total_bytes <= max_bytes:
                     break
-                path = self.cache_dir / entry.get("path", "")
+                path = cache_path_guard._indexed_entry_path(entry)
+                if path is None:
+                    kept.pop(cache_key, None)
+                    continue
                 size = int(entry.get("size") or 0)
                 try:
                     path.unlink()

@@ -1191,6 +1191,43 @@ class TestXFileCacheAndRateLimits(unittest.TestCase):
 
             self.assertIsNone(cache.get("GET /2/users/by", {"usernames": "sama"}))
 
+    def test_file_cache_rejects_index_paths_outside_cache_dir(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cache_dir = Path(tmp) / "cache"
+            outside_path = Path(tmp) / "outside.json"
+            outside_path.write_text(json.dumps({"body": {"data": "leaked"}}), encoding="utf-8")
+            cache = fetch_twitter.XFileCache("official", cache_dir=cache_dir, credential="token-a")
+            cache_key = cache.make_key("GET /2/users/by", {"usernames": "sama"})
+            cache.index_store.save({
+                cache_key: {
+                    "path": "../outside.json",
+                    "expires_at": int(fetch_twitter.time.time()) + 3600,
+                }
+            })
+
+            self.assertIsNone(cache.get("GET /2/users/by", {"usernames": "sama"}))
+
+    def test_cache_janitor_does_not_delete_index_paths_outside_cache_dir(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cache_dir = Path(tmp) / "cache"
+            outside_path = Path(tmp) / "outside.json"
+            outside_path.write_text("keep", encoding="utf-8")
+            store = fetch_twitter.JsonStateStore(cache_dir / "cache_index.json")
+            store.save({
+                "bad": {
+                    "path": "../outside.json",
+                    "fetched_at": 1,
+                    "expires_at": 1,
+                    "size": 4,
+                    "last_accessed_at": 1,
+                }
+            })
+
+            fetch_twitter.XCacheJanitor(cache_dir=cache_dir).cleanup()
+
+            self.assertTrue(outside_path.exists())
+            self.assertEqual(store.load(), {})
+
     def test_no_cache_disables_response_read_and_write(self):
         with tempfile.TemporaryDirectory() as tmp:
             cache = fetch_twitter.XFileCache("official", cache_dir=Path(tmp), no_cache=True)
