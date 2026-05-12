@@ -7,6 +7,7 @@ import inspect
 import tempfile
 import subprocess
 import sys
+import tempfile
 import unittest
 import importlib.util
 from datetime import datetime
@@ -14,6 +15,7 @@ from contextlib import ExitStack
 from pathlib import Path
 from unittest.mock import MagicMock, call, patch
 from unittest.mock import mock_open
+from urllib.error import HTTPError
 
 SCRIPTS_DIR = Path(__file__).parent.parent / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
@@ -58,6 +60,20 @@ def _temp_opencli_state_path(stack: ExitStack) -> Path:
 
 def utc(value):
     return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+
+def http_error(code):
+    return HTTPError("https://example.com", code, "error", {}, None)
+
+
+def twitter_source():
+    return {
+        "id": "sama",
+        "name": "Sam Altman",
+        "handle": "sama",
+        "topics": ["ai"],
+        "priority": False,
+    }
 
 
 class TestOpenCliTweetNormalization(unittest.TestCase):
@@ -576,7 +592,7 @@ class TestOpenCliBackend(unittest.TestCase):
             self._completed("lease released"),
         ]
 
-        backend = fetch_twitter.OpenCliBackend()
+        backend = fetch_twitter.OpenCliBackend(no_cache=True)
         results = backend.fetch_all([self.source], self.cutoff)
 
         self.assertEqual(results[0]["status"], "ok")
@@ -631,7 +647,7 @@ class TestOpenCliBackend(unittest.TestCase):
             self._completed("lease released"),
         ]
 
-        backend = fetch_twitter.OpenCliBackend()
+        backend = fetch_twitter.OpenCliBackend(no_cache=True)
         backend.fetch_all([self.source], self.cutoff)
 
         commands = [call.args[0] for call in run_mock.call_args_list]
@@ -689,7 +705,7 @@ class TestOpenCliBackend(unittest.TestCase):
             self._completed("lease released"),
         ]
 
-        backend = fetch_twitter.OpenCliBackend()
+        backend = fetch_twitter.OpenCliBackend(no_cache=True)
 
         with self.assertRaises(fetch_twitter.OpenCliBackendError) as ctx:
             backend.fetch_all([self.source], self.cutoff)
@@ -722,7 +738,7 @@ class TestOpenCliBackend(unittest.TestCase):
             self._completed("lease released"),
         ]
 
-        backend = fetch_twitter.OpenCliBackend()
+        backend = fetch_twitter.OpenCliBackend(no_cache=True)
         with self.assertLogs(level="WARNING") as logs:
             results = backend.fetch_all([self.source, second_source], self.cutoff)
 
@@ -756,7 +772,187 @@ class TestFetchWithBackendChain(unittest.TestCase):
             opencli_workers=7,
         )
 
-        backend_cls_mock.assert_called_once_with(max_workers=7)
+        backend_cls_mock.assert_called_once_with(max_workers=7, auto_update=False, no_cache=False)
+
+    @patch("fetch_twitter.OpenCliBackend")
+    def test_no_cache_is_forwarded_to_opencli_backend(self, backend_cls_mock):
+        backend = backend_cls_mock.return_value
+        backend.fetch_all.return_value = []
+
+        fetch_twitter.fetch_with_backend_chain(
+            "opencli",
+            [],
+            utc("2026-05-08T00:00:00Z"),
+            no_cache=True,
+        )
+
+        backend_cls_mock.assert_called_once_with(max_workers=None, auto_update=False, no_cache=True)
+
+    @patch.dict(os.environ, {"GETX_API_KEY": "x" * 20}, clear=True)
+    @patch("fetch_twitter.GetXApiBackend")
+    def test_no_cache_is_forwarded_to_getxapi_backend(self, backend_cls_mock):
+        backend = backend_cls_mock.return_value
+        backend.fetch_all.return_value = []
+
+        fetch_twitter.fetch_with_backend_chain(
+            "getxapi",
+            [],
+            utc("2026-05-08T00:00:00Z"),
+            no_cache=True,
+        )
+
+        backend_cls_mock.assert_called_once_with("x" * 20, no_cache=True)
+
+    @patch.dict(os.environ, {"TWITTERAPI_IO_KEY": "x" * 20}, clear=True)
+    @patch("fetch_twitter.TwitterApiIoBackend")
+    def test_no_cache_is_forwarded_to_twitterapiio_backend(self, backend_cls_mock):
+        backend = backend_cls_mock.return_value
+        backend.fetch_all.return_value = []
+
+        fetch_twitter.fetch_with_backend_chain(
+            "twitterapiio",
+            [],
+            utc("2026-05-08T00:00:00Z"),
+            no_cache=True,
+        )
+
+        backend_cls_mock.assert_called_once_with("x" * 20, no_cache=True)
+
+
+class TestOfficialBackend(unittest.TestCase):
+    @patch.object(fetch_twitter.OfficialBackend, "_save_id_cache")
+    @patch.object(fetch_twitter.OfficialBackend, "_load_id_cache", return_value={})
+    @patch("fetch_twitter.x_request_json")
+    def test_batch_user_lookup_skips_individual_fallback_when_rate_deferred(
+        self,
+        request_mock,
+        _load_cache_mock,
+        _save_cache_mock,
+    ):
+        request_mock.side_effect = fetch_twitter.XRateLimitDeferred(1300)
+        backend = fetch_twitter.OfficialBackend("token-a")
+
+        result = backend._batch_resolve_user_ids(["sama", "jack"])
+
+        self.assertEqual(result, {})
+        request_mock.assert_called_once()
+
+    @patch("fetch_twitter.time.sleep")
+    @patch("fetch_twitter.x_request_json")
+    def test_transient_429_is_retried_for_timeline_request(self, request_mock, _sleep_mock):
+        request_mock.side_effect = [
+            http_error(429),
+            {"data": []},
+        ]
+        backend = fetch_twitter.OfficialBackend("token-a")
+
+        result = backend._fetch_user_tweets(twitter_source(), utc("2024-12-09T00:00:00Z"), user_id="1")
+
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(result["attempts"], 2)
+        self.assertEqual(request_mock.call_count, 2)
+
+    @patch("fetch_twitter.time.sleep")
+    @patch("fetch_twitter.x_request_json")
+    def test_backend_no_cache_is_forwarded_to_timeline_request(self, request_mock, _sleep_mock):
+        request_mock.return_value = {"data": []}
+        backend = fetch_twitter.OfficialBackend("token-a", no_cache=True)
+
+        result = backend._fetch_user_tweets(twitter_source(), utc("2024-12-09T00:00:00Z"), user_id="1")
+
+        self.assertEqual(result["status"], "ok")
+        request_mock.assert_called_once()
+        self.assertTrue(request_mock.call_args.kwargs["no_cache"])
+
+
+class TestGetXApiBackend(unittest.TestCase):
+    @patch("fetch_twitter.x_request_json")
+    def test_backend_no_cache_is_forwarded_to_timeline_requests(self, request_mock):
+        request_mock.side_effect = [
+            {
+                "tweets": [
+                    {
+                        "id": "1",
+                        "text": "fresh tweet",
+                        "createdAt": "Tue Dec 10 07:00:30 +0000 2024",
+                        "url": "https://x.com/sama/status/1",
+                    }
+                ],
+                "has_more": True,
+                "next_cursor": "cursor-1",
+            },
+            {"tweets": [], "has_more": False},
+        ]
+        backend = fetch_twitter.GetXApiBackend("token-a-12345", no_cache=True)
+        source = twitter_source()
+
+        result = backend._fetch_user_tweets(source, utc("2024-12-09T00:00:00Z"))
+
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(request_mock.call_count, 2)
+        self.assertTrue(request_mock.call_args_list[0].kwargs["no_cache"])
+        self.assertTrue(request_mock.call_args_list[1].kwargs["no_cache"])
+
+    @patch("fetch_twitter.time.sleep")
+    @patch("fetch_twitter.x_request_json")
+    def test_transient_429_is_retried_for_timeline_request(self, request_mock, _sleep_mock):
+        request_mock.side_effect = [
+            http_error(429),
+            {"tweets": [], "has_more": False},
+        ]
+        backend = fetch_twitter.GetXApiBackend("token-a-12345")
+
+        result = backend._fetch_user_tweets(twitter_source(), utc("2024-12-09T00:00:00Z"))
+
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(result["attempts"], 2)
+        self.assertEqual(request_mock.call_count, 2)
+
+
+class TestTwitterApiIoBackend(unittest.TestCase):
+    @patch("fetch_twitter.x_request_json")
+    def test_backend_no_cache_is_forwarded_to_timeline_requests(self, request_mock):
+        request_mock.side_effect = [
+            {
+                "data": {
+                    "tweets": [
+                        {
+                            "id": "1",
+                            "text": "fresh tweet",
+                            "createdAt": "Tue Dec 10 07:00:30 +0000 2024",
+                            "url": "https://twitter.com/sama/status/1",
+                        }
+                    ],
+                    "has_next_page": True,
+                    "next_cursor": "cursor-1",
+                }
+            },
+            {"data": {"tweets": [], "has_next_page": False}},
+        ]
+        backend = fetch_twitter.TwitterApiIoBackend("token-a", no_cache=True)
+        source = twitter_source()
+
+        result = backend._fetch_user_tweets(source, utc("2024-12-09T00:00:00Z"))
+
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(request_mock.call_count, 2)
+        self.assertTrue(request_mock.call_args_list[0].kwargs["no_cache"])
+        self.assertTrue(request_mock.call_args_list[1].kwargs["no_cache"])
+
+    @patch("fetch_twitter.time.sleep")
+    @patch("fetch_twitter.x_request_json")
+    def test_transient_429_is_retried_for_timeline_request(self, request_mock, _sleep_mock):
+        request_mock.side_effect = [
+            http_error(429),
+            {"data": {"tweets": [], "has_next_page": False}},
+        ]
+        backend = fetch_twitter.TwitterApiIoBackend("token-a")
+
+        result = backend._fetch_user_tweets(twitter_source(), utc("2024-12-09T00:00:00Z"))
+
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(result["attempts"], 2)
+        self.assertEqual(request_mock.call_count, 2)
 
 
 class TestMainOpenCliOptions(unittest.TestCase):
@@ -1095,3 +1291,510 @@ class TestOpenCliMergeCompatibility(unittest.TestCase):
         self.assertIn("date", article)
         self.assertIn("metrics", article)
         self.assertGreaterEqual(score, 8)
+
+
+class TestXFileCacheAndRateLimits(unittest.TestCase):
+    def test_default_cache_dir_is_project_local(self):
+        expected = Path(__file__).parent.parent / ".cache" / "x"
+        self.assertEqual(fetch_twitter.get_x_cache_dir(), expected)
+
+    def test_timeline_cache_ttl_defaults_to_short_window(self):
+        with patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(fetch_twitter.get_x_timeline_cache_ttl_seconds(), 300)
+
+    def test_timeline_cache_ttl_can_be_overridden(self):
+        with patch.dict(os.environ, {"X_TIMELINE_CACHE_TTL_SECONDS": "120"}):
+            self.assertEqual(fetch_twitter.get_x_timeline_cache_ttl_seconds(), 120)
+
+    def test_source_timeline_cache_ttl_uses_source_override(self):
+        source = {"id": "sama-twitter", "priority": True, "twitter_cache_ttl_seconds": 900}
+
+        self.assertEqual(fetch_twitter.get_source_timeline_cache_ttl_seconds(source), 900)
+
+    def test_source_timeline_cache_ttl_defaults_by_priority(self):
+        with patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(fetch_twitter.get_source_timeline_cache_ttl_seconds({"priority": True}), 300)
+            self.assertEqual(fetch_twitter.get_source_timeline_cache_ttl_seconds({"priority": False}), 1800)
+
+    def test_source_timeline_cache_ttl_env_overrides_priority_defaults(self):
+        with patch.dict(os.environ, {
+            "X_PRIORITY_TIMELINE_CACHE_TTL_SECONDS": "600",
+            "X_REGULAR_TIMELINE_CACHE_TTL_SECONDS": "7200",
+        }):
+            self.assertEqual(fetch_twitter.get_source_timeline_cache_ttl_seconds({"priority": True}), 600)
+            self.assertEqual(fetch_twitter.get_source_timeline_cache_ttl_seconds({"priority": False}), 7200)
+
+    def test_timeline_cache_entry_uses_short_ttl_when_requested(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, {}, clear=True):
+            cache = fetch_twitter.XFileCache("official", cache_dir=Path(tmp), credential="token-a")
+            cache.put(
+                "GET /2/users/:id/tweets",
+                {"user_id": "1", "max_results": 20},
+                200,
+                {},
+                {"data": []},
+                ttl_seconds=fetch_twitter.get_x_timeline_cache_ttl_seconds(),
+            )
+            index = cache.index_store.load()
+            entry = next(iter(index.values()))
+
+            self.assertEqual(entry["expires_at"] - entry["fetched_at"], 300)
+
+    def test_gitignore_ignores_project_cache(self):
+        content = (Path(__file__).parent.parent / ".gitignore").read_text(encoding="utf-8")
+        self.assertIn("/.cache/", content)
+
+    def test_json_state_store_returns_default_for_bad_json(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "state.json"
+            path.write_text("{bad json", encoding="utf-8")
+            store = fetch_twitter.JsonStateStore(path, default={"ok": True})
+
+            self.assertEqual(store.load(), {"ok": True})
+
+    def test_json_state_store_saves_with_atomic_replace(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "state.json"
+            store = fetch_twitter.JsonStateStore(path)
+
+            with patch("fetch_twitter.os.replace", wraps=os.replace) as replace_mock:
+                store.save({"value": 1})
+
+            self.assertTrue(replace_mock.called)
+            self.assertEqual(json.loads(path.read_text(encoding="utf-8")), {"value": 1})
+
+    def test_file_cache_key_is_stable_for_param_order(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cache = fetch_twitter.XFileCache("official", cache_dir=Path(tmp))
+
+            first = cache.make_key("GET /2/users/by", {"b": 2, "a": 1})
+            second = cache.make_key("GET /2/users/by", {"a": 1, "b": 2})
+
+            self.assertEqual(first, second)
+
+    def test_file_cache_key_is_scoped_by_credential(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            first_cache = fetch_twitter.XFileCache("official", cache_dir=Path(tmp), credential="token-a")
+            second_cache = fetch_twitter.XFileCache("official", cache_dir=Path(tmp), credential="token-b")
+
+            first = first_cache.make_key("GET /2/users/by", {"usernames": "sama"})
+            second = second_cache.make_key("GET /2/users/by", {"usernames": "sama"})
+
+            self.assertNotEqual(first, second)
+
+    def test_file_cache_does_not_share_bodies_between_credentials(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            first_cache = fetch_twitter.XFileCache("official", cache_dir=Path(tmp), credential="token-a")
+            second_cache = fetch_twitter.XFileCache("official", cache_dir=Path(tmp), credential="token-b")
+            first_cache.put("GET /2/users/by", {"usernames": "sama"}, 200, {}, {"data": [{"id": "1"}]})
+
+            self.assertIsNone(second_cache.get("GET /2/users/by", {"usernames": "sama"}))
+
+    def test_file_cache_returns_fresh_response(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cache = fetch_twitter.XFileCache("official", cache_dir=Path(tmp))
+            cache.put("GET /2/users/by", {"usernames": "sama"}, 200, {}, {"data": [{"id": "1"}]})
+
+            self.assertEqual(cache.get("GET /2/users/by", {"usernames": "sama"}), {"data": [{"id": "1"}]})
+
+    def test_x_request_json_skips_before_network_on_cache_hit(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, {"X_CACHE_DIR": tmp}):
+            endpoint = "GET /twitter/user/last_tweets"
+            params = {"userName": "sama", "includeReplies": "false"}
+            cache = fetch_twitter.get_x_file_cache("twitterapiio", credential="token-a")
+            cache.put(endpoint, params, 200, {}, {"data": {"tweets": []}})
+            before_network = MagicMock()
+
+            result = fetch_twitter.x_request_json(
+                "twitterapiio",
+                endpoint,
+                "https://api.twitterapi.io/twitter/user/last_tweets",
+                {},
+                params,
+                credential="token-a",
+                before_network=before_network,
+            )
+
+            self.assertEqual(result, {"data": {"tweets": []}})
+            before_network.assert_not_called()
+
+    def test_x_request_json_runs_before_network_on_cache_miss(self):
+        class FakeResponse:
+            status = 200
+            headers = {}
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def read(self):
+                return b'{"data": {"tweets": []}}'
+
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, {"X_CACHE_DIR": tmp}):
+            before_network = MagicMock()
+            with patch("fetch_twitter.urlopen", return_value=FakeResponse()):
+                result = fetch_twitter.x_request_json(
+                    "twitterapiio",
+                    "GET /twitter/user/last_tweets",
+                    "https://api.twitterapi.io/twitter/user/last_tweets",
+                    {},
+                    {"userName": "sama", "includeReplies": "false"},
+                    credential="token-a",
+                    before_network=before_network,
+                )
+
+            self.assertEqual(result, {"data": {"tweets": []}})
+            before_network.assert_called_once_with()
+
+    def test_file_cache_does_not_store_200_error_payloads(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cache = fetch_twitter.XFileCache("getxapi", cache_dir=Path(tmp))
+            cache.put("GET /twitter/user/tweets", {"userName": "sama"}, 200, {}, {"error": "temporary provider failure"})
+
+            self.assertIsNone(cache.get("GET /twitter/user/tweets", {"userName": "sama"}))
+            self.assertEqual(cache.index_store.load(), {})
+
+    def test_file_cache_does_not_store_200_errors_list_payloads(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cache = fetch_twitter.XFileCache("official", cache_dir=Path(tmp))
+            cache.put("GET /2/users/by", {"usernames": "sama"}, 200, {}, {"errors": [{"detail": "denied"}]})
+
+            self.assertIsNone(cache.get("GET /2/users/by", {"usernames": "sama"}))
+            self.assertEqual(cache.index_store.load(), {})
+
+    def test_file_cache_hit_survives_access_time_save_failure(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cache = fetch_twitter.XFileCache("official", cache_dir=Path(tmp))
+            cache.put("GET /2/users/by", {"usernames": "sama"}, 200, {}, {"data": [{"id": "1"}]})
+
+            with patch.object(cache.index_store, "save", side_effect=OSError("read-only filesystem")):
+                with self.assertLogs(level="WARNING") as logs:
+                    body = cache.get("GET /2/users/by", {"usernames": "sama"})
+
+            self.assertEqual(body, {"data": [{"id": "1"}]})
+            self.assertTrue(any("Failed to persist X response cache access time" in line for line in logs.output))
+
+    def test_file_cache_misses_expired_response(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cache = fetch_twitter.XFileCache("official", cache_dir=Path(tmp))
+            cache.put("GET /2/users/by", {"usernames": "sama"}, 200, {}, {"data": []}, ttl_seconds=-1)
+
+            self.assertIsNone(cache.get("GET /2/users/by", {"usernames": "sama"}))
+
+    def test_file_cache_rejects_index_paths_outside_cache_dir(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cache_dir = Path(tmp) / "cache"
+            outside_path = Path(tmp) / "outside.json"
+            outside_path.write_text(json.dumps({"body": {"data": "leaked"}}), encoding="utf-8")
+            cache = fetch_twitter.XFileCache("official", cache_dir=cache_dir, credential="token-a")
+            cache_key = cache.make_key("GET /2/users/by", {"usernames": "sama"})
+            cache.index_store.save({
+                cache_key: {
+                    "path": "../outside.json",
+                    "expires_at": int(fetch_twitter.time.time()) + 3600,
+                }
+            })
+
+            self.assertIsNone(cache.get("GET /2/users/by", {"usernames": "sama"}))
+
+    def test_cache_janitor_does_not_delete_index_paths_outside_cache_dir(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cache_dir = Path(tmp) / "cache"
+            outside_path = Path(tmp) / "outside.json"
+            outside_path.write_text("keep", encoding="utf-8")
+            store = fetch_twitter.JsonStateStore(cache_dir / "cache_index.json")
+            store.save({
+                "bad": {
+                    "path": "../outside.json",
+                    "fetched_at": 1,
+                    "expires_at": 1,
+                    "size": 4,
+                    "last_accessed_at": 1,
+                }
+            })
+
+            fetch_twitter.XCacheJanitor(cache_dir=cache_dir).cleanup()
+
+            self.assertTrue(outside_path.exists())
+            self.assertEqual(store.load(), {})
+
+    def test_no_cache_disables_response_read_and_write(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cache = fetch_twitter.XFileCache("official", cache_dir=Path(tmp), no_cache=True)
+            cache.put("GET /2/users/by", {"usernames": "sama"}, 200, {}, {"data": []})
+
+            self.assertIsNone(cache.get("GET /2/users/by", {"usernames": "sama"}))
+            self.assertFalse((Path(tmp) / "responses").exists())
+
+    def test_oversized_cache_entry_is_not_written(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, {"X_CACHE_MAX_ENTRY_BYTES": "64"}):
+            cache = fetch_twitter.XFileCache("official", cache_dir=Path(tmp))
+            cache.put("GET /2/users/by", {"usernames": "sama"}, 200, {}, {"data": "x" * 1000})
+
+            self.assertEqual(cache.index_store.load(), {})
+
+    def test_cache_entry_size_cap_uses_written_json_size(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cache = fetch_twitter.XFileCache("official", cache_dir=Path(tmp))
+            endpoint = "GET /2/users/by"
+            params = {"usernames": "sama"}
+            body = {"data": "x" * 120}
+            current = 1000
+            ttl = 3600
+            payload = {
+                "backend": "official",
+                "credential_id": "anonymous",
+                "endpoint": endpoint,
+                "params": params,
+                "status_code": 200,
+                "headers": {},
+                "body": body,
+                "fetched_at": current,
+                "expires_at": current + ttl,
+            }
+            compact_size = len(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8"))
+            written_size = len(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True).encode("utf-8"))
+            self.assertGreater(written_size, compact_size)
+
+            with patch.dict(os.environ, {"X_CACHE_MAX_ENTRY_BYTES": str(compact_size)}):
+                with patch("fetch_twitter.time.time", return_value=current):
+                    cache.put(endpoint, params, 200, {}, body, ttl_seconds=ttl)
+
+            self.assertEqual(cache.index_store.load(), {})
+
+    def test_response_cache_persistence_failure_is_non_fatal(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cache = fetch_twitter.XFileCache("official", cache_dir=Path(tmp))
+            with patch("fetch_twitter._atomic_json_write", side_effect=OSError("disk full")):
+                with self.assertLogs(level="WARNING") as logs:
+                    cache.put("GET /2/users/by", {"usernames": "sama"}, 200, {}, {"data": []})
+
+            self.assertTrue(any("Failed to persist X response cache entry" in line for line in logs.output))
+
+    def test_cache_janitor_removes_entries_older_than_retention(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cache_dir = Path(tmp)
+            cache = fetch_twitter.XFileCache("official", cache_dir=cache_dir)
+            cache.put("GET /2/users/by", {"usernames": "old"}, 200, {}, {"data": []})
+            key = cache.make_key("GET /2/users/by", {"usernames": "old"})
+            index = cache.index_store.load()
+            index[key]["fetched_at"] = int(fetch_twitter.time.time()) - (31 * 86400)
+            index[key]["expires_at"] = int(fetch_twitter.time.time()) + 86400
+            cache.index_store.save(index)
+
+            fetch_twitter.XCacheJanitor(cache_dir=cache_dir).cleanup()
+
+            self.assertEqual(cache.index_store.load(), {})
+
+    def test_cache_janitor_removes_oldest_entries_when_over_budget(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, {"X_CACHE_MAX_BYTES": "450"}):
+            cache_dir = Path(tmp)
+            cache = fetch_twitter.XFileCache("official", cache_dir=cache_dir)
+            cache.put("GET /2/users/by", {"usernames": "old"}, 200, {}, {"data": "x" * 80})
+            cache.put("GET /2/users/by", {"usernames": "new"}, 200, {}, {"data": "y" * 80})
+            old_key = cache.make_key("GET /2/users/by", {"usernames": "old"})
+            new_key = cache.make_key("GET /2/users/by", {"usernames": "new"})
+            index = cache.index_store.load()
+            index[old_key]["last_accessed_at"] = 1
+            index[new_key]["last_accessed_at"] = 2
+            cache.index_store.save(index)
+
+            fetch_twitter.XCacheJanitor(cache_dir=cache_dir).cleanup()
+            remaining = cache.index_store.load()
+
+            self.assertNotIn(old_key, remaining)
+            self.assertIn(new_key, remaining)
+
+    def test_cache_janitor_keeps_expired_index_entry_when_unlink_fails(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cache_dir = Path(tmp)
+            cache = fetch_twitter.XFileCache("official", cache_dir=cache_dir)
+            cache.put("GET /2/users/by", {"usernames": "old"}, 200, {}, {"data": []})
+            key = cache.make_key("GET /2/users/by", {"usernames": "old"})
+            index = cache.index_store.load()
+            index[key]["fetched_at"] = int(fetch_twitter.time.time()) - (31 * 86400)
+            index[key]["expires_at"] = int(fetch_twitter.time.time()) + 86400
+            cache.index_store.save(index)
+
+            with patch("pathlib.Path.unlink", side_effect=OSError("permission denied")):
+                fetch_twitter.XCacheJanitor(cache_dir=cache_dir).cleanup()
+
+            remaining = cache.index_store.load()
+            self.assertIn(key, remaining)
+
+    def test_cache_janitor_keeps_expired_index_entry_when_unlink_and_stat_fail(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cache_dir = Path(tmp)
+            cache = fetch_twitter.XFileCache("official", cache_dir=cache_dir)
+            cache.put("GET /2/users/by", {"usernames": "old"}, 200, {}, {"data": []})
+            key = cache.make_key("GET /2/users/by", {"usernames": "old"})
+            index = cache.index_store.load()
+            index[key]["fetched_at"] = int(fetch_twitter.time.time()) - (31 * 86400)
+            index[key]["expires_at"] = int(fetch_twitter.time.time()) + 86400
+            cache.index_store.save(index)
+            target_path = (cache_dir / index[key]["path"]).resolve()
+            original_exists = Path.exists
+            original_stat = Path.stat
+
+            def exists_before_unlink(path_self, *args, **kwargs):
+                if path_self == target_path:
+                    return True
+                return original_exists(path_self, *args, **kwargs)
+
+            def stat_with_race(path_self, *args, **kwargs):
+                if path_self == target_path:
+                    raise FileNotFoundError("raced")
+                return original_stat(path_self, *args, **kwargs)
+
+            with patch("pathlib.Path.unlink", side_effect=OSError("permission denied")):
+                with patch("pathlib.Path.exists", autospec=True, side_effect=exists_before_unlink):
+                    with patch("pathlib.Path.stat", autospec=True, side_effect=stat_with_race):
+                        with patch("fetch_twitter.logging.warning") as warning_mock:
+                            fetch_twitter.XCacheJanitor(cache_dir=cache_dir).cleanup()
+
+            remaining = cache.index_store.load()
+            self.assertIn(key, remaining)
+            self.assertEqual(remaining[key]["size"], index[key]["size"])
+            self.assertFalse(
+                any(
+                    call.args and str(call.args[0]).startswith("X cache cleanup failed")
+                    for call in warning_mock.call_args_list
+                )
+            )
+
+    def test_cache_janitor_keeps_over_budget_index_entry_when_unlink_fails(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, {"X_CACHE_MAX_BYTES": "450"}):
+            cache_dir = Path(tmp)
+            cache = fetch_twitter.XFileCache("official", cache_dir=cache_dir)
+            cache.put("GET /2/users/by", {"usernames": "old"}, 200, {}, {"data": "x" * 80})
+            cache.put("GET /2/users/by", {"usernames": "new"}, 200, {}, {"data": "y" * 80})
+            old_key = cache.make_key("GET /2/users/by", {"usernames": "old"})
+            index = cache.index_store.load()
+            index[old_key]["last_accessed_at"] = 1
+            cache.index_store.save(index)
+
+            with patch("pathlib.Path.unlink", side_effect=OSError("permission denied")):
+                fetch_twitter.XCacheJanitor(cache_dir=cache_dir).cleanup()
+
+            remaining = cache.index_store.load()
+            self.assertIn(old_key, remaining)
+
+    def test_rate_limit_manager_pauses_429_until_reset(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            manager = fetch_twitter.XRateLimitManager(cache_dir=Path(tmp), now_func=lambda: 1000)
+            manager.update_from_headers(
+                "official",
+                "GET /2/users/:id/tweets",
+                "secret-token",
+                {
+                    "x-rate-limit-limit": "15",
+                    "x-rate-limit-remaining": "0",
+                    "x-rate-limit-reset": "1300",
+                },
+                status_code=429,
+            )
+
+            allowed, deferred_until = manager.can_request(
+                "official",
+                "GET /2/users/:id/tweets",
+                "secret-token",
+                now=1001,
+            )
+
+            self.assertFalse(allowed)
+            self.assertEqual(deferred_until, 1300)
+
+    def test_rate_limit_manager_uses_retry_after_when_reset_missing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            manager = fetch_twitter.XRateLimitManager(cache_dir=Path(tmp), now_func=lambda: 1000)
+            manager.update_from_headers(
+                "getxapi",
+                "GET /twitter/user/tweets",
+                "secret-token",
+                {
+                    "retry-after": "30",
+                },
+                status_code=429,
+            )
+
+            allowed, deferred_until = manager.can_request(
+                "getxapi",
+                "GET /twitter/user/tweets",
+                "secret-token",
+                now=1001,
+            )
+
+            self.assertFalse(allowed)
+            self.assertEqual(deferred_until, 1030)
+
+    def test_rate_limit_manager_uses_short_fallback_when_429_has_no_retry_headers(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            manager = fetch_twitter.XRateLimitManager(cache_dir=Path(tmp), now_func=lambda: 1000)
+            manager.update_from_headers(
+                "getxapi",
+                "GET /twitter/user/tweets",
+                "secret-token",
+                {},
+                status_code=429,
+            )
+
+            allowed, deferred_until = manager.can_request(
+                "getxapi",
+                "GET /twitter/user/tweets",
+                "secret-token",
+                now=1001,
+            )
+
+            self.assertFalse(allowed)
+            self.assertEqual(deferred_until, 1060)
+
+    def test_rate_limit_persistence_failure_is_non_fatal(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            manager = fetch_twitter.XRateLimitManager(cache_dir=Path(tmp), now_func=lambda: 1000)
+            with patch.object(manager.store, "save", side_effect=OSError("read-only filesystem")):
+                with self.assertLogs(level="WARNING") as logs:
+                    manager.update_from_headers(
+                        "official",
+                        "GET /2/users/:id/tweets",
+                        "secret-token",
+                        {
+                            "x-rate-limit-limit": "15",
+                            "x-rate-limit-remaining": "14",
+                            "x-rate-limit-reset": "1300",
+                        },
+                        status_code=200,
+                    )
+
+            self.assertTrue(any("Failed to persist X rate-limit state" in line for line in logs.output))
+
+    def test_file_cache_instances_share_index_lock_for_same_cache_dir(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            first = fetch_twitter.XFileCache("official", cache_dir=Path(tmp), credential="token-a")
+            second = fetch_twitter.XFileCache("official", cache_dir=Path(tmp), credential="token-b")
+
+            self.assertIs(first._lock, second._lock)
+
+    def test_rate_limit_managers_share_lock_for_same_cache_dir(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            first = fetch_twitter.XRateLimitManager(cache_dir=Path(tmp), now_func=lambda: 1000)
+            second = fetch_twitter.XRateLimitManager(cache_dir=Path(tmp), now_func=lambda: 1000)
+
+            self.assertIs(first._lock, second._lock)
+
+    def test_get_x_file_cache_reuses_instances_for_same_scope(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            first = fetch_twitter.get_x_file_cache("official", cache_dir=Path(tmp), credential="token-a")
+            second = fetch_twitter.get_x_file_cache("official", cache_dir=Path(tmp), credential="token-a")
+            other = fetch_twitter.get_x_file_cache("official", cache_dir=Path(tmp), credential="token-b")
+
+            self.assertIs(first, second)
+            self.assertIsNot(first, other)
+
+    def test_get_x_rate_limit_manager_reuses_instances_for_same_cache_dir(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            first = fetch_twitter.get_x_rate_limit_manager(cache_dir=Path(tmp))
+            second = fetch_twitter.get_x_rate_limit_manager(cache_dir=Path(tmp))
+
+            self.assertIs(first, second)
