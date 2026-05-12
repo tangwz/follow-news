@@ -772,10 +772,10 @@ class TestFetchWithBackendChain(unittest.TestCase):
             opencli_workers=7,
         )
 
-        backend_cls_mock.assert_called_once_with(max_workers=7, auto_update=False)
+        backend_cls_mock.assert_called_once_with(max_workers=7, auto_update=False, no_cache=False)
 
     @patch("fetch_twitter.OpenCliBackend")
-    def test_no_cache_is_not_forwarded_to_opencli_backend(self, backend_cls_mock):
+    def test_no_cache_is_forwarded_to_opencli_backend(self, backend_cls_mock):
         backend = backend_cls_mock.return_value
         backend.fetch_all.return_value = []
 
@@ -786,7 +786,7 @@ class TestFetchWithBackendChain(unittest.TestCase):
             no_cache=True,
         )
 
-        backend_cls_mock.assert_called_once_with(max_workers=None, auto_update=False)
+        backend_cls_mock.assert_called_once_with(max_workers=None, auto_update=False, no_cache=True)
 
     @patch.dict(os.environ, {"GETX_API_KEY": "x" * 20}, clear=True)
     @patch("fetch_twitter.GetXApiBackend")

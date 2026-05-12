@@ -2298,6 +2298,7 @@ def _instantiate_backend(
         return OpenCliBackend(
             max_workers=opencli_workers,
             auto_update=opencli_auto_update,
+            no_cache=no_cache,
         )
 
     if backend_name == "getxapi":
