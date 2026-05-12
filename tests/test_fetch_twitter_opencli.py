@@ -1103,6 +1103,30 @@ class TestXFileCacheAndRateLimits(unittest.TestCase):
         expected = Path(__file__).parent.parent / ".cache" / "x"
         self.assertEqual(fetch_twitter.get_x_cache_dir(), expected)
 
+    def test_timeline_cache_ttl_defaults_to_short_window(self):
+        with patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(fetch_twitter.get_x_timeline_cache_ttl_seconds(), 300)
+
+    def test_timeline_cache_ttl_can_be_overridden(self):
+        with patch.dict(os.environ, {"X_TIMELINE_CACHE_TTL_SECONDS": "120"}):
+            self.assertEqual(fetch_twitter.get_x_timeline_cache_ttl_seconds(), 120)
+
+    def test_timeline_cache_entry_uses_short_ttl_when_requested(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, {}, clear=True):
+            cache = fetch_twitter.XFileCache("official", cache_dir=Path(tmp), credential="token-a")
+            cache.put(
+                "GET /2/users/:id/tweets",
+                {"user_id": "1", "max_results": 20},
+                200,
+                {},
+                {"data": []},
+                ttl_seconds=fetch_twitter.get_x_timeline_cache_ttl_seconds(),
+            )
+            index = cache.index_store.load()
+            entry = next(iter(index.values()))
+
+            self.assertEqual(entry["expires_at"] - entry["fetched_at"], 300)
+
     def test_gitignore_ignores_project_cache(self):
         content = (Path(__file__).parent.parent / ".gitignore").read_text(encoding="utf-8")
         self.assertIn("/.cache/", content)

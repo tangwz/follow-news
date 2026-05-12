@@ -81,6 +81,7 @@ ID_CACHE_TTL_DAYS = 7
 X_CACHE_RETENTION_DAYS = 30
 X_CACHE_MAX_BYTES = 512 * 1024 * 1024
 X_CACHE_MAX_ENTRY_BYTES = 5 * 1024 * 1024
+X_TIMELINE_CACHE_TTL_SECONDS = 5 * 60
 X_RATE_LIMIT_FALLBACK_SECONDS = 15 * 60
 X_RESPONSE_CACHE_TTL_SECONDS = X_CACHE_RETENTION_DAYS * 86400
 
@@ -854,6 +855,11 @@ def get_x_cache_max_entry_bytes() -> int:
     return get_env_int("X_CACHE_MAX_ENTRY_BYTES", X_CACHE_MAX_ENTRY_BYTES, minimum=1)
 
 
+def get_x_timeline_cache_ttl_seconds() -> int:
+    """Return the short cache TTL for latest timeline/tweet-list responses."""
+    return get_env_int("X_TIMELINE_CACHE_TTL_SECONDS", X_TIMELINE_CACHE_TTL_SECONDS, minimum=0)
+
+
 def is_x_response_cache_disabled() -> bool:
     """Return true when response body caching is disabled."""
     return os.getenv("X_CACHE_DISABLE_RESPONSE_CACHE", "").strip().lower() in {"1", "true", "yes", "on"}
@@ -1505,7 +1511,7 @@ class OpenCliBackend(TwitterBackend):
             payload = json.loads(result.stdout or "null")
         except json.JSONDecodeError as exc:
             raise OpenCliBackendError("opencli_parse_error", "opencli twitter tweets returned invalid JSON") from exc
-        cache.put(endpoint, params, 200, {}, payload)
+        cache.put(endpoint, params, 200, {}, payload, ttl_seconds=get_x_timeline_cache_ttl_seconds())
         articles = self._parse_tweets_payload(payload, source, cutoff)
         return self._make_result(source, articles, 0)
 
@@ -1706,6 +1712,7 @@ class OfficialBackend(TwitterBackend):
                     {"user_id": user_id, **params},
                     credential=self.bearer_token,
                     no_cache=self.no_cache,
+                    cache_ttl_seconds=get_x_timeline_cache_ttl_seconds(),
                 )
 
                 articles = []
@@ -1860,6 +1867,7 @@ class TwitterApiIoBackend(TwitterBackend):
                     {"userName": handle, "includeReplies": "false"},
                     credential=self.api_key,
                     no_cache=self.no_cache,
+                    cache_ttl_seconds=get_x_timeline_cache_ttl_seconds(),
                 )
 
                 # API wraps response in {"data": {...}} envelope
@@ -1890,6 +1898,7 @@ class TwitterApiIoBackend(TwitterBackend):
                             {"userName": handle, "includeReplies": "false", "cursor": next_cursor},
                             credential=self.api_key,
                             no_cache=self.no_cache,
+                            cache_ttl_seconds=get_x_timeline_cache_ttl_seconds(),
                         )
                         data2 = raw2.get("data", raw2)
                         articles.extend(self._parse_tweets_page(
@@ -2040,6 +2049,7 @@ class GetXApiBackend(TwitterBackend):
                     {"userName": handle},
                     credential=self.api_key,
                     no_cache=self.no_cache,
+                    cache_ttl_seconds=get_x_timeline_cache_ttl_seconds(),
                 )
 
                 if raw.get("error"):
@@ -2067,6 +2077,7 @@ class GetXApiBackend(TwitterBackend):
                                     {"userName": handle, "cursor": next_cursor},
                                     credential=self.api_key,
                                     no_cache=self.no_cache,
+                                    cache_ttl_seconds=get_x_timeline_cache_ttl_seconds(),
                                 )
                                 if raw2.get("error"):
                                     raise ValueError(str(raw2["error"])[:100])
