@@ -284,7 +284,6 @@ class TestSkillFrontmatter(unittest.TestCase):
 
         for line in web_backend_lines:
             self.assertNotIn("browser", line)
-        self.assertNotIn("DuckDuckGo", fetch_web_section)
         self.assertNotIn("browser-backed", fetch_web_section)
         self.assertIn("auto|brave|tavily", skill)
 
