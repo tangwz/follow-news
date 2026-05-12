@@ -510,7 +510,7 @@ def _ensure_opencli_latest(binary: str) -> Dict[str, Any]:
         if "-y" not in candidate:
             arg_variants.append(candidate + ["-y"])
 
-        for args in arg_variants:
+        for variant_index, args in enumerate(arg_variants):
             cp = _run_opencli_update_command(binary, args)
             output = {
                 "command": [binary] + args,
@@ -521,6 +521,7 @@ def _ensure_opencli_latest(binary: str) -> Dict[str, Any]:
             command_attempts.append(output)
             combined_stderr = cp.stderr or ""
             combined_stdout = cp.stdout or ""
+            has_more_variants = variant_index < len(arg_variants) - 1
 
             if cp.returncode == 0:
                 if _looks_like_already_latest(combined_stderr, combined_stdout):
@@ -546,6 +547,16 @@ def _ensure_opencli_latest(binary: str) -> Dict[str, Any]:
                 break
 
             if _looks_like_unknown_update_flag(combined_stderr, combined_stdout):
+                if has_more_variants:
+                    continue
+                result["status"] = "failed"
+                result["message"] = output["stderr"] or output["stdout"] or "OpenCLI update failed."
+                result["command"] = " ".join(output["command"])
+                result["attempts"] = command_attempts
+                _record_opencli_update_state(state_path, result["status"], result)
+                return result
+
+            if has_more_variants:
                 continue
 
             result["status"] = "failed"

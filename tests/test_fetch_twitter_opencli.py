@@ -11,7 +11,7 @@ import importlib.util
 from datetime import datetime
 from contextlib import ExitStack
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 from unittest.mock import mock_open
 
 SCRIPTS_DIR = Path(__file__).parent.parent / "scripts"
@@ -257,10 +257,65 @@ class TestBackendSelection(unittest.TestCase):
 
 
 class TestOpenCliAutoUpdate(unittest.TestCase):
+    @patch.dict(os.environ, {"OPENCLI_UPDATE_COMMAND": "self-update"}, clear=True)
+    def test_ensure_opencli_latest_retries_yes_and_y_flags(self):
+        with ExitStack() as stack:
+            if not hasattr(fetch_twitter, "_run_opencli_update_command"):
+                self.skipTest("fetch_twitter._run_opencli_update_command is not available")
+            if not hasattr(fetch_twitter, "_record_opencli_update_state"):
+                self.skipTest("fetch_twitter._record_opencli_update_state is not available")
+            if not hasattr(fetch_twitter, "_opencli_update_state_path"):
+                self.skipTest("fetch_twitter._opencli_update_state_path is not available")
+
+            run_mock = stack.enter_context(
+                patch("fetch_twitter._run_opencli_update_command")
+            )
+            stack.enter_context(patch("fetch_twitter._record_opencli_update_state"))
+            state_path_mock = stack.enter_context(
+                patch(
+                    "fetch_twitter._opencli_update_state_path",
+                    return_value=Path("/tmp/opencli-update-state.json"),
+                )
+            )
+
+            state_path = state_path_mock.return_value
+            if state_path.exists():
+                state_path.unlink()
+            run_mock.side_effect = [
+                subprocess.CompletedProcess(
+                    args=["/bin/opencli", "self-update"],
+                    returncode=1,
+                    stdout="",
+                    stderr="Update requires confirmation. Use --yes to continue.",
+                ),
+                subprocess.CompletedProcess(
+                    args=["/bin/opencli", "self-update", "--yes"],
+                    returncode=0,
+                    stdout="updated",
+                    stderr="",
+                ),
+            ]
+
+            ensure_opencli_latest = getattr(fetch_twitter, "_ensure_opencli_latest", None)
+            if ensure_opencli_latest is None:
+                self.skipTest("No OpenCLI auto-update entrypoint found in scripts/fetch-twitter.py")
+
+            result = ensure_opencli_latest("/bin/opencli")
+
+            self.assertEqual(result["status"], "updated")
+            self.assertEqual(result["command"], "/bin/opencli self-update --yes")
+            self.assertEqual(run_mock.call_count, 2)
+            run_mock.assert_has_calls(
+                [
+                    call("/bin/opencli", ["self-update"]),
+                    call("/bin/opencli", ["self-update", "--yes"]),
+                ]
+            )
+
     @patch.dict(os.environ, {"OPENCLI_UPDATE_COMMAND": "self-update --yes"}, clear=True)
     def test_ensure_opencli_latest_uses_custom_update_command(
         self,
-    ):
+        ):
         with ExitStack() as stack:
             if not hasattr(fetch_twitter, "_run_opencli_update_command"):
                 self.skipTest("fetch_twitter._run_opencli_update_command is not available")
