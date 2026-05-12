@@ -5,6 +5,7 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 import unittest
 import importlib.util
 from datetime import datetime
@@ -319,7 +320,7 @@ class TestOpenCliBackend(unittest.TestCase):
             self._completed("lease released"),
         ]
 
-        backend = fetch_twitter.OpenCliBackend()
+        backend = fetch_twitter.OpenCliBackend(no_cache=True)
         results = backend.fetch_all([self.source], self.cutoff)
 
         self.assertEqual(results[0]["status"], "ok")
@@ -374,7 +375,7 @@ class TestOpenCliBackend(unittest.TestCase):
             self._completed("lease released"),
         ]
 
-        backend = fetch_twitter.OpenCliBackend()
+        backend = fetch_twitter.OpenCliBackend(no_cache=True)
         backend.fetch_all([self.source], self.cutoff)
 
         commands = [call.args[0] for call in run_mock.call_args_list]
@@ -432,7 +433,7 @@ class TestOpenCliBackend(unittest.TestCase):
             self._completed("lease released"),
         ]
 
-        backend = fetch_twitter.OpenCliBackend()
+        backend = fetch_twitter.OpenCliBackend(no_cache=True)
 
         with self.assertRaises(fetch_twitter.OpenCliBackendError) as ctx:
             backend.fetch_all([self.source], self.cutoff)
@@ -465,7 +466,7 @@ class TestOpenCliBackend(unittest.TestCase):
             self._completed("lease released"),
         ]
 
-        backend = fetch_twitter.OpenCliBackend()
+        backend = fetch_twitter.OpenCliBackend(no_cache=True)
         with self.assertLogs(level="WARNING") as logs:
             results = backend.fetch_all([self.source, second_source], self.cutoff)
 
@@ -499,7 +500,7 @@ class TestFetchWithBackendChain(unittest.TestCase):
             opencli_workers=7,
         )
 
-        backend_cls_mock.assert_called_once_with(max_workers=7)
+        backend_cls_mock.assert_called_once_with(max_workers=7, no_cache=False)
 
 
 class TestOpenCliChromeCleanup(unittest.TestCase):
@@ -759,3 +760,129 @@ class TestOpenCliMergeCompatibility(unittest.TestCase):
         self.assertIn("date", article)
         self.assertIn("metrics", article)
         self.assertGreaterEqual(score, 8)
+
+
+class TestXFileCacheAndRateLimits(unittest.TestCase):
+    def test_default_cache_dir_is_project_local(self):
+        expected = Path(__file__).parent.parent / ".cache" / "x"
+        self.assertEqual(fetch_twitter.get_x_cache_dir(), expected)
+
+    def test_gitignore_ignores_project_cache(self):
+        content = (Path(__file__).parent.parent / ".gitignore").read_text(encoding="utf-8")
+        self.assertIn("/.cache/", content)
+
+    def test_json_state_store_returns_default_for_bad_json(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "state.json"
+            path.write_text("{bad json", encoding="utf-8")
+            store = fetch_twitter.JsonStateStore(path, default={"ok": True})
+
+            self.assertEqual(store.load(), {"ok": True})
+
+    def test_json_state_store_saves_with_atomic_replace(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "state.json"
+            store = fetch_twitter.JsonStateStore(path)
+
+            with patch("fetch_twitter.os.replace", wraps=os.replace) as replace_mock:
+                store.save({"value": 1})
+
+            self.assertTrue(replace_mock.called)
+            self.assertEqual(json.loads(path.read_text(encoding="utf-8")), {"value": 1})
+
+    def test_file_cache_key_is_stable_for_param_order(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cache = fetch_twitter.XFileCache("official", cache_dir=Path(tmp))
+
+            first = cache.make_key("GET /2/users/by", {"b": 2, "a": 1})
+            second = cache.make_key("GET /2/users/by", {"a": 1, "b": 2})
+
+            self.assertEqual(first, second)
+
+    def test_file_cache_returns_fresh_response(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cache = fetch_twitter.XFileCache("official", cache_dir=Path(tmp))
+            cache.put("GET /2/users/by", {"usernames": "sama"}, 200, {}, {"data": [{"id": "1"}]})
+
+            self.assertEqual(cache.get("GET /2/users/by", {"usernames": "sama"}), {"data": [{"id": "1"}]})
+
+    def test_file_cache_misses_expired_response(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cache = fetch_twitter.XFileCache("official", cache_dir=Path(tmp))
+            cache.put("GET /2/users/by", {"usernames": "sama"}, 200, {}, {"data": []}, ttl_seconds=-1)
+
+            self.assertIsNone(cache.get("GET /2/users/by", {"usernames": "sama"}))
+
+    def test_no_cache_disables_response_read_and_write(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cache = fetch_twitter.XFileCache("official", cache_dir=Path(tmp), no_cache=True)
+            cache.put("GET /2/users/by", {"usernames": "sama"}, 200, {}, {"data": []})
+
+            self.assertIsNone(cache.get("GET /2/users/by", {"usernames": "sama"}))
+            self.assertFalse((Path(tmp) / "responses").exists())
+
+    def test_oversized_cache_entry_is_not_written(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, {"X_CACHE_MAX_ENTRY_BYTES": "64"}):
+            cache = fetch_twitter.XFileCache("official", cache_dir=Path(tmp))
+            cache.put("GET /2/users/by", {"usernames": "sama"}, 200, {}, {"data": "x" * 1000})
+
+            self.assertEqual(cache.index_store.load(), {})
+
+    def test_cache_janitor_removes_entries_older_than_retention(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cache_dir = Path(tmp)
+            cache = fetch_twitter.XFileCache("official", cache_dir=cache_dir)
+            cache.put("GET /2/users/by", {"usernames": "old"}, 200, {}, {"data": []})
+            key = cache.make_key("GET /2/users/by", {"usernames": "old"})
+            index = cache.index_store.load()
+            index[key]["fetched_at"] = int(fetch_twitter.time.time()) - (31 * 86400)
+            index[key]["expires_at"] = int(fetch_twitter.time.time()) + 86400
+            cache.index_store.save(index)
+
+            fetch_twitter.XCacheJanitor(cache_dir=cache_dir).cleanup()
+
+            self.assertEqual(cache.index_store.load(), {})
+
+    def test_cache_janitor_removes_oldest_entries_when_over_budget(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, {"X_CACHE_MAX_BYTES": "450"}):
+            cache_dir = Path(tmp)
+            cache = fetch_twitter.XFileCache("official", cache_dir=cache_dir)
+            cache.put("GET /2/users/by", {"usernames": "old"}, 200, {}, {"data": "x" * 80})
+            cache.put("GET /2/users/by", {"usernames": "new"}, 200, {}, {"data": "y" * 80})
+            old_key = cache.make_key("GET /2/users/by", {"usernames": "old"})
+            new_key = cache.make_key("GET /2/users/by", {"usernames": "new"})
+            index = cache.index_store.load()
+            index[old_key]["last_accessed_at"] = 1
+            index[new_key]["last_accessed_at"] = 2
+            cache.index_store.save(index)
+
+            fetch_twitter.XCacheJanitor(cache_dir=cache_dir).cleanup()
+            remaining = cache.index_store.load()
+
+            self.assertNotIn(old_key, remaining)
+            self.assertIn(new_key, remaining)
+
+    def test_rate_limit_manager_pauses_429_until_reset(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            manager = fetch_twitter.XRateLimitManager(cache_dir=Path(tmp), now_func=lambda: 1000)
+            manager.update_from_headers(
+                "official",
+                "GET /2/users/:id/tweets",
+                "secret-token",
+                {
+                    "x-rate-limit-limit": "15",
+                    "x-rate-limit-remaining": "0",
+                    "x-rate-limit-reset": "1300",
+                },
+                status_code=429,
+            )
+
+            allowed, deferred_until = manager.can_request(
+                "official",
+                "GET /2/users/:id/tweets",
+                "secret-token",
+                now=1001,
+            )
+
+            self.assertFalse(allowed)
+            self.assertEqual(deferred_until, 1300)

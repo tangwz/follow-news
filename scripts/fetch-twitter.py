@@ -29,6 +29,7 @@ import re
 import threading
 import subprocess
 import shutil
+import hashlib
 from abc import ABC, abstractmethod
 from datetime import datetime, timedelta, timezone
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -58,8 +59,15 @@ OPENCLI_GLOBAL_ERROR_CODES = {
     "opencli_timeout",
     "opencli_parse_error",
 }
-ID_CACHE_PATH = "/tmp/follow-news-twitter-id-cache.json"
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+DEFAULT_X_CACHE_DIR = PROJECT_ROOT / ".cache" / "x"
+ID_CACHE_PATH = DEFAULT_X_CACHE_DIR / "user_ids.json"
 ID_CACHE_TTL_DAYS = 7
+X_CACHE_RETENTION_DAYS = 30
+X_CACHE_MAX_BYTES = 512 * 1024 * 1024
+X_CACHE_MAX_ENTRY_BYTES = 5 * 1024 * 1024
+X_RATE_LIMIT_FALLBACK_SECONDS = 15 * 60
+X_RESPONSE_CACHE_TTL_SECONDS = X_CACHE_RETENTION_DAYS * 86400
 
 # Twitter API v2 endpoints
 OFFICIAL_API_BASE = "https://api.x.com/2"
@@ -542,6 +550,428 @@ class RateLimiter:
             self._last = time.monotonic()
 
 
+class XRateLimitDeferred(RuntimeError):
+    """Raised when a backend endpoint must wait for its rate-limit reset."""
+
+    def __init__(self, deferred_until: float):
+        super().__init__(f"Rate limit deferred until {int(deferred_until)}")
+        self.deferred_until = deferred_until
+
+
+def get_x_cache_dir() -> Path:
+    """Return the project-local X cache directory."""
+    configured = os.getenv("X_CACHE_DIR", "").strip()
+    if configured:
+        return Path(configured).expanduser()
+    return DEFAULT_X_CACHE_DIR
+
+
+def get_x_id_cache_path() -> Path:
+    """Return the project-local username to user-id cache path."""
+    return get_x_cache_dir() / "user_ids.json"
+
+
+def get_env_int(name: str, default: int, minimum: int = 0) -> int:
+    """Return a bounded integer environment value."""
+    raw_value = os.getenv(name, "").strip()
+    if not raw_value:
+        return default
+    try:
+        value = int(raw_value)
+    except ValueError:
+        logging.warning("Invalid %s=%r; using %s", name, raw_value, default)
+        return default
+    if value < minimum:
+        logging.warning("Invalid %s=%r; using %s", name, raw_value, default)
+        return default
+    return value
+
+
+def get_x_cache_retention_seconds() -> int:
+    """Return response cache retention in seconds."""
+    days = get_env_int("X_CACHE_RETENTION_DAYS", X_CACHE_RETENTION_DAYS, minimum=1)
+    return days * 86400
+
+
+def get_x_cache_max_bytes() -> int:
+    """Return the total response cache byte budget."""
+    return get_env_int("X_CACHE_MAX_BYTES", X_CACHE_MAX_BYTES, minimum=1)
+
+
+def get_x_cache_max_entry_bytes() -> int:
+    """Return the maximum size for a single response cache entry."""
+    return get_env_int("X_CACHE_MAX_ENTRY_BYTES", X_CACHE_MAX_ENTRY_BYTES, minimum=1)
+
+
+def is_x_response_cache_disabled() -> bool:
+    """Return true when response body caching is disabled."""
+    return os.getenv("X_CACHE_DISABLE_RESPONSE_CACHE", "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _atomic_json_write(path: Path, value: Any) -> None:
+    """Write JSON atomically inside the destination directory."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, temp_path = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=str(path.parent))
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(value, f, ensure_ascii=False, indent=2, sort_keys=True)
+        os.replace(temp_path, path)
+    finally:
+        try:
+            if os.path.exists(temp_path):
+                os.unlink(temp_path)
+        except OSError:
+            pass
+
+
+class JsonStateStore:
+    """Small JSON file store with atomic saves."""
+
+    def __init__(self, path: Path, default: Optional[Dict[str, Any]] = None):
+        self.path = Path(path)
+        self.default = default if default is not None else {}
+        self._lock = threading.RLock()
+
+    def load(self) -> Dict[str, Any]:
+        """Load the JSON state, returning a copy of the default on failure."""
+        with self._lock:
+            try:
+                with open(self.path, "r", encoding="utf-8") as f:
+                    value = json.load(f)
+                return value if isinstance(value, dict) else dict(self.default)
+            except (FileNotFoundError, json.JSONDecodeError, OSError):
+                return dict(self.default)
+
+    def save(self, value: Dict[str, Any]) -> None:
+        """Persist the JSON state atomically."""
+        with self._lock:
+            _atomic_json_write(self.path, value)
+
+
+def _stable_json(value: Any) -> Any:
+    """Return a JSON-stable shape for hashing request parameters."""
+    if isinstance(value, dict):
+        return {str(key): _stable_json(value[key]) for key in sorted(value)}
+    if isinstance(value, (list, tuple)):
+        return [_stable_json(item) for item in value]
+    return value
+
+
+def _credential_id(value: Optional[str]) -> str:
+    """Return a non-secret credential identifier."""
+    if not value:
+        return "anonymous"
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()[:12]
+
+
+def _headers_to_dict(headers: Any) -> Dict[str, str]:
+    """Convert urllib/email headers into a lowercase dict."""
+    result: Dict[str, str] = {}
+    if not headers:
+        return result
+    items = headers.items() if hasattr(headers, "items") else []
+    for key, value in items:
+        result[str(key).lower()] = str(value)
+    return result
+
+
+def _header_value(headers: Any, name: str) -> Optional[str]:
+    """Read a header by name from common mapping/header objects."""
+    if not headers:
+        return None
+    if hasattr(headers, "get"):
+        value = headers.get(name)
+        if value is None:
+            value = headers.get(name.lower())
+        if value is None:
+            value = headers.get(name.upper())
+        return str(value) if value is not None else None
+    lowered = name.lower()
+    for key, value in getattr(headers, "items", lambda: [])():
+        if str(key).lower() == lowered:
+            return str(value)
+    return None
+
+
+def _parse_int_header(headers: Any, name: str) -> Optional[int]:
+    """Parse an integer response header."""
+    value = _header_value(headers, name)
+    if value is None:
+        return None
+    try:
+        return int(str(value).strip())
+    except ValueError:
+        return None
+
+
+class XRateLimitManager:
+    """Project-local endpoint-aware X API rate-limit state."""
+
+    def __init__(self, cache_dir: Optional[Path] = None, now_func=time.time):
+        self.cache_dir = Path(cache_dir) if cache_dir is not None else get_x_cache_dir()
+        self.store = JsonStateStore(self.cache_dir / "rate_limits.json")
+        self.now_func = now_func
+        self._lock = threading.RLock()
+
+    @staticmethod
+    def bucket_key(backend: str, endpoint: str, credential: Optional[str] = None) -> str:
+        """Build a stable, non-secret bucket key."""
+        return f"{backend}:{endpoint}:{_credential_id(credential)}"
+
+    def can_request(
+        self,
+        backend: str,
+        endpoint: str,
+        credential: Optional[str] = None,
+        now: Optional[float] = None,
+    ) -> Tuple[bool, Optional[float]]:
+        """Return whether an endpoint can be called now."""
+        current = self.now_func() if now is None else now
+        key = self.bucket_key(backend, endpoint, credential)
+        with self._lock:
+            bucket = self.store.load().get(key, {})
+        paused_until = float(bucket.get("paused_until") or 0)
+        reset_at = float(bucket.get("reset_at") or 0)
+        remaining = bucket.get("remaining")
+        if paused_until > current:
+            return False, paused_until
+        if remaining == 0 and reset_at > current:
+            return False, reset_at
+        return True, None
+
+    def require_request(self, backend: str, endpoint: str, credential: Optional[str] = None) -> None:
+        """Raise when an endpoint should be deferred."""
+        allowed, deferred_until = self.can_request(backend, endpoint, credential)
+        if not allowed and deferred_until is not None:
+            raise XRateLimitDeferred(deferred_until)
+
+    def update_from_headers(
+        self,
+        backend: str,
+        endpoint: str,
+        credential: Optional[str],
+        headers: Any,
+        status_code: Optional[int] = None,
+    ) -> None:
+        """Persist rate-limit headers for an endpoint bucket."""
+        current = self.now_func()
+        limit = _parse_int_header(headers, "x-rate-limit-limit")
+        remaining = _parse_int_header(headers, "x-rate-limit-remaining")
+        reset_at = _parse_int_header(headers, "x-rate-limit-reset")
+        key = self.bucket_key(backend, endpoint, credential)
+
+        with self._lock:
+            state = self.store.load()
+            bucket = dict(state.get(key, {}))
+            if limit is not None:
+                bucket["limit"] = limit
+            if remaining is not None:
+                bucket["remaining"] = remaining
+            if reset_at is not None:
+                bucket["reset_at"] = reset_at
+            if status_code == 429:
+                bucket["paused_until"] = reset_at or int(current + X_RATE_LIMIT_FALLBACK_SECONDS)
+                if remaining is None:
+                    bucket["remaining"] = 0
+            elif bucket.get("paused_until") and float(bucket["paused_until"]) <= current:
+                bucket["paused_until"] = None
+            bucket["updated_at"] = int(current)
+            state[key] = bucket
+            self.store.save(state)
+
+
+class XFileCache:
+    """File response cache for X/Twitter fetchers."""
+
+    def __init__(self, backend: str, cache_dir: Optional[Path] = None, no_cache: bool = False):
+        self.backend = backend
+        self.cache_dir = Path(cache_dir) if cache_dir is not None else get_x_cache_dir()
+        self.no_cache = no_cache
+        self.index_store = JsonStateStore(self.cache_dir / "cache_index.json")
+        self._lock = threading.RLock()
+
+    @staticmethod
+    def endpoint_slug(endpoint: str) -> str:
+        """Return a safe directory slug for an endpoint."""
+        slug = re.sub(r"[^A-Za-z0-9_.-]+", "_", endpoint.strip("/ "))
+        return slug.strip("_") or "root"
+
+    def make_key(self, endpoint: str, params: Optional[Dict[str, Any]] = None) -> str:
+        """Return a stable request cache key."""
+        payload = {
+            "backend": self.backend,
+            "endpoint": endpoint,
+            "params": _stable_json(params or {}),
+        }
+        encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+    def _entry_path(self, endpoint: str, cache_key: str) -> Path:
+        return self.cache_dir / "responses" / self.backend / self.endpoint_slug(endpoint) / f"{cache_key}.json"
+
+    def get(self, endpoint: str, params: Optional[Dict[str, Any]] = None) -> Optional[Any]:
+        """Return cached response body when present and fresh."""
+        if self.no_cache or is_x_response_cache_disabled():
+            return None
+
+        current = time.time()
+        cache_key = self.make_key(endpoint, params)
+        with self._lock:
+            index = self.index_store.load()
+            entry = index.get(cache_key)
+            if not entry:
+                return None
+            path = self.cache_dir / entry.get("path", "")
+            expires_at = float(entry.get("expires_at") or 0)
+            if expires_at and expires_at <= current:
+                return None
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    payload = json.load(f)
+            except (FileNotFoundError, json.JSONDecodeError, OSError):
+                return None
+            entry["last_accessed_at"] = int(current)
+            index[cache_key] = entry
+            self.index_store.save(index)
+            return payload.get("body")
+
+    def put(
+        self,
+        endpoint: str,
+        params: Optional[Dict[str, Any]],
+        status_code: int,
+        headers: Any,
+        body: Any,
+        ttl_seconds: Optional[int] = None,
+    ) -> None:
+        """Persist a successful response body."""
+        if self.no_cache or is_x_response_cache_disabled() or status_code >= 400:
+            return
+
+        current = int(time.time())
+        ttl = ttl_seconds if ttl_seconds is not None else get_x_cache_retention_seconds()
+        cache_key = self.make_key(endpoint, params)
+        path = self._entry_path(endpoint, cache_key)
+        payload = {
+            "backend": self.backend,
+            "endpoint": endpoint,
+            "params": _stable_json(params or {}),
+            "status_code": status_code,
+            "headers": _headers_to_dict(headers),
+            "body": body,
+            "fetched_at": current,
+            "expires_at": current + ttl,
+        }
+        encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
+        if len(encoded) > get_x_cache_max_entry_bytes():
+            logging.debug("Skipping X cache write for %s: response is %s bytes", endpoint, len(encoded))
+            return
+
+        with self._lock:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            _atomic_json_write(path, payload)
+            index = self.index_store.load()
+            index[cache_key] = {
+                "backend": self.backend,
+                "endpoint": endpoint,
+                "path": str(path.relative_to(self.cache_dir)),
+                "size": len(encoded),
+                "fetched_at": current,
+                "expires_at": current + ttl,
+                "last_accessed_at": current,
+            }
+            self.index_store.save(index)
+
+
+class XCacheJanitor:
+    """Best-effort cleanup for project-local X response cache files."""
+
+    def __init__(self, cache_dir: Optional[Path] = None):
+        self.cache_dir = Path(cache_dir) if cache_dir is not None else get_x_cache_dir()
+        self.index_store = JsonStateStore(self.cache_dir / "cache_index.json")
+
+    def cleanup(self) -> None:
+        """Delete expired and over-budget cached responses."""
+        try:
+            self._cleanup()
+        except Exception as exc:
+            logging.warning("X cache cleanup failed: %s", exc)
+
+    def _cleanup(self) -> None:
+        current = int(time.time())
+        retention_cutoff = current - get_x_cache_retention_seconds()
+        index = self.index_store.load()
+        kept: Dict[str, Dict[str, Any]] = {}
+
+        for cache_key, entry in index.items():
+            path = self.cache_dir / entry.get("path", "")
+            fetched_at = int(entry.get("fetched_at") or 0)
+            expires_at = int(entry.get("expires_at") or 0)
+            if not path.exists():
+                continue
+            if fetched_at < retention_cutoff or (expires_at and expires_at <= current):
+                try:
+                    path.unlink()
+                except OSError:
+                    pass
+                continue
+            entry["size"] = path.stat().st_size
+            kept[cache_key] = entry
+
+        max_bytes = get_x_cache_max_bytes()
+        total_bytes = sum(int(entry.get("size") or 0) for entry in kept.values())
+        if total_bytes > max_bytes:
+            ordered = sorted(
+                kept.items(),
+                key=lambda item: int(item[1].get("last_accessed_at") or item[1].get("fetched_at") or 0),
+            )
+            for cache_key, entry in ordered:
+                if total_bytes <= max_bytes:
+                    break
+                path = self.cache_dir / entry.get("path", "")
+                size = int(entry.get("size") or 0)
+                try:
+                    path.unlink()
+                except OSError:
+                    pass
+                total_bytes -= size
+                kept.pop(cache_key, None)
+
+        self.index_store.save(kept)
+
+
+def x_request_json(
+    backend: str,
+    endpoint: str,
+    url: str,
+    headers: Dict[str, str],
+    params: Optional[Dict[str, Any]] = None,
+    credential: Optional[str] = None,
+    no_cache: bool = False,
+    cache_ttl_seconds: Optional[int] = None,
+) -> Any:
+    """Fetch JSON with project-local response caching and rate-limit tracking."""
+    cache = XFileCache(backend, no_cache=no_cache)
+    cached = cache.get(endpoint, params)
+    if cached is not None:
+        return cached
+
+    rate_limits = XRateLimitManager()
+    rate_limits.require_request(backend, endpoint, credential)
+
+    req = Request(url, headers=headers)
+    try:
+        with urlopen(req, timeout=TIMEOUT) as resp:
+            raw = resp.read()
+            data = json.loads(raw.decode())
+            rate_limits.update_from_headers(backend, endpoint, credential, resp.headers, status_code=resp.status)
+            cache.put(endpoint, params, resp.status, resp.headers, data, ttl_seconds=cache_ttl_seconds)
+            return data
+    except HTTPError as exc:
+        rate_limits.update_from_headers(backend, endpoint, credential, exc.headers, status_code=exc.code)
+        raise
+
+
 # ---------------------------------------------------------------------------
 # Backend abstraction
 # ---------------------------------------------------------------------------
@@ -588,9 +1018,10 @@ class TwitterBackend(ABC):
 class OpenCliBackend(TwitterBackend):
     """OpenCLI backend using the browser-backed twitter tweets adapter."""
 
-    def __init__(self, command: Optional[str] = None, max_workers: Optional[int] = None):
+    def __init__(self, command: Optional[str] = None, max_workers: Optional[int] = None, no_cache: bool = False):
         self.command = command or resolve_opencli_bin()
         self._max_workers = max_workers
+        self.no_cache = no_cache
         self._before_chrome_windows = snapshot_chrome_windows()
         try:
             self._verify_capability()
@@ -687,12 +1118,7 @@ class OpenCliBackend(TwitterBackend):
             raise OpenCliBackendError(code, result.stderr.strip() or "opencli doctor failed")
         logging.warning(f"opencli doctor returned {result.returncode}: {(result.stderr or result.stdout).strip()[:200]}")
 
-    def _parse_tweets_output(self, stdout: str, source: Dict[str, Any], cutoff: datetime) -> List[Dict[str, Any]]:
-        try:
-            payload = json.loads(stdout or "null")
-        except json.JSONDecodeError as exc:
-            raise OpenCliBackendError("opencli_parse_error", "opencli twitter tweets returned invalid JSON") from exc
-
+    def _parse_tweets_payload(self, payload: Any, source: Dict[str, Any], cutoff: datetime) -> List[Dict[str, Any]]:
         articles = []
         for record in extract_opencli_tweet_records(payload):
             article = normalize_opencli_tweet(record, source, cutoff)
@@ -700,8 +1126,24 @@ class OpenCliBackend(TwitterBackend):
                 articles.append(article)
         return articles
 
+    def _parse_tweets_output(self, stdout: str, source: Dict[str, Any], cutoff: datetime) -> List[Dict[str, Any]]:
+        try:
+            payload = json.loads(stdout or "null")
+        except json.JSONDecodeError as exc:
+            raise OpenCliBackendError("opencli_parse_error", "opencli twitter tweets returned invalid JSON") from exc
+
+        return self._parse_tweets_payload(payload, source, cutoff)
+
     def _fetch_user_tweets(self, source: Dict[str, Any], cutoff: datetime) -> Dict[str, Any]:
         handle = source["handle"].lstrip("@")
+        cache = XFileCache("opencli", no_cache=self.no_cache)
+        endpoint = "twitter/tweets"
+        params = {"handle": handle, "limit": MAX_TWEETS_PER_USER}
+        cached_payload = cache.get(endpoint, params)
+        if cached_payload is not None:
+            articles = self._parse_tweets_payload(cached_payload, source, cutoff)
+            return self._make_result(source, articles, 0)
+
         result = self._run_command(
             [
                 "twitter",
@@ -721,7 +1163,12 @@ class OpenCliBackend(TwitterBackend):
                 raise OpenCliBackendError(code, message)
             return self._make_error(source, f"{code}: {message[:160]}", 0)
 
-        articles = self._parse_tweets_output(result.stdout, source, cutoff)
+        try:
+            payload = json.loads(result.stdout or "null")
+        except json.JSONDecodeError as exc:
+            raise OpenCliBackendError("opencli_parse_error", "opencli twitter tweets returned invalid JSON") from exc
+        cache.put(endpoint, params, 200, {}, payload)
+        articles = self._parse_tweets_payload(payload, source, cutoff)
         return self._make_result(source, articles, 0)
 
     def fetch_all(self, sources: List[Dict[str, Any]], cutoff: datetime) -> List[Dict[str, Any]]:
@@ -777,17 +1224,12 @@ class OfficialBackend(TwitterBackend):
 
     @staticmethod
     def _load_id_cache() -> Dict[str, Any]:
-        try:
-            with open(ID_CACHE_PATH, 'r') as f:
-                return json.load(f)
-        except (FileNotFoundError, json.JSONDecodeError):
-            return {}
+        return JsonStateStore(get_x_id_cache_path()).load()
 
     @staticmethod
     def _save_id_cache(cache: Dict[str, Any]) -> None:
         try:
-            with open(ID_CACHE_PATH, 'w') as f:
-                json.dump(cache, f)
+            JsonStateStore(get_x_id_cache_path()).save(cache)
         except Exception as e:
             logging.warning(f"Failed to save ID cache: {e}")
 
@@ -816,9 +1258,16 @@ class OfficialBackend(TwitterBackend):
                 batch = to_resolve[i:i+100]
                 url = f"{USER_LOOKUP_ENDPOINT}?{urlencode({'usernames': ','.join(batch)})}"
                 try:
-                    req = Request(url, headers=headers)
-                    with urlopen(req, timeout=TIMEOUT) as resp:
-                        data = json.loads(resp.read().decode())
+                    data = x_request_json(
+                        "official",
+                        "GET /2/users/by",
+                        url,
+                        headers,
+                        {"usernames": ",".join(batch)},
+                        credential=self.bearer_token,
+                        no_cache=self.no_cache,
+                        cache_ttl_seconds=ID_CACHE_TTL_DAYS * 86400,
+                    )
 
                     if 'data' in data:
                         for user in data['data']:
@@ -835,9 +1284,16 @@ class OfficialBackend(TwitterBackend):
                     for handle in batch:
                         try:
                             fallback_url = f"{USER_LOOKUP_ENDPOINT}?{urlencode({'usernames': handle})}"
-                            req = Request(fallback_url, headers=headers)
-                            with urlopen(req, timeout=TIMEOUT) as resp:
-                                fallback_data = json.loads(resp.read().decode())
+                            fallback_data = x_request_json(
+                                "official",
+                                "GET /2/users/by",
+                                fallback_url,
+                                headers,
+                                {"usernames": handle},
+                                credential=self.bearer_token,
+                                no_cache=self.no_cache,
+                                cache_ttl_seconds=ID_CACHE_TTL_DAYS * 86400,
+                            )
                             if 'data' in fallback_data and fallback_data['data']:
                                 key = handle.lower()
                                 result[key] = fallback_data['data'][0]['id']
@@ -882,9 +1338,16 @@ class OfficialBackend(TwitterBackend):
                         "Authorization": f"Bearer {self.bearer_token}",
                         "User-Agent": "FollowNews/2.0"
                     }
-                    req = Request(user_url, headers=headers)
-                    with urlopen(req, timeout=TIMEOUT) as resp:
-                        user_data = json.loads(resp.read().decode())
+                    user_data = x_request_json(
+                        "official",
+                        "GET /2/users/by",
+                        user_url,
+                        headers,
+                        {"usernames": handle},
+                        credential=self.bearer_token,
+                        no_cache=self.no_cache,
+                        cache_ttl_seconds=ID_CACHE_TTL_DAYS * 86400,
+                    )
                     if 'data' not in user_data or not user_data['data']:
                         raise ValueError(f"User not found: {handle}")
                     user_id = user_data['data'][0]['id']
@@ -897,10 +1360,15 @@ class OfficialBackend(TwitterBackend):
                 time.sleep(0.3)
 
                 tweets_url = f"{OFFICIAL_API_BASE}/users/{user_id}/tweets?{urlencode(params)}"
-                req = Request(tweets_url, headers=headers)
-
-                with urlopen(req, timeout=TIMEOUT) as resp:
-                    tweets_data = json.loads(resp.read().decode())
+                tweets_data = x_request_json(
+                    "official",
+                    "GET /2/users/:id/tweets",
+                    tweets_url,
+                    headers,
+                    {"user_id": user_id, **params},
+                    credential=self.bearer_token,
+                    no_cache=self.no_cache,
+                )
 
                 articles = []
                 if 'data' in tweets_data:
@@ -931,11 +1399,14 @@ class OfficialBackend(TwitterBackend):
                 if e.code == 429:
                     error_msg = "Rate limit exceeded"
                     logging.warning(f"Rate limit hit for @{handle}, attempt {attempt + 1}")
-                    if attempt < RETRY_COUNT:
-                        time.sleep(60)
-                        continue
+                    return self._make_error(source, error_msg, attempt)
                 else:
                     error_msg = f"HTTP {e.code}: {e.reason}"
+
+            except XRateLimitDeferred as e:
+                error_msg = f"Rate limit deferred until {int(e.deferred_until)}"
+                logging.warning(f"Rate limit deferred for @{handle} until {int(e.deferred_until)}")
+                return self._make_error(source, error_msg, attempt)
 
             except Exception as e:
                 error_msg = str(e)[:100]
@@ -977,8 +1448,9 @@ class OfficialBackend(TwitterBackend):
 class TwitterApiIoBackend(TwitterBackend):
     """twitterapi.io backend."""
 
-    def __init__(self, api_key: str):
+    def __init__(self, api_key: str, no_cache: bool = False):
         self.api_key = api_key
+        self.no_cache = no_cache
         self._limiter = RateLimiter(qps=5)
 
     @staticmethod
@@ -1042,9 +1514,15 @@ class TwitterApiIoBackend(TwitterBackend):
 
                 self._limiter.wait()
 
-                req = Request(url, headers=headers)
-                with urlopen(req, timeout=TIMEOUT) as resp:
-                    raw = json.loads(resp.read().decode())
+                raw = x_request_json(
+                    "twitterapiio",
+                    "GET /twitter/user/last_tweets",
+                    url,
+                    headers,
+                    {"userName": handle, "includeReplies": "false"},
+                    credential=self.api_key,
+                    no_cache=self.no_cache,
+                )
 
                 # API wraps response in {"data": {...}} envelope
                 data = raw.get("data", raw)
@@ -1066,9 +1544,15 @@ class TwitterApiIoBackend(TwitterBackend):
                             "cursor": next_cursor,
                         })
                         page2_url = f"{TWITTERAPIIO_BASE}/twitter/user/last_tweets?{page2_params}"
-                        req2 = Request(page2_url, headers=headers)
-                        with urlopen(req2, timeout=TIMEOUT) as resp2:
-                            raw2 = json.loads(resp2.read().decode())
+                        raw2 = x_request_json(
+                            "twitterapiio",
+                            "GET /twitter/user/last_tweets",
+                            page2_url,
+                            headers,
+                            {"userName": handle, "includeReplies": "false", "cursor": next_cursor},
+                            credential=self.api_key,
+                            no_cache=self.no_cache,
+                        )
                         data2 = raw2.get("data", raw2)
                         articles.extend(self._parse_tweets_page(
                             data2.get("tweets", []), handle, topics, cutoff
@@ -1087,11 +1571,14 @@ class TwitterApiIoBackend(TwitterBackend):
                 if e.code == 429:
                     error_msg = "Rate limit exceeded"
                     logging.warning(f"Rate limit hit for @{handle}, attempt {attempt + 1}")
-                    if attempt < RETRY_COUNT:
-                        time.sleep(5)
-                        continue
+                    return self._make_error(source, error_msg, attempt)
                 else:
                     error_msg = f"HTTP {e.code}: {e.reason}"
+
+            except XRateLimitDeferred as e:
+                error_msg = f"Rate limit deferred until {int(e.deferred_until)}"
+                logging.warning(f"Rate limit deferred for @{handle} until {int(e.deferred_until)}")
+                return self._make_error(source, error_msg, attempt)
 
             except Exception as e:
                 error_msg = str(e)[:100]
@@ -1126,11 +1613,12 @@ class TwitterApiIoBackend(TwitterBackend):
 class GetXApiBackend(TwitterBackend):
     """GetXAPI backend."""
 
-    def __init__(self, api_key: str):
+    def __init__(self, api_key: str, no_cache: bool = False):
         """Initialize GetXAPI backend with API key validation."""
         if not api_key or len(api_key) < 10:
             raise ValueError("Invalid GETX_API_KEY format - expected at least 10 characters")
         self.api_key = api_key
+        self.no_cache = no_cache
         self.logger = logging.getLogger("fetch-twitter")
 
     def _parse_date(self, date_str: str) -> Optional[datetime]:
@@ -1206,9 +1694,15 @@ class GetXApiBackend(TwitterBackend):
                     "User-Agent": "FollowNews/2.0",
                 }
 
-                req = Request(url, headers=headers)
-                with urlopen(req, timeout=TIMEOUT) as resp:
-                    raw = json.loads(resp.read().decode())
+                raw = x_request_json(
+                    "getxapi",
+                    "GET /twitter/user/tweets",
+                    url,
+                    headers,
+                    {"userName": handle},
+                    credential=self.api_key,
+                    no_cache=self.no_cache,
+                )
 
                 if raw.get("error"):
                     return self._make_error(source, str(raw["error"])[:100], attempt)
@@ -1227,9 +1721,15 @@ class GetXApiBackend(TwitterBackend):
                         for page_attempt in range(RETRY_COUNT + 1):
                             try:
                                 page2_url = f"{GETXAPI_BASE}/twitter/user/tweets?{urlencode({'userName': handle, 'cursor': next_cursor})}"
-                                req2 = Request(page2_url, headers=headers)
-                                with urlopen(req2, timeout=TIMEOUT) as resp2:
-                                    raw2 = json.loads(resp2.read().decode())
+                                raw2 = x_request_json(
+                                    "getxapi",
+                                    "GET /twitter/user/tweets",
+                                    page2_url,
+                                    headers,
+                                    {"userName": handle, "cursor": next_cursor},
+                                    credential=self.api_key,
+                                    no_cache=self.no_cache,
+                                )
                                 if raw2.get("error"):
                                     raise ValueError(str(raw2["error"])[:100])
                                 articles.extend(self._parse_tweets_page(
@@ -1256,11 +1756,14 @@ class GetXApiBackend(TwitterBackend):
                 if e.code == 429:
                     error_msg = "Rate limit exceeded"
                     logging.warning(f"Rate limit hit for @{handle}, attempt {attempt + 1}")
-                    if attempt < RETRY_COUNT:
-                        time.sleep(5)
-                        continue
+                    return self._make_error(source, error_msg, attempt)
                 else:
                     error_msg = f"HTTP {e.code}: {e.reason}"
+
+            except XRateLimitDeferred as e:
+                error_msg = f"Rate limit deferred until {int(e.deferred_until)}"
+                logging.warning(f"Rate limit deferred for @{handle} until {int(e.deferred_until)}")
+                return self._make_error(source, error_msg, attempt)
 
             except Exception as e:
                 error_msg = str(e)[:100]
@@ -1304,7 +1807,7 @@ def _instantiate_backend(
     """Instantiate one backend without applying fallback policy."""
     if backend_name == "opencli":
         logging.info("Using OpenCLI backend")
-        return OpenCliBackend(max_workers=opencli_workers)
+        return OpenCliBackend(max_workers=opencli_workers, no_cache=no_cache)
 
     if backend_name == "getxapi":
         key = os.getenv("GETX_API_KEY")
@@ -1312,7 +1815,7 @@ def _instantiate_backend(
             logging.info("GETX_API_KEY not set; getxapi backend unavailable")
             return None
         logging.info("Using GetXAPI backend")
-        return GetXApiBackend(key)
+        return GetXApiBackend(key, no_cache=no_cache)
 
     if backend_name == "twitterapiio":
         key = os.getenv("TWITTERAPI_IO_KEY")
@@ -1320,7 +1823,7 @@ def _instantiate_backend(
             logging.info("TWITTERAPI_IO_KEY not set; twitterapi.io backend unavailable")
             return None
         logging.info("Using twitterapi.io backend")
-        return TwitterApiIoBackend(key)
+        return TwitterApiIoBackend(key, no_cache=no_cache)
 
     if backend_name == "official":
         token = os.getenv("X_BEARER_TOKEN")
@@ -1504,6 +2007,7 @@ Examples:
 
     args = parser.parse_args()
     logger = setup_logging(args.verbose)
+    XCacheJanitor().cleanup()
 
     # Resume support: skip if output exists, is valid JSON, and < 1 hour old
     if args.output and args.output.exists() and not args.force:
@@ -1565,6 +2069,7 @@ Examples:
             }
             with open(args.output, "w", encoding='utf-8') as f:
                 json.dump(empty_result, f, ensure_ascii=False, indent=2)
+            XCacheJanitor().cleanup()
             print(f"Output (empty): {args.output}")
             return 0
 
@@ -1597,10 +2102,12 @@ Examples:
         logger.info(f"✅ Done: {ok_count}/{len(results)} accounts ok, "
                    f"{total_tweets} tweets → {args.output}")
 
+        XCacheJanitor().cleanup()
         return 0
 
     except Exception as e:
         logger.error(f"💥 Twitter fetch failed: {e}")
+        XCacheJanitor().cleanup()
         return 1
 
 
