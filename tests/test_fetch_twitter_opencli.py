@@ -479,8 +479,20 @@ class TestOpenCliAutoUpdate(unittest.TestCase):
     ):
         if not hasattr(fetch_twitter, "_run_opencli_update_command"):
             self.skipTest("fetch_twitter._run_opencli_update_command is not available")
+        if not hasattr(fetch_twitter, "_opencli_update_state_path"):
+            self.skipTest("fetch_twitter._opencli_update_state_path is not available")
 
-        with patch("fetch_twitter._run_opencli_update_command") as run_mock:
+        with ExitStack() as stack:
+            run_mock = stack.enter_context(
+                patch("fetch_twitter._run_opencli_update_command")
+            )
+            state_path = _temp_opencli_state_path(stack)
+            stack.enter_context(
+                patch(
+                    "fetch_twitter._opencli_update_state_path",
+                    return_value=state_path,
+                )
+            )
             ensure_opencli_latest = getattr(fetch_twitter, "_ensure_opencli_latest", None)
             if ensure_opencli_latest is None:
                 self.skipTest("No OpenCLI auto-update entrypoint found in scripts/fetch-twitter.py")
