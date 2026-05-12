@@ -1228,6 +1228,22 @@ class TestXFileCacheAndRateLimits(unittest.TestCase):
 
             self.assertEqual(cache.get("GET /2/users/by", {"usernames": "sama"}), {"data": [{"id": "1"}]})
 
+    def test_file_cache_does_not_store_200_error_payloads(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cache = fetch_twitter.XFileCache("getxapi", cache_dir=Path(tmp))
+            cache.put("GET /twitter/user/tweets", {"userName": "sama"}, 200, {}, {"error": "temporary provider failure"})
+
+            self.assertIsNone(cache.get("GET /twitter/user/tweets", {"userName": "sama"}))
+            self.assertEqual(cache.index_store.load(), {})
+
+    def test_file_cache_does_not_store_200_errors_list_payloads(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cache = fetch_twitter.XFileCache("official", cache_dir=Path(tmp))
+            cache.put("GET /2/users/by", {"usernames": "sama"}, 200, {}, {"errors": [{"detail": "denied"}]})
+
+            self.assertIsNone(cache.get("GET /2/users/by", {"usernames": "sama"}))
+            self.assertEqual(cache.index_store.load(), {})
+
     def test_file_cache_hit_survives_access_time_save_failure(self):
         with tempfile.TemporaryDirectory() as tmp:
             cache = fetch_twitter.XFileCache("official", cache_dir=Path(tmp))

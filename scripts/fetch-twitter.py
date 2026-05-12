@@ -1178,6 +1178,20 @@ class XFileCache:
                 logging.warning("Failed to persist X response cache access time: %s", exc)
             return body
 
+    @staticmethod
+    def _is_cacheable_body(body: Any) -> bool:
+        """Return false for provider error envelopes carried by HTTP 2xx responses."""
+        if not isinstance(body, dict):
+            return True
+        if body.get("error"):
+            return False
+        errors = body.get("errors")
+        if isinstance(errors, list) and errors:
+            return False
+        if isinstance(errors, dict) and errors:
+            return False
+        return True
+
     def put(
         self,
         endpoint: str,
@@ -1189,6 +1203,9 @@ class XFileCache:
     ) -> None:
         """Persist a successful response body."""
         if self.no_cache or is_x_response_cache_disabled() or status_code >= 400:
+            return
+        if not self._is_cacheable_body(body):
+            logging.debug("Skipping X cache write for %s: response body contains provider errors", endpoint)
             return
 
         current = int(time.time())
