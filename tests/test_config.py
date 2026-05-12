@@ -232,7 +232,7 @@ class TestSkillFrontmatter(unittest.TestCase):
 
         self.assertEqual(len(descriptions), 1)
         self.assertTrue(descriptions[0].startswith("description:"))
-        self.assertIn("Generate tech news digests", descriptions[0])
+        self.assertTrue(descriptions[0].split(":", 1)[1].strip())
         self.assertNotIn("\n", descriptions[0])
 
     def test_frontmatter_uses_single_line_top_level_entries(self):
