@@ -15,6 +15,16 @@ from config_loader import load_merged_sources, load_merged_topics
 DEFAULTS_DIR = Path(__file__).parent.parent / "config" / "defaults"
 README_EN = Path(__file__).parent.parent / "README.md"
 README_ZH = Path(__file__).parent.parent / "README_CN.md"
+SKILL_FILE = Path(__file__).parent.parent / "SKILL.md"
+
+
+def read_skill_frontmatter():
+    content = SKILL_FILE.read_text(encoding="utf-8")
+    marker = "---"
+    parts = content.split(marker, 2)
+    if len(parts) < 3:
+        raise AssertionError("SKILL.md is missing frontmatter")
+    return parts[1].strip().splitlines()
 
 
 def get_source_counts():
@@ -206,6 +216,34 @@ class TestReadmeCounts(unittest.TestCase):
             self.assertIn("jackwener/opencli", lowered)
             self.assertIn("install", lowered)
             self.assertIn("opencli doctor", lowered)
+
+
+class TestSkillFrontmatter(unittest.TestCase):
+    def test_frontmatter_keeps_description_unambiguous_for_single_line_parsers(self):
+        lines = read_skill_frontmatter()
+        descriptions = [line for line in lines if line.lstrip().startswith("description:")]
+
+        self.assertEqual(len(descriptions), 1)
+        self.assertTrue(descriptions[0].startswith("description:"))
+        self.assertIn("Generate tech news digests", descriptions[0])
+        self.assertNotIn("\n", descriptions[0])
+
+    def test_frontmatter_uses_only_single_line_top_level_fields(self):
+        lines = read_skill_frontmatter()
+        top_level_keys = [line.split(":", 1)[0] for line in lines if line and not line.startswith(" ")]
+
+        self.assertEqual(
+            top_level_keys,
+            ["name", "description", "version", "homepage", "source", "metadata"],
+        )
+
+    def test_skill_docs_do_not_advertise_unimplemented_web_backends(self):
+        skill = SKILL_FILE.read_text(encoding="utf-8")
+
+        self.assertNotIn("auto|brave|tavily|browser", skill)
+        self.assertNotIn("DuckDuckGo", skill)
+        self.assertNotIn("browser-backed", skill)
+        self.assertIn("auto|brave|tavily", skill)
 
 
 if __name__ == "__main__":

@@ -1,81 +1,61 @@
 ---
 name: follow-news
 description: Generate tech news digests with unified source model, quality scoring, and multi-format output. Six-source data collection from RSS feeds, Twitter/X KOLs, GitHub releases, GitHub Trending, Reddit, and web search. Pipeline-based scripts with retry mechanisms and deduplication. Supports Discord, email, and markdown templates.
-version: "3.16.7"
+version: "3.16.8"
 homepage: https://github.com/tangwz/follow-news
 source: https://github.com/tangwz/follow-news
-metadata:
-  openclaw:
-    requires:
-      bins: ["python3"]
-    optionalBins: ["opencli", "mail", "msmtp", "gog", "gh", "openssl", "weasyprint"]
-env:
-  - name: TWITTER_API_BACKEND
-    required: false
-    description: "Twitter backend: 'auto', 'opencli', 'getxapi', 'twitterapiio', or 'official' (default: auto; auto tries OpenCLI first)"
-  - name: OPENCLI_BIN
-    required: false
-    description: Optional path to the OpenCLI executable. Used when OpenCLI is not available on PATH.
-  - name: OPENCLI_MAX_WORKERS
-    required: false
-    description: Optional OpenCLI concurrency limit. Defaults to 10.
-  - name: OPENCLI_CLOSE_TABS_AFTER_RUN
-    required: false
-    description: Close OpenCLI-created X/Twitter tabs after fetch when set to 1 (default: 1)
-  - name: OPENCLI_CLOSE_CHROME_WINDOWS_AFTER_RUN
-    required: false
-    description: Close OpenCLI-created Chrome automation windows on macOS when set to 1 (default: 1)
-  - name: GETX_API_KEY
-    required: false
-    description: GetXAPI key for Twitter/X fallback (getxapi backend)
-  - name: X_BEARER_TOKEN
-    required: false
-    description: Twitter/X API bearer token for KOL monitoring (official backend)
-  - name: TWITTERAPI_IO_KEY
-    required: false
-    description: twitterapi.io API key for KOL monitoring (twitterapiio backend)
-  - name: TAVILY_API_KEY
-    required: false
-    description: Tavily Search API key (alternative to Brave)
-  - name: WEB_SEARCH_BACKEND
-    required: false
-    description: "Web search backend: auto (default), brave, or tavily"
-  - name: BRAVE_API_KEYS
-    required: false
-    description: Brave Search API keys (comma-separated for rotation)
-  - name: BRAVE_API_KEY
-    required: false
-    description: Brave Search API key (single key fallback)
-  - name: GITHUB_TOKEN
-    required: false
-    description: GitHub token for higher API rate limits (auto-generated from GitHub App if not set)
-  - name: GH_APP_ID
-    required: false
-    description: GitHub App ID for automatic installation token generation
-  - name: GH_APP_INSTALL_ID
-    required: false
-    description: GitHub App Installation ID for automatic token generation
-  - name: GH_APP_KEY_FILE
-    required: false
-    description: Path to GitHub App private key PEM file
-tools:
-  - python3: Required. Runs data collection and merge scripts.
-  - mail: Optional. msmtp-based mail command for email delivery (preferred).
-  - gog: Optional. Gmail CLI for email delivery (fallback if mail not available).
-files:
-  read:
-    - config/defaults/: Default source and topic configurations
-    - references/: Prompt templates and output templates
-    - scripts/: Python pipeline scripts
-    - <workspace>/archive/follow-news/: Previous digests for dedup
-  write:
-    - /tmp/td-*.json: Temporary pipeline intermediate outputs
-    - /tmp/td-email.html: Temporary email HTML body
-    - /tmp/td-digest.pdf: Generated PDF digest
-    - <workspace>/archive/follow-news/: Saved digest archives
+metadata: {"openclaw":{"requires":{"bins":["python3"]},"optionalBins":["opencli","mail","msmtp","gog","gh","openssl","weasyprint"]}}
 ---
 
 # Follow News
+
+## Runtime Declarations
+
+Required binary:
+- `python3` - Runs data collection and merge scripts.
+
+Optional binaries:
+- `opencli` - Preferred Twitter/X backend in auto mode.
+- `mail` - msmtp-based mail command for email delivery.
+- `msmtp` - SMTP transport used by `mail`.
+- `gog` - Gmail CLI fallback for email delivery.
+- `gh` - GitHub CLI fallback for repository auth.
+- `openssl` - GitHub App JWT signing fallback.
+- `weasyprint` - PDF rendering backend.
+
+Environment variables:
+
+| Name | Required | Description |
+| --- | --- | --- |
+| `TWITTER_API_BACKEND` | No | Twitter backend: `auto`, `opencli`, `getxapi`, `twitterapiio`, or `official`. Default: `auto`; auto tries OpenCLI first. |
+| `OPENCLI_BIN` | No | Optional path to the OpenCLI executable. Used when OpenCLI is not available on PATH. |
+| `OPENCLI_MAX_WORKERS` | No | Optional OpenCLI concurrency limit. Defaults to 10. |
+| `OPENCLI_CLOSE_TABS_AFTER_RUN` | No | Close OpenCLI-created X/Twitter tabs after fetch when set to 1. Default: 1. |
+| `OPENCLI_CLOSE_CHROME_WINDOWS_AFTER_RUN` | No | Close OpenCLI-created Chrome automation windows on macOS when set to 1. Default: 1. |
+| `GETX_API_KEY` | No | GetXAPI key for Twitter/X fallback. |
+| `X_BEARER_TOKEN` | No | Twitter/X API bearer token for KOL monitoring. |
+| `TWITTERAPI_IO_KEY` | No | twitterapi.io API key for KOL monitoring. |
+| `TAVILY_API_KEY` | No | Tavily Search API key. |
+| `WEB_SEARCH_BACKEND` | No | Web search backend: `auto`, `brave`, or `tavily`. |
+| `BRAVE_API_KEYS` | No | Brave Search API keys, comma-separated for rotation. |
+| `BRAVE_API_KEY` | No | Brave Search API key, single key fallback. |
+| `GITHUB_TOKEN` | No | GitHub token for higher API rate limits. |
+| `GH_APP_ID` | No | GitHub App ID for automatic installation token generation. |
+| `GH_APP_INSTALL_ID` | No | GitHub App Installation ID for automatic token generation. |
+| `GH_APP_KEY_FILE` | No | Path to GitHub App private key PEM file. |
+
+File access:
+
+| Mode | Path | Purpose |
+| --- | --- | --- |
+| Read | `config/defaults/` | Default source and topic configurations. |
+| Read | `references/` | Prompt templates and output templates. |
+| Read | `scripts/` | Python pipeline scripts. |
+| Read | `<workspace>/archive/follow-news/` | Previous digests for deduplication. |
+| Write | `/tmp/td-*.json` | Temporary pipeline intermediate outputs. |
+| Write | `/tmp/td-email.html` | Temporary email HTML body. |
+| Write | `/tmp/td-digest.pdf` | Generated PDF digest. |
+| Write | `<workspace>/archive/follow-news/` | Saved digest archives. |
 
 ## Execution Routing Policy
 
@@ -122,7 +102,7 @@ Automated tech news digest system with unified data source model, quality scorin
    - `TWITTERAPI_IO_KEY` - twitterapi.io API key for Twitter/X fallback (optional)
    - `X_BEARER_TOKEN` - Twitter/X official API bearer token for final fallback (optional)
    - `TAVILY_API_KEY` - Tavily Search API key, alternative to Brave (optional)
-   - `WEB_SEARCH_BACKEND` - Web search backend: auto|brave|tavily|browser (optional, default: auto)
+   - `WEB_SEARCH_BACKEND` - Web search backend: auto|brave|tavily (optional, default: auto)
    - `BRAVE_API_KEYS` - Brave Search API keys, comma-separated for rotation (optional)
    - `BRAVE_API_KEY` - Single Brave key fallback (optional)
    - `GITHUB_TOKEN` - GitHub personal access token (optional, improves rate limits)
@@ -242,7 +222,7 @@ python3 scripts/fetch-twitter.py [--defaults DIR] [--config DIR] [--hours 48] [-
 python3 scripts/fetch-web.py [--defaults DIR] [--config DIR] [--freshness pd] [--output FILE]
 ```
 - Auto-detects Brave API rate limit: paid plans → parallel queries, free → sequential
-- Without API/backend: falls back to browser-backed DuckDuckGo search for real articles
+- Without Tavily or Brave credentials, the web search layer returns no articles and the pipeline continues with other sources
 
 #### `fetch-github.py` - GitHub Releases Monitor
 ```bash
@@ -457,7 +437,7 @@ export X_BEARER_TOKEN="your_bearer_token"  # Official X API v2 (fallback)
 export TWITTER_API_BACKEND="auto"          # auto|twitterapiio|official (default: auto)
 
 # Web Search (optional, enables web search layer)
-export WEB_SEARCH_BACKEND="auto"          # auto|brave|tavily|browser (default: auto)
+export WEB_SEARCH_BACKEND="auto"          # auto|brave|tavily (default: auto)
 export TAVILY_API_KEY="tvly-xxx"           # Tavily Search API (free 1000/mo)
 
 # Brave Search (alternative)
@@ -473,7 +453,7 @@ export GH_APP_KEY_FILE="/path/to/key.pem"
 ```
 
 - **Twitter**: OpenCLI is preferred in `auto` mode; API backends fallback in this order: `GETX_API_KEY`, `TWITTERAPI_IO_KEY`, `X_BEARER_TOKEN`
-- **Web Search**: Tavily (preferred in auto mode) or Brave; fallback to browser-backed DuckDuckGo search when API keys are missing, exhausted, or unavailable
+- **Web Search**: Tavily (preferred in auto mode) or Brave. Without a configured search API key, the web search layer is skipped while the rest of the pipeline continues.
 - **GitHub**: Auto-generates token from GitHub App if PAT not set; unauthenticated fallback (60 req/hr)
 - **Reddit**: No API key needed (uses public JSON API)
 
