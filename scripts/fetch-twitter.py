@@ -1853,7 +1853,7 @@ class OfficialBackend(TwitterBackend):
                     headers,
                     {"user_id": user_id, **params},
                     credential=self.bearer_token,
-                    no_cache=False,
+                    no_cache=self.no_cache,
                     cache_ttl_seconds=get_source_timeline_cache_ttl_seconds(source),
                 )
 

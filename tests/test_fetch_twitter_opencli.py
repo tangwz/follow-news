@@ -852,6 +852,18 @@ class TestOfficialBackend(unittest.TestCase):
         self.assertEqual(result["attempts"], 2)
         self.assertEqual(request_mock.call_count, 2)
 
+    @patch("fetch_twitter.time.sleep")
+    @patch("fetch_twitter.x_request_json")
+    def test_backend_no_cache_is_forwarded_to_timeline_request(self, request_mock, _sleep_mock):
+        request_mock.return_value = {"data": []}
+        backend = fetch_twitter.OfficialBackend("token-a", no_cache=True)
+
+        result = backend._fetch_user_tweets(twitter_source(), utc("2024-12-09T00:00:00Z"), user_id="1")
+
+        self.assertEqual(result["status"], "ok")
+        request_mock.assert_called_once()
+        self.assertTrue(request_mock.call_args.kwargs["no_cache"])
+
 
 class TestGetXApiBackend(unittest.TestCase):
     @patch("fetch_twitter.x_request_json")
