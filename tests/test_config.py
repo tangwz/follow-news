@@ -27,6 +27,13 @@ def read_skill_frontmatter():
     return parts[1].strip().splitlines()
 
 
+def read_skill_metadata():
+    for line in read_skill_frontmatter():
+        if line.startswith("metadata:"):
+            return json.loads(line.split(":", 1)[1].strip())
+    raise AssertionError("SKILL.md frontmatter is missing metadata")
+
+
 def get_source_counts():
     sources = load_merged_sources(DEFAULTS_DIR)
     return {
@@ -236,6 +243,31 @@ class TestSkillFrontmatter(unittest.TestCase):
             top_level_keys,
             ["name", "description", "version", "homepage", "source", "metadata"],
         )
+
+    def test_metadata_declares_runtime_env_tools_and_files(self):
+        metadata = read_skill_metadata()
+        openclaw = metadata["openclaw"]
+
+        env_names = {entry["name"] for entry in openclaw["env"]}
+        self.assertGreaterEqual(
+            env_names,
+            {
+                "TWITTER_API_BACKEND",
+                "OPENCLI_BIN",
+                "TAVILY_API_KEY",
+                "WEB_SEARCH_BACKEND",
+                "BRAVE_API_KEYS",
+                "BRAVE_API_KEY",
+                "GITHUB_TOKEN",
+                "GH_APP_ID",
+                "GH_APP_INSTALL_ID",
+                "GH_APP_KEY_FILE",
+            },
+        )
+        self.assertEqual(openclaw["files"]["read"][0]["path"], "config/defaults/")
+        tools_by_bin = {entry["bin"]: entry for entry in openclaw["tools"]}
+        self.assertTrue(tools_by_bin["python3"]["required"])
+        self.assertIn("python3", openclaw["requires"]["bins"])
 
     def test_skill_docs_do_not_advertise_unimplemented_web_backends(self):
         skill = SKILL_FILE.read_text(encoding="utf-8")

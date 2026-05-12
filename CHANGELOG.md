@@ -4,9 +4,11 @@
 
 ### Fixed
 - Keep `SKILL.md` frontmatter compatible with OpenClaw single-line parsing by moving
-  nested runtime declarations into the Markdown body.
+  nested runtime declarations into single-line JSON metadata.
 - Prevent nested environment `description` fields from being mistaken for the skill
   description during installation.
+- Keep env, tool, and file access declarations machine-readable under
+  `metadata.openclaw`.
 - Remove unimplemented browser/DuckDuckGo web-search fallback claims from `SKILL.md`.
 
 ## v3.16.0 — 2026-03-26
