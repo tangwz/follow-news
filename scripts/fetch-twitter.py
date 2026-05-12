@@ -955,6 +955,21 @@ def _parse_int_header(headers: Any, name: str) -> Optional[int]:
         return None
 
 
+_SHARED_FILE_LOCKS: Dict[str, threading.RLock] = {}
+_SHARED_FILE_LOCKS_GUARD = threading.Lock()
+
+
+def _shared_file_lock(path: Path) -> threading.RLock:
+    """Return one in-process lock for all users of the same JSON state path."""
+    key = str(path.resolve())
+    with _SHARED_FILE_LOCKS_GUARD:
+        lock = _SHARED_FILE_LOCKS.get(key)
+        if lock is None:
+            lock = threading.RLock()
+            _SHARED_FILE_LOCKS[key] = lock
+        return lock
+
+
 class XRateLimitManager:
     """Project-local endpoint-aware X API rate-limit state."""
 
@@ -962,7 +977,7 @@ class XRateLimitManager:
         self.cache_dir = Path(cache_dir) if cache_dir is not None else get_x_cache_dir()
         self.store = JsonStateStore(self.cache_dir / "rate_limits.json")
         self.now_func = now_func
-        self._lock = threading.RLock()
+        self._lock = _shared_file_lock(self.store.path)
 
     @staticmethod
     def bucket_key(backend: str, endpoint: str, credential: Optional[str] = None) -> str:
@@ -1046,7 +1061,7 @@ class XFileCache:
         self.cache_dir = Path(cache_dir) if cache_dir is not None else get_x_cache_dir()
         self.no_cache = no_cache
         self.index_store = JsonStateStore(self.cache_dir / "cache_index.json")
-        self._lock = threading.RLock()
+        self._lock = _shared_file_lock(self.index_store.path)
 
     @staticmethod
     def endpoint_slug(endpoint: str) -> str:

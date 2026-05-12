@@ -1240,3 +1240,17 @@ class TestXFileCacheAndRateLimits(unittest.TestCase):
 
             self.assertFalse(allowed)
             self.assertEqual(deferred_until, 1300)
+
+    def test_file_cache_instances_share_index_lock_for_same_cache_dir(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            first = fetch_twitter.XFileCache("official", cache_dir=Path(tmp), credential="token-a")
+            second = fetch_twitter.XFileCache("official", cache_dir=Path(tmp), credential="token-b")
+
+            self.assertIs(first._lock, second._lock)
+
+    def test_rate_limit_managers_share_lock_for_same_cache_dir(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            first = fetch_twitter.XRateLimitManager(cache_dir=Path(tmp), now_func=lambda: 1000)
+            second = fetch_twitter.XRateLimitManager(cache_dir=Path(tmp), now_func=lambda: 1000)
+
+            self.assertIs(first._lock, second._lock)
