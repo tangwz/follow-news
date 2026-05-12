@@ -1324,6 +1324,15 @@ class XCacheJanitor:
         except Exception as exc:
             logging.warning("X cache cleanup failed: %s", exc)
 
+    @staticmethod
+    def _refresh_entry_size(path: Path, entry: Dict[str, Any]) -> Dict[str, Any]:
+        """Update entry size without letting stat failures abort cleanup."""
+        try:
+            entry["size"] = path.stat().st_size
+        except OSError:
+            entry["size"] = int(entry.get("size") or 0)
+        return entry
+
     def _cleanup(self) -> None:
         current = int(time.time())
         retention_cutoff = current - get_x_cache_retention_seconds()
@@ -1343,11 +1352,9 @@ class XCacheJanitor:
                 try:
                     path.unlink()
                 except OSError:
-                    entry["size"] = path.stat().st_size
-                    kept[cache_key] = entry
+                    kept[cache_key] = self._refresh_entry_size(path, entry)
                 continue
-            entry["size"] = path.stat().st_size
-            kept[cache_key] = entry
+            kept[cache_key] = self._refresh_entry_size(path, entry)
 
         max_bytes = get_x_cache_max_bytes()
         total_bytes = sum(int(entry.get("size") or 0) for entry in kept.values())

@@ -1516,6 +1516,46 @@ class TestXFileCacheAndRateLimits(unittest.TestCase):
             remaining = cache.index_store.load()
             self.assertIn(key, remaining)
 
+    def test_cache_janitor_keeps_expired_index_entry_when_unlink_and_stat_fail(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cache_dir = Path(tmp)
+            cache = fetch_twitter.XFileCache("official", cache_dir=cache_dir)
+            cache.put("GET /2/users/by", {"usernames": "old"}, 200, {}, {"data": []})
+            key = cache.make_key("GET /2/users/by", {"usernames": "old"})
+            index = cache.index_store.load()
+            index[key]["fetched_at"] = int(fetch_twitter.time.time()) - (31 * 86400)
+            index[key]["expires_at"] = int(fetch_twitter.time.time()) + 86400
+            cache.index_store.save(index)
+            target_path = (cache_dir / index[key]["path"]).resolve()
+            original_exists = Path.exists
+            original_stat = Path.stat
+
+            def exists_before_unlink(path_self, *args, **kwargs):
+                if path_self == target_path:
+                    return True
+                return original_exists(path_self, *args, **kwargs)
+
+            def stat_with_race(path_self, *args, **kwargs):
+                if path_self == target_path:
+                    raise FileNotFoundError("raced")
+                return original_stat(path_self, *args, **kwargs)
+
+            with patch("pathlib.Path.unlink", side_effect=OSError("permission denied")):
+                with patch("pathlib.Path.exists", autospec=True, side_effect=exists_before_unlink):
+                    with patch("pathlib.Path.stat", autospec=True, side_effect=stat_with_race):
+                        with patch("fetch_twitter.logging.warning") as warning_mock:
+                            fetch_twitter.XCacheJanitor(cache_dir=cache_dir).cleanup()
+
+            remaining = cache.index_store.load()
+            self.assertIn(key, remaining)
+            self.assertEqual(remaining[key]["size"], index[key]["size"])
+            self.assertFalse(
+                any(
+                    call.args and str(call.args[0]).startswith("X cache cleanup failed")
+                    for call in warning_mock.call_args_list
+                )
+            )
+
     def test_cache_janitor_keeps_over_budget_index_entry_when_unlink_fails(self):
         with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, {"X_CACHE_MAX_BYTES": "450"}):
             cache_dir = Path(tmp)
