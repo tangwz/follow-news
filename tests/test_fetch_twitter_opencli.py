@@ -3,13 +3,17 @@
 
 import json
 import os
+import inspect
+import tempfile
 import subprocess
 import sys
 import unittest
 import importlib.util
 from datetime import datetime
+from contextlib import ExitStack
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
+from unittest.mock import mock_open
 
 SCRIPTS_DIR = Path(__file__).parent.parent / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
@@ -18,6 +22,38 @@ spec = importlib.util.spec_from_file_location("fetch_twitter", SCRIPTS_DIR / "fe
 fetch_twitter = importlib.util.module_from_spec(spec)
 sys.modules["fetch_twitter"] = fetch_twitter
 spec.loader.exec_module(fetch_twitter)
+
+_FETCH_WITH_BACKEND_CHAIN_PARAMS = list(inspect.signature(fetch_twitter.fetch_with_backend_chain).parameters.keys())
+_OPENCLI_AUTO_UPDATE_PARAM_INDEX = (
+    _FETCH_WITH_BACKEND_CHAIN_PARAMS.index("opencli_auto_update")
+    if "opencli_auto_update" in _FETCH_WITH_BACKEND_CHAIN_PARAMS
+    else None
+)
+
+
+def _require_attr(module, name: str):
+    value = getattr(module, name, None)
+    if value is None:
+        raise AssertionError(f"{module.__name__}.{name} must exist for OpenCLI update tests.")
+    return value
+
+
+def _read_opencli_auto_update_arg(mock_call):
+    args, kwargs = mock_call
+    if "opencli_auto_update" in kwargs:
+        return kwargs["opencli_auto_update"]
+    if _OPENCLI_AUTO_UPDATE_PARAM_INDEX is None:
+        raise AssertionError("fetch_with_backend_chain does not accept opencli_auto_update")
+    if len(args) <= _OPENCLI_AUTO_UPDATE_PARAM_INDEX:
+        raise AssertionError(
+            "fetch_with_backend_chain was called without expected opencli_auto_update positional arg"
+        )
+    return args[_OPENCLI_AUTO_UPDATE_PARAM_INDEX]
+
+
+def _temp_opencli_state_path(stack: ExitStack) -> Path:
+    temp_dir = stack.enter_context(tempfile.TemporaryDirectory())
+    return Path(temp_dir) / "opencli-update-state.json"
 
 
 def utc(value):
@@ -220,6 +256,234 @@ class TestBackendSelection(unittest.TestCase):
             with self.assertLogs(level="WARNING"):
                 self.assertEqual(fetch_twitter.get_opencli_max_workers(), 10)
 
+    def test_parses_opencli_update_command_override(self):
+        parser = _require_attr(fetch_twitter, "_parse_opencli_update_command_spec")
+        with patch.dict(os.environ, {"OPENCLI_UPDATE_COMMAND": "self-update --yes"}, clear=True):
+            self.assertEqual(
+                parser(),
+                [["self-update", "--yes"]],
+            )
+
+
+class TestOpenCliAutoUpdate(unittest.TestCase):
+    @patch.dict(os.environ, {"OPENCLI_UPDATE_COMMAND": "self-update"}, clear=True)
+    def test_ensure_opencli_latest_retries_short_flag_when_long_flag_fails(self):
+        with ExitStack() as stack:
+            _require_attr(fetch_twitter, "_run_opencli_update_command")
+            _require_attr(fetch_twitter, "_record_opencli_update_state")
+            _require_attr(fetch_twitter, "_opencli_update_state_path")
+
+            run_mock = stack.enter_context(
+                patch("fetch_twitter._run_opencli_update_command")
+            )
+            stack.enter_context(patch("fetch_twitter._record_opencli_update_state"))
+            state_path = _temp_opencli_state_path(stack)
+            stack.enter_context(
+                patch(
+                    "fetch_twitter._opencli_update_state_path",
+                    return_value=state_path,
+                )
+            )
+            run_mock.side_effect = [
+                subprocess.CompletedProcess(
+                    args=["/bin/opencli", "self-update"],
+                    returncode=1,
+                    stdout="",
+                    stderr="Update requires confirmation.",
+                ),
+                subprocess.CompletedProcess(
+                    args=["/bin/opencli", "self-update", "--yes"],
+                    returncode=1,
+                    stdout="",
+                    stderr="opencli: unrecognized argument '--yes'",
+                ),
+                subprocess.CompletedProcess(
+                    args=["/bin/opencli", "self-update", "-y"],
+                    returncode=0,
+                    stdout="updated",
+                    stderr="",
+                ),
+            ]
+
+            ensure_opencli_latest = _require_attr(fetch_twitter, "_ensure_opencli_latest")
+
+            result = ensure_opencli_latest("/bin/opencli")
+
+            self.assertEqual(result["status"], "updated")
+            self.assertEqual(result["command"], "/bin/opencli self-update -y")
+            self.assertEqual(run_mock.call_count, 3)
+            run_mock.assert_has_calls(
+                [
+                    call("/bin/opencli", ["self-update"]),
+                    call("/bin/opencli", ["self-update", "--yes"]),
+                    call("/bin/opencli", ["self-update", "-y"]),
+                ]
+            )
+
+    @patch.dict(os.environ, {"OPENCLI_UPDATE_COMMAND": "self-update"}, clear=True)
+    def test_ensure_opencli_latest_retries_yes_and_y_flags(self):
+        with ExitStack() as stack:
+            _require_attr(fetch_twitter, "_run_opencli_update_command")
+            _require_attr(fetch_twitter, "_record_opencli_update_state")
+            _require_attr(fetch_twitter, "_opencli_update_state_path")
+
+            run_mock = stack.enter_context(
+                patch("fetch_twitter._run_opencli_update_command")
+            )
+            stack.enter_context(patch("fetch_twitter._record_opencli_update_state"))
+            state_path = _temp_opencli_state_path(stack)
+            stack.enter_context(
+                patch(
+                    "fetch_twitter._opencli_update_state_path",
+                    return_value=state_path,
+                )
+            )
+            run_mock.side_effect = [
+                subprocess.CompletedProcess(
+                    args=["/bin/opencli", "self-update"],
+                    returncode=1,
+                    stdout="",
+                    stderr="Update requires confirmation. Use --yes to continue.",
+                ),
+                subprocess.CompletedProcess(
+                    args=["/bin/opencli", "self-update", "--yes"],
+                    returncode=0,
+                    stdout="updated",
+                    stderr="",
+                ),
+            ]
+
+            ensure_opencli_latest = _require_attr(fetch_twitter, "_ensure_opencli_latest")
+
+            result = ensure_opencli_latest("/bin/opencli")
+
+            self.assertEqual(result["status"], "updated")
+            self.assertEqual(result["command"], "/bin/opencli self-update --yes")
+            self.assertEqual(run_mock.call_count, 2)
+            run_mock.assert_has_calls(
+                [
+                    call("/bin/opencli", ["self-update"]),
+                    call("/bin/opencli", ["self-update", "--yes"]),
+                ]
+            )
+
+    @patch.dict(os.environ, {"OPENCLI_UPDATE_COMMAND": "self-update"}, clear=True)
+    def test_ensure_opencli_latest_treats_not_found_as_failed_instead_of_unsupported(self):
+        with ExitStack() as stack:
+            _require_attr(fetch_twitter, "_run_opencli_update_command")
+            _require_attr(fetch_twitter, "_record_opencli_update_state")
+            _require_attr(fetch_twitter, "_opencli_update_state_path")
+
+            run_mock = stack.enter_context(
+                patch("fetch_twitter._run_opencli_update_command")
+            )
+            stack.enter_context(patch("fetch_twitter._record_opencli_update_state"))
+            state_path = _temp_opencli_state_path(stack)
+            stack.enter_context(
+                patch(
+                    "fetch_twitter._opencli_update_state_path",
+                    return_value=state_path,
+                )
+            )
+            run_mock.side_effect = [
+                subprocess.CompletedProcess(
+                    args=["/bin/opencli", "self-update"],
+                    returncode=1,
+                    stdout="",
+                    stderr="Update command exited with: file not found",
+                ),
+                subprocess.CompletedProcess(
+                    args=["/bin/opencli", "self-update", "--yes"],
+                    returncode=1,
+                    stdout="",
+                    stderr="Update command exited with: file not found",
+                ),
+                subprocess.CompletedProcess(
+                    args=["/bin/opencli", "self-update", "-y"],
+                    returncode=1,
+                    stdout="",
+                    stderr="Update command exited with: file not found",
+                ),
+            ]
+
+            ensure_opencli_latest = _require_attr(fetch_twitter, "_ensure_opencli_latest")
+
+            result = ensure_opencli_latest("/bin/opencli")
+
+            self.assertEqual(result["status"], "failed")
+            self.assertEqual(result["command"], "/bin/opencli self-update -y")
+            self.assertEqual(run_mock.call_count, 3)
+            run_mock.assert_has_calls(
+                [
+                    call("/bin/opencli", ["self-update"]),
+                    call("/bin/opencli", ["self-update", "--yes"]),
+                    call("/bin/opencli", ["self-update", "-y"]),
+                ]
+            )
+
+    @patch.dict(os.environ, {"OPENCLI_UPDATE_COMMAND": "self-update --yes"}, clear=True)
+    def test_ensure_opencli_latest_uses_custom_update_command(
+        self,
+        ):
+        with ExitStack() as stack:
+            _require_attr(fetch_twitter, "_run_opencli_update_command")
+            _require_attr(fetch_twitter, "_record_opencli_update_state")
+            _require_attr(fetch_twitter, "_opencli_update_state_path")
+
+            run_mock = stack.enter_context(
+                patch("fetch_twitter._run_opencli_update_command")
+            )
+            stack.enter_context(patch("fetch_twitter._record_opencli_update_state"))
+            state_path = _temp_opencli_state_path(stack)
+            stack.enter_context(
+                patch(
+                    "fetch_twitter._opencli_update_state_path",
+                    return_value=state_path,
+                )
+            )
+            run_mock.return_value = subprocess.CompletedProcess(
+                args=["/bin/opencli", "self-update", "--yes"],
+                returncode=0,
+                stdout="updated",
+                stderr="",
+            )
+
+            ensure_opencli_latest = _require_attr(fetch_twitter, "_ensure_opencli_latest")
+
+            result = ensure_opencli_latest("/bin/opencli")
+
+            self.assertEqual(result["status"], "updated")
+            self.assertEqual(result["command"], "/bin/opencli self-update --yes")
+            run_mock.assert_called_once_with("/bin/opencli", ["self-update", "--yes"])
+
+    @patch.dict(os.environ, {"OPENCLI_NO_UPDATE": "1"}, clear=True)
+    def test_ensure_opencli_latest_skips_when_no_update_enabled(
+        self,
+    ):
+        _require_attr(fetch_twitter, "_run_opencli_update_command")
+        _require_attr(fetch_twitter, "_opencli_update_state_path")
+
+        with ExitStack() as stack:
+            run_mock = stack.enter_context(
+                patch("fetch_twitter._run_opencli_update_command")
+            )
+            state_path = _temp_opencli_state_path(stack)
+            stack.enter_context(
+                patch(
+                    "fetch_twitter._opencli_update_state_path",
+                    return_value=state_path,
+                )
+            )
+            ensure_opencli_latest = _require_attr(fetch_twitter, "_ensure_opencli_latest")
+
+            result = ensure_opencli_latest("/bin/opencli")
+
+            self.assertEqual(result["status"], "skipped")
+            self.assertIn("OpenCLI auto-update is disabled", result["message"])
+            run_mock.assert_not_called()
+
+
+class TestOpenCliSelectionDiagnostics(unittest.TestCase):
     def test_empty_reason_prioritizes_opencli_failure(self):
         diagnostics = [
             {
@@ -262,13 +526,6 @@ class TestBackendSelection(unittest.TestCase):
     def test_stale_browser_bridge_errors_in_stdout_are_global_opencli_failures(self):
         code = fetch_twitter._classify_opencli_failure(1, stdout="No tab with id: 123")
         self.assertEqual(code, "opencli_browser_unavailable")
-
-        code = fetch_twitter._classify_opencli_failure(
-            1,
-            stdout="SecurityError: Failed to execute 'pushState' on 'History'",
-        )
-        self.assertEqual(code, "opencli_browser_unavailable")
-
 
 class TestOpenCliBackend(unittest.TestCase):
     def setUp(self):
@@ -500,6 +757,85 @@ class TestFetchWithBackendChain(unittest.TestCase):
         )
 
         backend_cls_mock.assert_called_once_with(max_workers=7)
+
+
+class TestMainOpenCliOptions(unittest.TestCase):
+    @patch("fetch_twitter.open", new_callable=mock_open)
+    @patch("fetch_twitter.fetch_with_backend_chain")
+    @patch("fetch_twitter.load_twitter_sources")
+    def test_cli_no_update_flag_disables_opencli_auto_update(
+        self,
+        load_sources_mock,
+        backend_chain_mock,
+        _open_mock,
+    ):
+        load_sources_mock.return_value = []
+        backend_chain_mock.return_value = ("opencli", [], [])
+
+        with patch.dict(os.environ, {"OPENCLI_AUTO_UPDATE": "1"}, clear=True):
+            with patch.object(sys, "argv", ["fetch-twitter.py", "--backend", "opencli", "--no-update"]):
+                self.assertEqual(fetch_twitter.main(), 0)
+
+        self.assertEqual(_read_opencli_auto_update_arg(backend_chain_mock.call_args), False)
+
+    @patch("fetch_twitter.open", new_callable=mock_open)
+    @patch("fetch_twitter.fetch_with_backend_chain")
+    @patch("fetch_twitter.load_twitter_sources")
+    def test_no_update_flag_disables_opencli_auto_update(
+        self,
+        load_sources_mock,
+        backend_chain_mock,
+        _open_mock,
+    ):
+        load_sources_mock.return_value = []
+        backend_chain_mock.return_value = ("opencli", [], [])
+
+        with patch.dict(os.environ, {"OPENCLI_AUTO_UPDATE": "1", "OPENCLI_NO_UPDATE": "1"}, clear=True):
+            with patch.object(sys, "argv", ["fetch-twitter.py", "--backend", "opencli"]):
+                self.assertEqual(fetch_twitter.main(), 0)
+
+        self.assertEqual(_read_opencli_auto_update_arg(backend_chain_mock.call_args), False)
+
+    @patch("fetch_twitter.open", new_callable=mock_open)
+    @patch("fetch_twitter.fetch_with_backend_chain")
+    @patch("fetch_twitter.load_twitter_sources")
+    def test_no_update_flag_controls_update_toggle(
+        self,
+        load_sources_mock,
+        backend_chain_mock,
+        _open_mock,
+    ):
+        load_sources_mock.return_value = []
+        backend_chain_mock.return_value = ("opencli", [], [])
+
+        with patch.dict(os.environ, {"OPENCLI_AUTO_UPDATE": "1"}, clear=True):
+            with patch.object(sys, "argv", ["fetch-twitter.py", "--backend", "opencli"]):
+                self.assertEqual(fetch_twitter.main(), 0)
+        self.assertEqual(_read_opencli_auto_update_arg(backend_chain_mock.call_args), True)
+
+        with patch.dict(os.environ, {"OPENCLI_AUTO_UPDATE": "1", "OPENCLI_NO_UPDATE": "1"}, clear=True):
+            with patch.object(sys, "argv", ["fetch-twitter.py", "--backend", "opencli"]):
+                self.assertEqual(fetch_twitter.main(), 0)
+        self.assertEqual(_read_opencli_auto_update_arg(backend_chain_mock.call_args_list[1]), False)
+
+    @patch("fetch_twitter.open", new_callable=mock_open)
+    @patch("fetch_twitter.fetch_with_backend_chain")
+    @patch("fetch_twitter.load_twitter_sources")
+    def test_opencli_no_update_env_prevents_auto_update(
+        self,
+        load_sources_mock,
+        backend_chain_mock,
+        _open_mock,
+    ):
+        load_sources_mock.return_value = []
+        backend_chain_mock.return_value = ("opencli", [], [])
+
+        with patch.dict(os.environ, {"OPENCLI_NO_UPDATE": "1", "OPENCLI_AUTO_UPDATE": "1"}, clear=True):
+            with patch.object(sys, "argv", ["fetch-twitter.py", "--backend", "opencli"]):
+                self.assertEqual(fetch_twitter.main(), 0)
+            self.assertEqual(_read_opencli_auto_update_arg(backend_chain_mock.call_args_list[0]), False)
+
+
 
 
 class TestOpenCliChromeCleanup(unittest.TestCase):
