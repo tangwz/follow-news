@@ -957,6 +957,9 @@ def _parse_int_header(headers: Any, name: str) -> Optional[int]:
 
 _SHARED_FILE_LOCKS: Dict[str, threading.RLock] = {}
 _SHARED_FILE_LOCKS_GUARD = threading.Lock()
+_SHARED_RATE_LIMIT_MANAGERS: Dict[str, "XRateLimitManager"] = {}
+_SHARED_FILE_CACHES: Dict[Tuple[str, str, bool, str], "XFileCache"] = {}
+_SHARED_STATE_GUARD = threading.Lock()
 
 
 def _shared_file_lock(path: Path) -> threading.RLock:
@@ -1044,6 +1047,41 @@ class XRateLimitManager:
             bucket["updated_at"] = int(current)
             state[key] = bucket
             self.store.save(state)
+
+
+def get_x_rate_limit_manager(cache_dir: Optional[Path] = None) -> "XRateLimitManager":
+    """Return a shared rate-limit manager for the project-local state file."""
+    resolved_cache_dir = Path(cache_dir) if cache_dir is not None else get_x_cache_dir()
+    key = str((resolved_cache_dir / "rate_limits.json").resolve())
+    with _SHARED_STATE_GUARD:
+        manager = _SHARED_RATE_LIMIT_MANAGERS.get(key)
+        if manager is None:
+            manager = XRateLimitManager(cache_dir=resolved_cache_dir)
+            _SHARED_RATE_LIMIT_MANAGERS[key] = manager
+        return manager
+
+
+def get_x_file_cache(
+    backend: str,
+    cache_dir: Optional[Path] = None,
+    no_cache: bool = False,
+    credential: Optional[str] = None,
+) -> "XFileCache":
+    """Return a shared response cache for one backend and credential scope."""
+    resolved_cache_dir = Path(cache_dir) if cache_dir is not None else get_x_cache_dir()
+    credential_id = _credential_id(credential)
+    key = (str((resolved_cache_dir / "cache_index.json").resolve()), backend, no_cache, credential_id)
+    with _SHARED_STATE_GUARD:
+        cache = _SHARED_FILE_CACHES.get(key)
+        if cache is None:
+            cache = XFileCache(
+                backend,
+                cache_dir=resolved_cache_dir,
+                no_cache=no_cache,
+                credential=credential,
+            )
+            _SHARED_FILE_CACHES[key] = cache
+        return cache
 
 
 class XFileCache:
@@ -1227,12 +1265,12 @@ def x_request_json(
     cache_ttl_seconds: Optional[int] = None,
 ) -> Any:
     """Fetch JSON with project-local response caching and rate-limit tracking."""
-    cache = XFileCache(backend, no_cache=no_cache, credential=credential)
+    cache = get_x_file_cache(backend, no_cache=no_cache, credential=credential)
     cached = cache.get(endpoint, params)
     if cached is not None:
         return cached
 
-    rate_limits = XRateLimitManager()
+    rate_limits = get_x_rate_limit_manager()
     rate_limits.require_request(backend, endpoint, credential)
 
     req = Request(url, headers=headers)

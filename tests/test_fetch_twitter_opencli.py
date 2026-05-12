@@ -1254,3 +1254,19 @@ class TestXFileCacheAndRateLimits(unittest.TestCase):
             second = fetch_twitter.XRateLimitManager(cache_dir=Path(tmp), now_func=lambda: 1000)
 
             self.assertIs(first._lock, second._lock)
+
+    def test_get_x_file_cache_reuses_instances_for_same_scope(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            first = fetch_twitter.get_x_file_cache("official", cache_dir=Path(tmp), credential="token-a")
+            second = fetch_twitter.get_x_file_cache("official", cache_dir=Path(tmp), credential="token-a")
+            other = fetch_twitter.get_x_file_cache("official", cache_dir=Path(tmp), credential="token-b")
+
+            self.assertIs(first, second)
+            self.assertIsNot(first, other)
+
+    def test_get_x_rate_limit_manager_reuses_instances_for_same_cache_dir(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            first = fetch_twitter.get_x_rate_limit_manager(cache_dir=Path(tmp))
+            second = fetch_twitter.get_x_rate_limit_manager(cache_dir=Path(tmp))
+
+            self.assertIs(first, second)
