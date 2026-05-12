@@ -31,6 +31,13 @@ _OPENCLI_AUTO_UPDATE_PARAM_INDEX = (
 )
 
 
+def _require_attr(module, name: str):
+    value = getattr(module, name, None)
+    if value is None:
+        raise AssertionError(f"{module.__name__}.{name} must exist for OpenCLI update tests.")
+    return value
+
+
 def _read_opencli_auto_update_arg(mock_call):
     args, kwargs = mock_call
     if "opencli_auto_update" in kwargs:
@@ -250,11 +257,7 @@ class TestBackendSelection(unittest.TestCase):
                 self.assertEqual(fetch_twitter.get_opencli_max_workers(), 10)
 
     def test_parses_opencli_update_command_override(self):
-        parser = getattr(fetch_twitter, "_parse_opencli_update_command_spec", None)
-        if parser is None:
-            self.skipTest(
-                "No update-command parser symbol exists in this version of scripts/fetch-twitter.py"
-            )
+        parser = _require_attr(fetch_twitter, "_parse_opencli_update_command_spec")
         with patch.dict(os.environ, {"OPENCLI_UPDATE_COMMAND": "self-update --yes"}, clear=True):
             self.assertEqual(
                 parser(),
@@ -266,12 +269,9 @@ class TestOpenCliAutoUpdate(unittest.TestCase):
     @patch.dict(os.environ, {"OPENCLI_UPDATE_COMMAND": "self-update"}, clear=True)
     def test_ensure_opencli_latest_retries_short_flag_when_long_flag_fails(self):
         with ExitStack() as stack:
-            if not hasattr(fetch_twitter, "_run_opencli_update_command"):
-                self.skipTest("fetch_twitter._run_opencli_update_command is not available")
-            if not hasattr(fetch_twitter, "_record_opencli_update_state"):
-                self.skipTest("fetch_twitter._record_opencli_update_state is not available")
-            if not hasattr(fetch_twitter, "_opencli_update_state_path"):
-                self.skipTest("fetch_twitter._opencli_update_state_path is not available")
+            _require_attr(fetch_twitter, "_run_opencli_update_command")
+            _require_attr(fetch_twitter, "_record_opencli_update_state")
+            _require_attr(fetch_twitter, "_opencli_update_state_path")
 
             run_mock = stack.enter_context(
                 patch("fetch_twitter._run_opencli_update_command")
@@ -305,9 +305,7 @@ class TestOpenCliAutoUpdate(unittest.TestCase):
                 ),
             ]
 
-            ensure_opencli_latest = getattr(fetch_twitter, "_ensure_opencli_latest", None)
-            if ensure_opencli_latest is None:
-                self.skipTest("No OpenCLI auto-update entrypoint found in scripts/fetch-twitter.py")
+            ensure_opencli_latest = _require_attr(fetch_twitter, "_ensure_opencli_latest")
 
             result = ensure_opencli_latest("/bin/opencli")
 
@@ -325,12 +323,9 @@ class TestOpenCliAutoUpdate(unittest.TestCase):
     @patch.dict(os.environ, {"OPENCLI_UPDATE_COMMAND": "self-update"}, clear=True)
     def test_ensure_opencli_latest_retries_yes_and_y_flags(self):
         with ExitStack() as stack:
-            if not hasattr(fetch_twitter, "_run_opencli_update_command"):
-                self.skipTest("fetch_twitter._run_opencli_update_command is not available")
-            if not hasattr(fetch_twitter, "_record_opencli_update_state"):
-                self.skipTest("fetch_twitter._record_opencli_update_state is not available")
-            if not hasattr(fetch_twitter, "_opencli_update_state_path"):
-                self.skipTest("fetch_twitter._opencli_update_state_path is not available")
+            _require_attr(fetch_twitter, "_run_opencli_update_command")
+            _require_attr(fetch_twitter, "_record_opencli_update_state")
+            _require_attr(fetch_twitter, "_opencli_update_state_path")
 
             run_mock = stack.enter_context(
                 patch("fetch_twitter._run_opencli_update_command")
@@ -358,9 +353,7 @@ class TestOpenCliAutoUpdate(unittest.TestCase):
                 ),
             ]
 
-            ensure_opencli_latest = getattr(fetch_twitter, "_ensure_opencli_latest", None)
-            if ensure_opencli_latest is None:
-                self.skipTest("No OpenCLI auto-update entrypoint found in scripts/fetch-twitter.py")
+            ensure_opencli_latest = _require_attr(fetch_twitter, "_ensure_opencli_latest")
 
             result = ensure_opencli_latest("/bin/opencli")
 
@@ -377,12 +370,9 @@ class TestOpenCliAutoUpdate(unittest.TestCase):
     @patch.dict(os.environ, {"OPENCLI_UPDATE_COMMAND": "self-update"}, clear=True)
     def test_ensure_opencli_latest_treats_not_found_as_failed_instead_of_unsupported(self):
         with ExitStack() as stack:
-            if not hasattr(fetch_twitter, "_run_opencli_update_command"):
-                self.skipTest("fetch_twitter._run_opencli_update_command is not available")
-            if not hasattr(fetch_twitter, "_record_opencli_update_state"):
-                self.skipTest("fetch_twitter._record_opencli_update_state is not available")
-            if not hasattr(fetch_twitter, "_opencli_update_state_path"):
-                self.skipTest("fetch_twitter._opencli_update_state_path is not available")
+            _require_attr(fetch_twitter, "_run_opencli_update_command")
+            _require_attr(fetch_twitter, "_record_opencli_update_state")
+            _require_attr(fetch_twitter, "_opencli_update_state_path")
 
             run_mock = stack.enter_context(
                 patch("fetch_twitter._run_opencli_update_command")
@@ -416,9 +406,7 @@ class TestOpenCliAutoUpdate(unittest.TestCase):
                 ),
             ]
 
-            ensure_opencli_latest = getattr(fetch_twitter, "_ensure_opencli_latest", None)
-            if ensure_opencli_latest is None:
-                self.skipTest("No OpenCLI auto-update entrypoint found in scripts/fetch-twitter.py")
+            ensure_opencli_latest = _require_attr(fetch_twitter, "_ensure_opencli_latest")
 
             result = ensure_opencli_latest("/bin/opencli")
 
@@ -438,12 +426,9 @@ class TestOpenCliAutoUpdate(unittest.TestCase):
         self,
         ):
         with ExitStack() as stack:
-            if not hasattr(fetch_twitter, "_run_opencli_update_command"):
-                self.skipTest("fetch_twitter._run_opencli_update_command is not available")
-            if not hasattr(fetch_twitter, "_record_opencli_update_state"):
-                self.skipTest("fetch_twitter._record_opencli_update_state is not available")
-            if not hasattr(fetch_twitter, "_opencli_update_state_path"):
-                self.skipTest("fetch_twitter._opencli_update_state_path is not available")
+            _require_attr(fetch_twitter, "_run_opencli_update_command")
+            _require_attr(fetch_twitter, "_record_opencli_update_state")
+            _require_attr(fetch_twitter, "_opencli_update_state_path")
 
             run_mock = stack.enter_context(
                 patch("fetch_twitter._run_opencli_update_command")
@@ -463,9 +448,7 @@ class TestOpenCliAutoUpdate(unittest.TestCase):
                 stderr="",
             )
 
-            ensure_opencli_latest = getattr(fetch_twitter, "_ensure_opencli_latest", None)
-            if ensure_opencli_latest is None:
-                self.skipTest("No OpenCLI auto-update entrypoint found in scripts/fetch-twitter.py")
+            ensure_opencli_latest = _require_attr(fetch_twitter, "_ensure_opencli_latest")
 
             result = ensure_opencli_latest("/bin/opencli")
 
@@ -477,10 +460,8 @@ class TestOpenCliAutoUpdate(unittest.TestCase):
     def test_ensure_opencli_latest_skips_when_no_update_enabled(
         self,
     ):
-        if not hasattr(fetch_twitter, "_run_opencli_update_command"):
-            self.skipTest("fetch_twitter._run_opencli_update_command is not available")
-        if not hasattr(fetch_twitter, "_opencli_update_state_path"):
-            self.skipTest("fetch_twitter._opencli_update_state_path is not available")
+        _require_attr(fetch_twitter, "_run_opencli_update_command")
+        _require_attr(fetch_twitter, "_opencli_update_state_path")
 
         with ExitStack() as stack:
             run_mock = stack.enter_context(
@@ -493,9 +474,7 @@ class TestOpenCliAutoUpdate(unittest.TestCase):
                     return_value=state_path,
                 )
             )
-            ensure_opencli_latest = getattr(fetch_twitter, "_ensure_opencli_latest", None)
-            if ensure_opencli_latest is None:
-                self.skipTest("No OpenCLI auto-update entrypoint found in scripts/fetch-twitter.py")
+            ensure_opencli_latest = _require_attr(fetch_twitter, "_ensure_opencli_latest")
 
             result = ensure_opencli_latest("/bin/opencli")
 
