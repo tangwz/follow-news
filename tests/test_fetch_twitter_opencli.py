@@ -1155,6 +1155,24 @@ class TestXFileCacheAndRateLimits(unittest.TestCase):
         with patch.dict(os.environ, {"X_TIMELINE_CACHE_TTL_SECONDS": "120"}):
             self.assertEqual(fetch_twitter.get_x_timeline_cache_ttl_seconds(), 120)
 
+    def test_source_timeline_cache_ttl_uses_source_override(self):
+        source = {"id": "sama-twitter", "priority": True, "twitter_cache_ttl_seconds": 900}
+
+        self.assertEqual(fetch_twitter.get_source_timeline_cache_ttl_seconds(source), 900)
+
+    def test_source_timeline_cache_ttl_defaults_by_priority(self):
+        with patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(fetch_twitter.get_source_timeline_cache_ttl_seconds({"priority": True}), 300)
+            self.assertEqual(fetch_twitter.get_source_timeline_cache_ttl_seconds({"priority": False}), 1800)
+
+    def test_source_timeline_cache_ttl_env_overrides_priority_defaults(self):
+        with patch.dict(os.environ, {
+            "X_PRIORITY_TIMELINE_CACHE_TTL_SECONDS": "600",
+            "X_REGULAR_TIMELINE_CACHE_TTL_SECONDS": "7200",
+        }):
+            self.assertEqual(fetch_twitter.get_source_timeline_cache_ttl_seconds({"priority": True}), 600)
+            self.assertEqual(fetch_twitter.get_source_timeline_cache_ttl_seconds({"priority": False}), 7200)
+
     def test_timeline_cache_entry_uses_short_ttl_when_requested(self):
         with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, {}, clear=True):
             cache = fetch_twitter.XFileCache("official", cache_dir=Path(tmp), credential="token-a")

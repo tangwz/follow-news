@@ -48,6 +48,11 @@
           "type": "string",
           "description": "Twitter handle without @ (required for type=twitter)"
         },
+        "twitter_cache_ttl_seconds": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Optional per-source Twitter/X timeline cache TTL in seconds"
+        },
         "repo": {
           "type": "string",
           "pattern": "^[a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+$",
