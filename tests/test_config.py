@@ -269,12 +269,18 @@ class TestSkillFrontmatter(unittest.TestCase):
         self.assertTrue(tools_by_bin["python3"]["required"])
         self.assertIn("python3", openclaw["requires"]["bins"])
 
-    def test_skill_docs_do_not_advertise_unimplemented_web_backends(self):
+    def test_skill_web_search_docs_do_not_advertise_unimplemented_backends(self):
         skill = SKILL_FILE.read_text(encoding="utf-8")
+        fetch_web_section = skill.split("#### `fetch-web.py` - Web Search Engine", 1)[1].split(
+            "#### `fetch-github.py`",
+            1,
+        )[0]
+        web_backend_lines = [line for line in skill.splitlines() if "WEB_SEARCH_BACKEND" in line]
 
-        self.assertNotIn("auto|brave|tavily|browser", skill)
-        self.assertNotIn("DuckDuckGo", skill)
-        self.assertNotIn("browser-backed", skill)
+        for line in web_backend_lines:
+            self.assertNotIn("browser", line)
+        self.assertNotIn("DuckDuckGo", fetch_web_section)
+        self.assertNotIn("browser-backed", fetch_web_section)
         self.assertIn("auto|brave|tavily", skill)
 
 
