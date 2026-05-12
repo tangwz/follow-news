@@ -4,6 +4,7 @@
 import json
 import os
 import inspect
+import tempfile
 import subprocess
 import sys
 import unittest
@@ -41,6 +42,11 @@ def _read_opencli_auto_update_arg(mock_call):
             "fetch_with_backend_chain was called without expected opencli_auto_update positional arg"
         )
     return args[_OPENCLI_AUTO_UPDATE_PARAM_INDEX]
+
+
+def _temp_opencli_state_path(stack: ExitStack) -> Path:
+    temp_dir = stack.enter_context(tempfile.TemporaryDirectory())
+    return Path(temp_dir) / "opencli-update-state.json"
 
 
 def utc(value):
@@ -271,16 +277,13 @@ class TestOpenCliAutoUpdate(unittest.TestCase):
                 patch("fetch_twitter._run_opencli_update_command")
             )
             stack.enter_context(patch("fetch_twitter._record_opencli_update_state"))
-            state_path_mock = stack.enter_context(
+            state_path = _temp_opencli_state_path(stack)
+            stack.enter_context(
                 patch(
                     "fetch_twitter._opencli_update_state_path",
-                    return_value=Path("/tmp/opencli-update-state.json"),
+                    return_value=state_path,
                 )
             )
-
-            state_path = state_path_mock.return_value
-            if state_path.exists():
-                state_path.unlink()
             run_mock.side_effect = [
                 subprocess.CompletedProcess(
                     args=["/bin/opencli", "self-update"],
@@ -333,16 +336,13 @@ class TestOpenCliAutoUpdate(unittest.TestCase):
                 patch("fetch_twitter._run_opencli_update_command")
             )
             stack.enter_context(patch("fetch_twitter._record_opencli_update_state"))
-            state_path_mock = stack.enter_context(
+            state_path = _temp_opencli_state_path(stack)
+            stack.enter_context(
                 patch(
                     "fetch_twitter._opencli_update_state_path",
-                    return_value=Path("/tmp/opencli-update-state.json"),
+                    return_value=state_path,
                 )
             )
-
-            state_path = state_path_mock.return_value
-            if state_path.exists():
-                state_path.unlink()
             run_mock.side_effect = [
                 subprocess.CompletedProcess(
                     args=["/bin/opencli", "self-update"],
@@ -390,16 +390,13 @@ class TestOpenCliAutoUpdate(unittest.TestCase):
                 patch("fetch_twitter._run_opencli_update_command")
             )
             stack.enter_context(patch("fetch_twitter._record_opencli_update_state"))
-            state_path_mock = stack.enter_context(
+            state_path = _temp_opencli_state_path(stack)
+            stack.enter_context(
                 patch(
                     "fetch_twitter._opencli_update_state_path",
-                    return_value=Path("/tmp/opencli-update-state.json"),
+                    return_value=state_path,
                 )
             )
-
-            state_path = state_path_mock.return_value
-            if state_path.exists():
-                state_path.unlink()
             run_mock.return_value = subprocess.CompletedProcess(
                 args=["/bin/opencli", "self-update", "--yes"],
                 returncode=0,
