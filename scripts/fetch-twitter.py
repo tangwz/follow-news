@@ -1264,7 +1264,8 @@ class XCacheJanitor:
                 try:
                     path.unlink()
                 except OSError:
-                    pass
+                    entry["size"] = path.stat().st_size
+                    kept[cache_key] = entry
                 continue
             entry["size"] = path.stat().st_size
             kept[cache_key] = entry
@@ -1287,7 +1288,7 @@ class XCacheJanitor:
                 try:
                     path.unlink()
                 except OSError:
-                    pass
+                    continue
                 total_bytes -= size
                 kept.pop(cache_key, None)
 

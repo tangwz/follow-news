@@ -1298,6 +1298,40 @@ class TestXFileCacheAndRateLimits(unittest.TestCase):
             self.assertNotIn(old_key, remaining)
             self.assertIn(new_key, remaining)
 
+    def test_cache_janitor_keeps_expired_index_entry_when_unlink_fails(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cache_dir = Path(tmp)
+            cache = fetch_twitter.XFileCache("official", cache_dir=cache_dir)
+            cache.put("GET /2/users/by", {"usernames": "old"}, 200, {}, {"data": []})
+            key = cache.make_key("GET /2/users/by", {"usernames": "old"})
+            index = cache.index_store.load()
+            index[key]["fetched_at"] = int(fetch_twitter.time.time()) - (31 * 86400)
+            index[key]["expires_at"] = int(fetch_twitter.time.time()) + 86400
+            cache.index_store.save(index)
+
+            with patch("pathlib.Path.unlink", side_effect=OSError("permission denied")):
+                fetch_twitter.XCacheJanitor(cache_dir=cache_dir).cleanup()
+
+            remaining = cache.index_store.load()
+            self.assertIn(key, remaining)
+
+    def test_cache_janitor_keeps_over_budget_index_entry_when_unlink_fails(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, {"X_CACHE_MAX_BYTES": "450"}):
+            cache_dir = Path(tmp)
+            cache = fetch_twitter.XFileCache("official", cache_dir=cache_dir)
+            cache.put("GET /2/users/by", {"usernames": "old"}, 200, {}, {"data": "x" * 80})
+            cache.put("GET /2/users/by", {"usernames": "new"}, 200, {}, {"data": "y" * 80})
+            old_key = cache.make_key("GET /2/users/by", {"usernames": "old"})
+            index = cache.index_store.load()
+            index[old_key]["last_accessed_at"] = 1
+            cache.index_store.save(index)
+
+            with patch("pathlib.Path.unlink", side_effect=OSError("permission denied")):
+                fetch_twitter.XCacheJanitor(cache_dir=cache_dir).cleanup()
+
+            remaining = cache.index_store.load()
+            self.assertIn(old_key, remaining)
+
     def test_rate_limit_manager_pauses_429_until_reset(self):
         with tempfile.TemporaryDirectory() as tmp:
             manager = fetch_twitter.XRateLimitManager(cache_dir=Path(tmp), now_func=lambda: 1000)
