@@ -1729,6 +1729,27 @@ class TestXFileCacheAndRateLimits(unittest.TestCase):
             self.assertFalse(allowed)
             self.assertEqual(deferred_until, 1030)
 
+    def test_rate_limit_manager_uses_short_fallback_when_429_has_no_retry_headers(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            manager = fetch_twitter.XRateLimitManager(cache_dir=Path(tmp), now_func=lambda: 1000)
+            manager.update_from_headers(
+                "getxapi",
+                "GET /twitter/user/tweets",
+                "secret-token",
+                {},
+                status_code=429,
+            )
+
+            allowed, deferred_until = manager.can_request(
+                "getxapi",
+                "GET /twitter/user/tweets",
+                "secret-token",
+                now=1001,
+            )
+
+            self.assertFalse(allowed)
+            self.assertEqual(deferred_until, 1060)
+
     def test_rate_limit_persistence_failure_is_non_fatal(self):
         with tempfile.TemporaryDirectory() as tmp:
             manager = fetch_twitter.XRateLimitManager(cache_dir=Path(tmp), now_func=lambda: 1000)
