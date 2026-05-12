@@ -1228,6 +1228,57 @@ class TestXFileCacheAndRateLimits(unittest.TestCase):
 
             self.assertEqual(cache.get("GET /2/users/by", {"usernames": "sama"}), {"data": [{"id": "1"}]})
 
+    def test_x_request_json_skips_before_network_on_cache_hit(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, {"X_CACHE_DIR": tmp}):
+            endpoint = "GET /twitter/user/last_tweets"
+            params = {"userName": "sama", "includeReplies": "false"}
+            cache = fetch_twitter.get_x_file_cache("twitterapiio", credential="token-a")
+            cache.put(endpoint, params, 200, {}, {"data": {"tweets": []}})
+            before_network = MagicMock()
+
+            result = fetch_twitter.x_request_json(
+                "twitterapiio",
+                endpoint,
+                "https://api.twitterapi.io/twitter/user/last_tweets",
+                {},
+                params,
+                credential="token-a",
+                before_network=before_network,
+            )
+
+            self.assertEqual(result, {"data": {"tweets": []}})
+            before_network.assert_not_called()
+
+    def test_x_request_json_runs_before_network_on_cache_miss(self):
+        class FakeResponse:
+            status = 200
+            headers = {}
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def read(self):
+                return b'{"data": {"tweets": []}}'
+
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, {"X_CACHE_DIR": tmp}):
+            before_network = MagicMock()
+            with patch("fetch_twitter.urlopen", return_value=FakeResponse()):
+                result = fetch_twitter.x_request_json(
+                    "twitterapiio",
+                    "GET /twitter/user/last_tweets",
+                    "https://api.twitterapi.io/twitter/user/last_tweets",
+                    {},
+                    {"userName": "sama", "includeReplies": "false"},
+                    credential="token-a",
+                    before_network=before_network,
+                )
+
+            self.assertEqual(result, {"data": {"tweets": []}})
+            before_network.assert_called_once_with()
+
     def test_file_cache_does_not_store_200_error_payloads(self):
         with tempfile.TemporaryDirectory() as tmp:
             cache = fetch_twitter.XFileCache("getxapi", cache_dir=Path(tmp))

@@ -42,7 +42,7 @@ from urllib.request import urlopen, Request
 from urllib.error import HTTPError
 from urllib.parse import urlencode, quote
 from pathlib import Path
-from typing import Dict, List, Any, Optional, Tuple
+from typing import Dict, List, Any, Optional, Tuple, Callable
 
 TIMEOUT = 30
 MAX_WORKERS = 5  # Lower for API rate limits
@@ -1321,6 +1321,7 @@ def x_request_json(
     credential: Optional[str] = None,
     no_cache: bool = False,
     cache_ttl_seconds: Optional[int] = None,
+    before_network: Optional[Callable[[], None]] = None,
 ) -> Any:
     """Fetch JSON with project-local response caching and rate-limit tracking."""
     cache = get_x_file_cache(backend, no_cache=no_cache, credential=credential)
@@ -1330,6 +1331,8 @@ def x_request_json(
 
     rate_limits = get_x_rate_limit_manager()
     rate_limits.require_request(backend, endpoint, credential)
+    if before_network is not None:
+        before_network()
 
     req = Request(url, headers=headers)
     try:
@@ -1909,8 +1912,6 @@ class TwitterApiIoBackend(TwitterBackend):
                     "User-Agent": "FollowNews/2.0",
                 }
 
-                self._limiter.wait()
-
                 raw = x_request_json(
                     "twitterapiio",
                     "GET /twitter/user/last_tweets",
@@ -1920,6 +1921,7 @@ class TwitterApiIoBackend(TwitterBackend):
                     credential=self.api_key,
                     no_cache=False,
                     cache_ttl_seconds=get_x_timeline_cache_ttl_seconds(),
+                    before_network=self._limiter.wait,
                 )
 
                 # API wraps response in {"data": {...}} envelope
@@ -1935,7 +1937,6 @@ class TwitterApiIoBackend(TwitterBackend):
                 if has_next and next_cursor and articles:
                     oldest = min(a["date"] for a in articles)
                     if oldest >= cutoff.isoformat():
-                        self._limiter.wait()
                         page2_params = urlencode({
                             "userName": handle,
                             "includeReplies": "false",
@@ -1951,6 +1952,7 @@ class TwitterApiIoBackend(TwitterBackend):
                             credential=self.api_key,
                             no_cache=False,
                             cache_ttl_seconds=get_x_timeline_cache_ttl_seconds(),
+                            before_network=self._limiter.wait,
                         )
                         data2 = raw2.get("data", raw2)
                         articles.extend(self._parse_tweets_page(
