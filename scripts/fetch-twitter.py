@@ -1169,10 +1169,14 @@ class XFileCache:
                     payload = json.load(f)
             except (FileNotFoundError, json.JSONDecodeError, OSError):
                 return None
-            entry["last_accessed_at"] = int(current)
-            index[cache_key] = entry
-            self.index_store.save(index)
-            return payload.get("body")
+            body = payload.get("body")
+            try:
+                entry["last_accessed_at"] = int(current)
+                index[cache_key] = entry
+                self.index_store.save(index)
+            except Exception as exc:
+                logging.warning("Failed to persist X response cache access time: %s", exc)
+            return body
 
     def put(
         self,

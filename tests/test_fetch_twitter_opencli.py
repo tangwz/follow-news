@@ -1184,6 +1184,18 @@ class TestXFileCacheAndRateLimits(unittest.TestCase):
 
             self.assertEqual(cache.get("GET /2/users/by", {"usernames": "sama"}), {"data": [{"id": "1"}]})
 
+    def test_file_cache_hit_survives_access_time_save_failure(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cache = fetch_twitter.XFileCache("official", cache_dir=Path(tmp))
+            cache.put("GET /2/users/by", {"usernames": "sama"}, 200, {}, {"data": [{"id": "1"}]})
+
+            with patch.object(cache.index_store, "save", side_effect=OSError("read-only filesystem")):
+                with self.assertLogs(level="WARNING") as logs:
+                    body = cache.get("GET /2/users/by", {"usernames": "sama"})
+
+            self.assertEqual(body, {"data": [{"id": "1"}]})
+            self.assertTrue(any("Failed to persist X response cache access time" in line for line in logs.output))
+
     def test_file_cache_misses_expired_response(self):
         with tempfile.TemporaryDirectory() as tmp:
             cache = fetch_twitter.XFileCache("official", cache_dir=Path(tmp))
