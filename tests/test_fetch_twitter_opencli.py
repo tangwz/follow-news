@@ -15,6 +15,7 @@ from contextlib import ExitStack
 from pathlib import Path
 from unittest.mock import MagicMock, call, patch
 from unittest.mock import mock_open
+from urllib.error import HTTPError
 
 SCRIPTS_DIR = Path(__file__).parent.parent / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
@@ -59,6 +60,20 @@ def _temp_opencli_state_path(stack: ExitStack) -> Path:
 
 def utc(value):
     return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+
+def http_error(code):
+    return HTTPError("https://example.com", code, "error", {}, None)
+
+
+def twitter_source():
+    return {
+        "id": "sama",
+        "name": "Sam Altman",
+        "handle": "sama",
+        "topics": ["ai"],
+        "priority": False,
+    }
 
 
 class TestOpenCliTweetNormalization(unittest.TestCase):
@@ -804,6 +819,40 @@ class TestFetchWithBackendChain(unittest.TestCase):
         backend_cls_mock.assert_called_once_with("x" * 20)
 
 
+class TestOfficialBackend(unittest.TestCase):
+    @patch.object(fetch_twitter.OfficialBackend, "_save_id_cache")
+    @patch.object(fetch_twitter.OfficialBackend, "_load_id_cache", return_value={})
+    @patch("fetch_twitter.x_request_json")
+    def test_batch_user_lookup_skips_individual_fallback_when_rate_deferred(
+        self,
+        request_mock,
+        _load_cache_mock,
+        _save_cache_mock,
+    ):
+        request_mock.side_effect = fetch_twitter.XRateLimitDeferred(1300)
+        backend = fetch_twitter.OfficialBackend("token-a")
+
+        result = backend._batch_resolve_user_ids(["sama", "jack"])
+
+        self.assertEqual(result, {})
+        request_mock.assert_called_once()
+
+    @patch("fetch_twitter.time.sleep")
+    @patch("fetch_twitter.x_request_json")
+    def test_transient_429_is_retried_for_timeline_request(self, request_mock, _sleep_mock):
+        request_mock.side_effect = [
+            http_error(429),
+            {"data": []},
+        ]
+        backend = fetch_twitter.OfficialBackend("token-a")
+
+        result = backend._fetch_user_tweets(twitter_source(), utc("2024-12-09T00:00:00Z"), user_id="1")
+
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(result["attempts"], 2)
+        self.assertEqual(request_mock.call_count, 2)
+
+
 class TestGetXApiBackend(unittest.TestCase):
     @patch("fetch_twitter.x_request_json")
     def test_backend_no_cache_is_forwarded_to_timeline_requests(self, request_mock):
@@ -823,13 +872,7 @@ class TestGetXApiBackend(unittest.TestCase):
             {"tweets": [], "has_more": False},
         ]
         backend = fetch_twitter.GetXApiBackend("token-a-12345", no_cache=True)
-        source = {
-            "id": "sama",
-            "name": "Sam Altman",
-            "handle": "sama",
-            "topics": ["ai"],
-            "priority": False,
-        }
+        source = twitter_source()
 
         result = backend._fetch_user_tweets(source, utc("2024-12-09T00:00:00Z"))
 
@@ -837,6 +880,21 @@ class TestGetXApiBackend(unittest.TestCase):
         self.assertEqual(request_mock.call_count, 2)
         self.assertTrue(request_mock.call_args_list[0].kwargs["no_cache"])
         self.assertTrue(request_mock.call_args_list[1].kwargs["no_cache"])
+
+    @patch("fetch_twitter.time.sleep")
+    @patch("fetch_twitter.x_request_json")
+    def test_transient_429_is_retried_for_timeline_request(self, request_mock, _sleep_mock):
+        request_mock.side_effect = [
+            http_error(429),
+            {"tweets": [], "has_more": False},
+        ]
+        backend = fetch_twitter.GetXApiBackend("token-a-12345")
+
+        result = backend._fetch_user_tweets(twitter_source(), utc("2024-12-09T00:00:00Z"))
+
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(result["attempts"], 2)
+        self.assertEqual(request_mock.call_count, 2)
 
 
 class TestTwitterApiIoBackend(unittest.TestCase):
@@ -860,13 +918,7 @@ class TestTwitterApiIoBackend(unittest.TestCase):
             {"data": {"tweets": [], "has_next_page": False}},
         ]
         backend = fetch_twitter.TwitterApiIoBackend("token-a", no_cache=True)
-        source = {
-            "id": "sama",
-            "name": "Sam Altman",
-            "handle": "sama",
-            "topics": ["ai"],
-            "priority": False,
-        }
+        source = twitter_source()
 
         result = backend._fetch_user_tweets(source, utc("2024-12-09T00:00:00Z"))
 
@@ -874,6 +926,21 @@ class TestTwitterApiIoBackend(unittest.TestCase):
         self.assertEqual(request_mock.call_count, 2)
         self.assertTrue(request_mock.call_args_list[0].kwargs["no_cache"])
         self.assertTrue(request_mock.call_args_list[1].kwargs["no_cache"])
+
+    @patch("fetch_twitter.time.sleep")
+    @patch("fetch_twitter.x_request_json")
+    def test_transient_429_is_retried_for_timeline_request(self, request_mock, _sleep_mock):
+        request_mock.side_effect = [
+            http_error(429),
+            {"data": {"tweets": [], "has_next_page": False}},
+        ]
+        backend = fetch_twitter.TwitterApiIoBackend("token-a")
+
+        result = backend._fetch_user_tweets(twitter_source(), utc("2024-12-09T00:00:00Z"))
+
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(result["attempts"], 2)
+        self.assertEqual(request_mock.call_count, 2)
 
 
 class TestMainOpenCliOptions(unittest.TestCase):

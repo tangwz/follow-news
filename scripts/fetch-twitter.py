@@ -1748,6 +1748,13 @@ class OfficialBackend(TwitterBackend):
                         for err in data['errors']:
                             logging.warning(f"User lookup error: {err.get('detail', err)}")
 
+                except XRateLimitDeferred as e:
+                    logging.warning(
+                        "Batch user lookup rate-limit deferred until %s; skipping individual fallback",
+                        int(e.deferred_until),
+                    )
+                    break
+
                 except Exception as e:
                     logging.error(f"Batch user lookup failed: {e}")
                     for handle in batch:
@@ -1869,7 +1876,6 @@ class OfficialBackend(TwitterBackend):
                 if e.code == 429:
                     error_msg = "Rate limit exceeded"
                     logging.warning(f"Rate limit hit for @{handle}, attempt {attempt + 1}")
-                    return self._make_error(source, error_msg, attempt)
                 else:
                     error_msg = f"HTTP {e.code}: {e.reason}"
 
@@ -2042,7 +2048,6 @@ class TwitterApiIoBackend(TwitterBackend):
                 if e.code == 429:
                     error_msg = "Rate limit exceeded"
                     logging.warning(f"Rate limit hit for @{handle}, attempt {attempt + 1}")
-                    return self._make_error(source, error_msg, attempt)
                 else:
                     error_msg = f"HTTP {e.code}: {e.reason}"
 
@@ -2229,7 +2234,6 @@ class GetXApiBackend(TwitterBackend):
                 if e.code == 429:
                     error_msg = "Rate limit exceeded"
                     logging.warning(f"Rate limit hit for @{handle}, attempt {attempt + 1}")
-                    return self._make_error(source, error_msg, attempt)
                 else:
                     error_msg = f"HTTP {e.code}: {e.reason}"
 
