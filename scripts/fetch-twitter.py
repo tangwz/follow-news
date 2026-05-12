@@ -37,6 +37,7 @@ import hashlib
 import shlex
 from abc import ABC, abstractmethod
 from datetime import datetime, timedelta, timezone
+from email.utils import parsedate_to_datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib.request import urlopen, Request
 from urllib.error import HTTPError
@@ -992,6 +993,30 @@ def _parse_int_header(headers: Any, name: str) -> Optional[int]:
         return None
 
 
+def _parse_retry_after_until(headers: Any, current: float) -> Optional[int]:
+    """Parse Retry-After as an absolute epoch timestamp."""
+    value = _header_value(headers, "retry-after")
+    if value is None:
+        return None
+    value = value.strip()
+    if not value:
+        return None
+    try:
+        delay_seconds = int(value)
+        if delay_seconds < 0:
+            return None
+        return int(current + delay_seconds)
+    except ValueError:
+        pass
+    try:
+        retry_at = parsedate_to_datetime(value)
+        if retry_at.tzinfo is None:
+            retry_at = retry_at.replace(tzinfo=timezone.utc)
+        return int(retry_at.timestamp())
+    except (TypeError, ValueError, OSError):
+        return None
+
+
 _SHARED_FILE_LOCKS: Dict[str, threading.RLock] = {}
 _SHARED_FILE_LOCKS_GUARD = threading.Lock()
 _SHARED_RATE_LIMIT_MANAGERS: Dict[str, "XRateLimitManager"] = {}
@@ -1064,6 +1089,7 @@ class XRateLimitManager:
         limit = _parse_int_header(headers, "x-rate-limit-limit")
         remaining = _parse_int_header(headers, "x-rate-limit-remaining")
         reset_at = _parse_int_header(headers, "x-rate-limit-reset")
+        retry_after_until = _parse_retry_after_until(headers, current)
         key = self.bucket_key(backend, endpoint, credential)
 
         with self._lock:
@@ -1076,7 +1102,12 @@ class XRateLimitManager:
             if reset_at is not None:
                 bucket["reset_at"] = reset_at
             if status_code == 429:
-                bucket["paused_until"] = reset_at or int(current + X_RATE_LIMIT_FALLBACK_SECONDS)
+                if reset_at is not None:
+                    bucket["paused_until"] = reset_at
+                elif retry_after_until is not None:
+                    bucket["paused_until"] = retry_after_until
+                else:
+                    bucket["paused_until"] = int(current + X_RATE_LIMIT_FALLBACK_SECONDS)
                 if remaining is None:
                     bucket["remaining"] = 0
             elif bucket.get("paused_until") and float(bucket["paused_until"]) <= current:

@@ -1558,6 +1558,29 @@ class TestXFileCacheAndRateLimits(unittest.TestCase):
             self.assertFalse(allowed)
             self.assertEqual(deferred_until, 1300)
 
+    def test_rate_limit_manager_uses_retry_after_when_reset_missing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            manager = fetch_twitter.XRateLimitManager(cache_dir=Path(tmp), now_func=lambda: 1000)
+            manager.update_from_headers(
+                "getxapi",
+                "GET /twitter/user/tweets",
+                "secret-token",
+                {
+                    "retry-after": "30",
+                },
+                status_code=429,
+            )
+
+            allowed, deferred_until = manager.can_request(
+                "getxapi",
+                "GET /twitter/user/tweets",
+                "secret-token",
+                now=1001,
+            )
+
+            self.assertFalse(allowed)
+            self.assertEqual(deferred_until, 1030)
+
     def test_rate_limit_persistence_failure_is_non_fatal(self):
         with tempfile.TemporaryDirectory() as tmp:
             manager = fetch_twitter.XRateLimitManager(cache_dir=Path(tmp), now_func=lambda: 1000)
