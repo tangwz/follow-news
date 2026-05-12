@@ -1243,6 +1243,15 @@ class TestXFileCacheAndRateLimits(unittest.TestCase):
 
             self.assertEqual(cache.index_store.load(), {})
 
+    def test_response_cache_persistence_failure_is_non_fatal(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cache = fetch_twitter.XFileCache("official", cache_dir=Path(tmp))
+            with patch("fetch_twitter._atomic_json_write", side_effect=OSError("disk full")):
+                with self.assertLogs(level="WARNING") as logs:
+                    cache.put("GET /2/users/by", {"usernames": "sama"}, 200, {}, {"data": []})
+
+            self.assertTrue(any("Failed to persist X response cache entry" in line for line in logs.output))
+
     def test_cache_janitor_removes_entries_older_than_retention(self):
         with tempfile.TemporaryDirectory() as tmp:
             cache_dir = Path(tmp)

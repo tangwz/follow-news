@@ -1207,21 +1207,24 @@ class XFileCache:
             logging.debug("Skipping X cache write for %s: response is %s bytes", endpoint, len(encoded))
             return
 
-        with self._lock:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            _atomic_json_write(path, payload)
-            index = self.index_store.load()
-            index[cache_key] = {
-                "backend": self.backend,
-                "credential_id": self.credential_id,
-                "endpoint": endpoint,
-                "path": str(path.relative_to(self.cache_dir)),
-                "size": len(encoded),
-                "fetched_at": current,
-                "expires_at": current + ttl,
-                "last_accessed_at": current,
-            }
-            self.index_store.save(index)
+        try:
+            with self._lock:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                _atomic_json_write(path, payload)
+                index = self.index_store.load()
+                index[cache_key] = {
+                    "backend": self.backend,
+                    "credential_id": self.credential_id,
+                    "endpoint": endpoint,
+                    "path": str(path.relative_to(self.cache_dir)),
+                    "size": len(encoded),
+                    "fetched_at": current,
+                    "expires_at": current + ttl,
+                    "last_accessed_at": current,
+                }
+                self.index_store.save(index)
+        except Exception as exc:
+            logging.warning("Failed to persist X response cache entry: %s", exc)
 
 
 class XCacheJanitor:
