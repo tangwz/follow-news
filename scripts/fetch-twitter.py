@@ -428,7 +428,6 @@ def _looks_like_unsupported_opencli_command(stderr: str, stdout: str) -> bool:
         for marker in (
             "unknown command",
             "unknown subcommand",
-            "not found",
             "no such command",
         )
     )

@@ -374,6 +374,65 @@ class TestOpenCliAutoUpdate(unittest.TestCase):
                 ]
             )
 
+    @patch.dict(os.environ, {"OPENCLI_UPDATE_COMMAND": "self-update"}, clear=True)
+    def test_ensure_opencli_latest_treats_not_found_as_failed_instead_of_unsupported(self):
+        with ExitStack() as stack:
+            if not hasattr(fetch_twitter, "_run_opencli_update_command"):
+                self.skipTest("fetch_twitter._run_opencli_update_command is not available")
+            if not hasattr(fetch_twitter, "_record_opencli_update_state"):
+                self.skipTest("fetch_twitter._record_opencli_update_state is not available")
+            if not hasattr(fetch_twitter, "_opencli_update_state_path"):
+                self.skipTest("fetch_twitter._opencli_update_state_path is not available")
+
+            run_mock = stack.enter_context(
+                patch("fetch_twitter._run_opencli_update_command")
+            )
+            stack.enter_context(patch("fetch_twitter._record_opencli_update_state"))
+            state_path = _temp_opencli_state_path(stack)
+            stack.enter_context(
+                patch(
+                    "fetch_twitter._opencli_update_state_path",
+                    return_value=state_path,
+                )
+            )
+            run_mock.side_effect = [
+                subprocess.CompletedProcess(
+                    args=["/bin/opencli", "self-update"],
+                    returncode=1,
+                    stdout="",
+                    stderr="Update command exited with: file not found",
+                ),
+                subprocess.CompletedProcess(
+                    args=["/bin/opencli", "self-update", "--yes"],
+                    returncode=1,
+                    stdout="",
+                    stderr="Update command exited with: file not found",
+                ),
+                subprocess.CompletedProcess(
+                    args=["/bin/opencli", "self-update", "-y"],
+                    returncode=1,
+                    stdout="",
+                    stderr="Update command exited with: file not found",
+                ),
+            ]
+
+            ensure_opencli_latest = getattr(fetch_twitter, "_ensure_opencli_latest", None)
+            if ensure_opencli_latest is None:
+                self.skipTest("No OpenCLI auto-update entrypoint found in scripts/fetch-twitter.py")
+
+            result = ensure_opencli_latest("/bin/opencli")
+
+            self.assertEqual(result["status"], "failed")
+            self.assertEqual(result["command"], "/bin/opencli self-update -y")
+            self.assertEqual(run_mock.call_count, 3)
+            run_mock.assert_has_calls(
+                [
+                    call("/bin/opencli", ["self-update"]),
+                    call("/bin/opencli", ["self-update", "--yes"]),
+                    call("/bin/opencli", ["self-update", "-y"]),
+                ]
+            )
+
     @patch.dict(os.environ, {"OPENCLI_UPDATE_COMMAND": "self-update --yes"}, clear=True)
     def test_ensure_opencli_latest_uses_custom_update_command(
         self,
