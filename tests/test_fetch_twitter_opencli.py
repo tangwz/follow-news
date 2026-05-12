@@ -804,6 +804,41 @@ class TestFetchWithBackendChain(unittest.TestCase):
         backend_cls_mock.assert_called_once_with("x" * 20)
 
 
+class TestGetXApiBackend(unittest.TestCase):
+    @patch("fetch_twitter.x_request_json")
+    def test_backend_no_cache_is_forwarded_to_timeline_requests(self, request_mock):
+        request_mock.side_effect = [
+            {
+                "tweets": [
+                    {
+                        "id": "1",
+                        "text": "fresh tweet",
+                        "createdAt": "Tue Dec 10 07:00:30 +0000 2024",
+                        "url": "https://x.com/sama/status/1",
+                    }
+                ],
+                "has_more": True,
+                "next_cursor": "cursor-1",
+            },
+            {"tweets": [], "has_more": False},
+        ]
+        backend = fetch_twitter.GetXApiBackend("token-a-12345", no_cache=True)
+        source = {
+            "id": "sama",
+            "name": "Sam Altman",
+            "handle": "sama",
+            "topics": ["ai"],
+            "priority": False,
+        }
+
+        result = backend._fetch_user_tweets(source, utc("2024-12-09T00:00:00Z"))
+
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(request_mock.call_count, 2)
+        self.assertTrue(request_mock.call_args_list[0].kwargs["no_cache"])
+        self.assertTrue(request_mock.call_args_list[1].kwargs["no_cache"])
+
+
 class TestTwitterApiIoBackend(unittest.TestCase):
     @patch("fetch_twitter.x_request_json")
     def test_backend_no_cache_is_forwarded_to_timeline_requests(self, request_mock):

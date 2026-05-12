@@ -2134,7 +2134,7 @@ class GetXApiBackend(TwitterBackend):
                     headers,
                     {"userName": handle},
                     credential=self.api_key,
-                    no_cache=False,
+                    no_cache=self.no_cache,
                     cache_ttl_seconds=get_source_timeline_cache_ttl_seconds(source),
                 )
 
@@ -2162,7 +2162,7 @@ class GetXApiBackend(TwitterBackend):
                                     headers,
                                     {"userName": handle, "cursor": next_cursor},
                                     credential=self.api_key,
-                                    no_cache=False,
+                                    no_cache=self.no_cache,
                                     cache_ttl_seconds=get_source_timeline_cache_ttl_seconds(source),
                                 )
                                 if raw2.get("error"):
