@@ -903,10 +903,12 @@
     el.saveTopicsBtn.addEventListener("click", saveTopics);
   }
 
-  function bootstrap() {
+  async function bootstrap() {
     updateI18n();
     initEvents();
-    loadAll();
+    await loadAll();
+    updateSourceModeUI();
+    updateTopicModeUI();
   }
 
   bootstrap();

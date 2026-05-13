@@ -618,14 +618,11 @@ def get_trending_queries(allowed_topics: Optional[Set[str]] = None) -> List[Dict
             normalized_topics.add("ai-agent")
 
     queries = [q for q in TRENDING_QUERIES if q["topic"] in normalized_topics]
-    if queries:
-        return queries
-
     logging.warning(
-        "No matching trending queries for topics: %s, falling back to default trending queries",
+        "No matching trending queries for topics: %s",
         ", ".join(sorted(normalized_topics)),
     )
-    return TRENDING_QUERIES
+    return queries
 
 
 def fetch_trending_repos(

@@ -180,6 +180,19 @@ class TestGroupByTopics(unittest.TestCase):
         self.assertEqual(len(groups["llm"]), 1)
         self.assertEqual(groups["llm"][0]["quality_score"], 10)
 
+    def test_allowed_topics_normalizes_ai_agent_alias(self):
+        articles = [{"title": "A", "topics": ["ai-agent"]}]
+
+        # legacy allowed topic should still pass current ai-agent article
+        groups = group_by_topics(articles, allowed_topics={"ai_agent"})
+        self.assertIn("ai-agent", groups)
+        self.assertNotIn("ai_agent", groups)
+
+        # current allowed topic should still pass legacy ai_agent article
+        groups = group_by_topics([{"title": "B", "topics": ["ai_agent"]}], allowed_topics={"ai-agent"})
+        self.assertIn("ai_agent", groups)
+        self.assertNotIn("ai-agent", groups, "only the actual article topic should be retained for this article")
+
 
 class TestFixtureData(unittest.TestCase):
     """Validate fixture data structure."""

@@ -37,7 +37,7 @@ ALLOWED_FILES = {
 class ConfigEditorHandler(SimpleHTTPRequestHandler):
     _json_prefix = re.compile(r"^/api/")
     _LOCAL_ORIGINS = {"127.0.0.1", "localhost", "::1"}
-    _ALLOWED_SOURCE_TYPES = {"rss", "twitter", "web", "github", "reddit"}
+    _ALLOWED_SOURCE_TYPES = {"rss", "twitter", "x", "web", "github", "reddit"}
 
     def _send_json(self, payload: Dict[str, Any], status: int = 200) -> None:
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
@@ -133,7 +133,7 @@ class ConfigEditorHandler(SimpleHTTPRequestHandler):
             if source_type == "rss":
                 if not isinstance(source.get("url"), str) or not source["url"].strip():
                     raise ValueError(f"Source '{source_id}' missing required field 'url'")
-            elif source_type == "twitter":
+            elif source_type in ("twitter", "x"):
                 if not isinstance(source.get("handle"), str) or not source["handle"].strip():
                     raise ValueError(f"Source '{source_id}' missing required field 'handle'")
             elif source_type == "github":

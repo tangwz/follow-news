@@ -434,10 +434,12 @@ def group_by_topics(
         # No topic filter configuration available: preserve article topic labels.
         allowed_topics = None
     else:
-        if "ai-agent" in allowed_topics:
-            allowed_topics = set(allowed_topics) | {"ai_agent"}
-        else:
-            allowed_topics = set(allowed_topics)
+        normalized_allowed = set(allowed_topics)
+        if "ai-agent" in normalized_allowed:
+            normalized_allowed.add("ai_agent")
+        if "ai_agent" in normalized_allowed:
+            normalized_allowed.add("ai-agent")
+        allowed_topics = normalized_allowed
     
     # Sort topics by priority for deterministic assignment
     def get_topic_priority(topic: str) -> int:
