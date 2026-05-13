@@ -571,7 +571,6 @@ Environment Variables:
 TRENDING_QUERIES = [
     {"topic": "llm", "q": "llm large-language-model in:topics,name,description"},
     {"topic": "ai-agent", "q": "ai-agent autonomous-agent in:topics,name,description"},
-    {"topic": "crypto", "q": "blockchain ethereum solidity defi in:topics,name,description"},
     {"topic": "frontier-tech", "q": "machine-learning deep-learning in:topics,name,description"},
 ]
 
@@ -603,6 +602,7 @@ def get_trending_queries(allowed_topics: Optional[Set[str]] = None) -> List[Dict
         return []
 
     normalized_topics = set()
+
     for topic in allowed_topics:
         if not isinstance(topic, str):
             continue
@@ -618,7 +618,7 @@ def get_trending_queries(allowed_topics: Optional[Set[str]] = None) -> List[Dict
             normalized_topics.add("ai-agent")
 
     queries = [q for q in TRENDING_QUERIES if q["topic"] in normalized_topics]
-    if not queries:
+    if not queries and allowed_topics:
         logging.warning(
             "No matching trending queries for topics: %s",
             ", ".join(sorted(normalized_topics)),

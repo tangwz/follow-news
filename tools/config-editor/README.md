@@ -8,8 +8,9 @@
 ## 快速启动
 
 ```bash
-cd "$(git -C tools/config-editor rev-parse --show-toplevel)"
-python3 tools/config-editor/server.py
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "$SCRIPT_DIR"
+python3 server.py
 ```
 
 启动后访问：

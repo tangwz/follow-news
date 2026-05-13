@@ -364,6 +364,9 @@
     state.sources.filtered = state.sources.filtered || [];
     el.sourceTableBody.innerHTML = "";
     const total = state.sources.filtered.length;
+    if (state.sources.page > Math.max(1, Math.ceil(total / PAGE_SIZE))) {
+      state.sources.page = 1;
+    }
     const pageTotal = Math.max(1, Math.ceil(total / PAGE_SIZE));
     state.sources.page = Math.min(Math.max(state.sources.page, 1), pageTotal);
 
@@ -820,8 +823,6 @@
       updateI18n();
       updateSourceModeUI();
       updateTopicModeUI();
-      renderSourcesMode();
-      renderTopicsMode();
     });
 
     el.loadAllBtn.addEventListener("click", loadAll);

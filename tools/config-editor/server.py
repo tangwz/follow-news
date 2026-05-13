@@ -10,12 +10,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import ipaddress
 import os
 import re
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
 from typing import Dict, Any
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 
 BASE_DIR = Path(__file__).resolve().parents[2]
@@ -38,6 +39,7 @@ class ConfigEditorHandler(SimpleHTTPRequestHandler):
     _json_prefix = re.compile(r"^/api/")
     _LOCAL_ORIGINS = {"127.0.0.1", "localhost", "::1"}
     _ALLOWED_SOURCE_TYPES = {"rss", "twitter", "web", "github", "reddit"}
+    _WILDCARD_HOSTS = {"0.0.0.0", "::", "::0"}
 
     def _send_json(self, payload: Dict[str, Any], status: int = 200) -> None:
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
@@ -76,10 +78,15 @@ class ConfigEditorHandler(SimpleHTTPRequestHandler):
         if parsed.scheme not in {"http", "https"} or not parsed.hostname:
             return False
 
-        if parsed.port is None:
+        try:
+            parsed_port = parsed.port
+        except ValueError:
+            return False
+
+        if parsed_port is None:
             normalized_port = {"http": 80, "https": 443}.get(parsed.scheme)
         else:
-            normalized_port = parsed.port
+            normalized_port = parsed_port
         if normalized_port is None:
             return False
 
@@ -87,13 +94,49 @@ class ConfigEditorHandler(SimpleHTTPRequestHandler):
         if normalized_port != server_port:
             return False
 
-        if server_host in {"0.0.0.0", "::", "::0"}:
+        origin_host = parsed.hostname.lower()
+        if origin_host in self._LOCAL_ORIGINS:
             return True
 
-        if parsed.hostname in self._LOCAL_ORIGINS:
+        if server_host in self._WILDCARD_HOSTS and self._is_local_host(origin_host):
             return True
 
-        return parsed.hostname == server_host
+        return origin_host == server_host
+
+    def _is_local_host(self, host: str) -> bool:
+        if not host:
+            return False
+        if host in self._LOCAL_ORIGINS | self._WILDCARD_HOSTS:
+            return True
+        try:
+            ip = ipaddress.ip_address(host)
+        except ValueError:
+            return False
+        return ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved
+
+    def _is_safe_static_path(self, path: Path, base: Path) -> bool:
+        try:
+            base_str = str(base.resolve())
+            path_str = str(path.resolve())
+            return os.path.commonpath([path_str, base_str]) == base_str
+        except ValueError:
+            return False
+
+    def translate_path(self, path: str) -> str:
+        static_root = Path(self.directory).resolve()
+
+        # Strip query / fragment
+        path = urlparse(path).path
+        parts = [segment for segment in unquote(path).split("/") if segment]
+        target = static_root
+
+        for part in parts:
+            if part in (".", ".."): 
+                continue
+            target = (target / part).resolve()
+            if not self._is_safe_static_path(target, static_root):
+                return str(static_root / ".follow-news-forbidden")
+        return str(target)
 
     def _normalize_source_type(self, source_type: Any) -> str:
         if source_type == "x":
@@ -201,19 +244,23 @@ class ConfigEditorHandler(SimpleHTTPRequestHandler):
                 raise ValueError(f"Topic '{topic_id}' has invalid field 'search.queries'; expected string array")
 
     def do_OPTIONS(self) -> None:
-        if not self.path.startswith("/api/"):
+        parsed = urlparse(self.path)
+        if not parsed.path.startswith("/api/"):
             self.send_response(200)
             self.send_header("Allow", "GET, OPTIONS")
             self.send_header("Cache-Control", "no-store")
             self.end_headers()
             return
 
-        if self.path.startswith("/api/file") and not self._is_allowed_write_origin():
+        if parsed.path == "/api/file" and not self._is_allowed_write_origin():
             return self._api_error(403, "forbidden: cross-origin writes are not allowed")
+        if parsed.path not in {"/api/file", "/api/list", "/api/"}:
+            if parsed.path.startswith("/api/"):
+                return self._api_error(404, "not found")
 
         requested_method = (self.headers.get("Access-Control-Request-Method") or "").upper()
         allow_methods = "GET, OPTIONS"
-        if requested_method == "POST" or self.path.startswith("/api/file"):
+        if requested_method == "POST" or parsed.path == "/api/file":
             allow_methods = "GET, POST, OPTIONS"
 
         self.send_response(200)
@@ -224,10 +271,11 @@ class ConfigEditorHandler(SimpleHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self) -> None:
-        if not self.path.startswith("/api/"):
+        parsed = urlparse(self.path)
+        if not parsed.path.startswith("/api/"):
             return super().do_GET()
 
-        if self.path.startswith("/api/list"):
+        if parsed.path == "/api/list":
             payload = {
                 "ok": True,
                 "files": [
@@ -242,7 +290,7 @@ class ConfigEditorHandler(SimpleHTTPRequestHandler):
             }
             return self._send_json(payload)
 
-        if urlparse(self.path).path == "/api/file":
+        if parsed.path == "/api/file":
             try:
                 key = self._validate_key()
             except ValueError:

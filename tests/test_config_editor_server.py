@@ -10,7 +10,7 @@ import threading
 import time
 import unittest
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 from unittest.mock import patch
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
@@ -38,6 +38,185 @@ def _get_free_port() -> int:
 
 
 class ConfigEditorServerTest(unittest.TestCase):
+    def test_options_rejects_non_exact_file_route(self) -> None:
+        port = _get_free_port()
+        server = server_module.HTTPServer(("127.0.0.1", port), server_module.ConfigEditorHandler)
+        server_thread = threading.Thread(target=server.serve_forever, daemon=True)
+        server_thread.start()
+        try:
+            time.sleep(0.05)
+            request = Request(
+                f"http://127.0.0.1:{port}/api/filezzz",
+                method="OPTIONS",
+            )
+            request.add_header("Origin", f"http://127.0.0.1:{port}")
+            with self.assertRaises(HTTPError) as context:
+                urlopen(request, timeout=2.0)
+            self.assertEqual(context.exception.code, 404)
+        finally:
+            server.shutdown()
+            server.server_close()
+            server_thread.join(timeout=1.0)
+
+    def test_post_normalizes_legacy_x_type_to_twitter_on_save(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            sources_path = Path(tmpdir) / "sources.json"
+            topics_path = Path(tmpdir) / "topics.json"
+
+            payload_source = {
+                "sources": [
+                    {
+                        "id": "legacy-x-source",
+                        "type": "x",
+                        "name": "Legacy X",
+                        "enabled": True,
+                        "priority": False,
+                        "topics": [],
+                        "handle": "legacy_x_handle",
+                    }
+                ]
+            }
+            sources_path.write_text(json.dumps(payload_source, ensure_ascii=False, indent=2), encoding="utf-8")
+            topics_path.write_text("[]", encoding="utf-8")
+
+            allowed_files = {
+                "sources": {
+                    "path": sources_path,
+                    "label_zh": "测试源",
+                    "label_en": "Test sources",
+                },
+                "topics": {
+                    "path": topics_path,
+                    "label_zh": "测试话题",
+                    "label_en": "Test topics",
+                },
+            }
+
+            port = _get_free_port()
+
+            with patch.dict(server_module.ALLOWED_FILES, allowed_files):
+                server = server_module.HTTPServer(("127.0.0.1", port), server_module.ConfigEditorHandler)
+                server_thread = threading.Thread(target=server.serve_forever, daemon=True)
+                server_thread.start()
+                try:
+                    time.sleep(0.05)
+                    request_payload = {
+                        "key": "sources",
+                        "content": payload_source,
+                    }
+                    request = Request(
+                        f"http://127.0.0.1:{port}/api/file",
+                        data=json.dumps(request_payload, ensure_ascii=False).encode("utf-8"),
+                        method="POST",
+                        headers={
+                            "Content-Type": "application/json",
+                            "Origin": f"http://127.0.0.1:{port}",
+                        },
+                    )
+                    with urlopen(request, timeout=2.0) as response:
+                        body = response.read().decode("utf-8")
+                    data = json.loads(body)
+                    self.assertEqual(data, {"ok": True, "key": "sources", "message": "saved"})
+
+                    saved = json.loads(sources_path.read_text(encoding="utf-8"))
+                    self.assertEqual(saved["sources"][0]["type"], "twitter")
+                finally:
+                    server.shutdown()
+                    server.server_close()
+                    server_thread.join(timeout=1.0)
+
+    def test_post_rejects_invalid_content_type(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            sources_path = Path(tmpdir) / "sources.json"
+            topics_path = Path(tmpdir) / "topics.json"
+
+            sources_path.write_text('{"sources": []}', encoding="utf-8")
+            topics_path.write_text("[]", encoding="utf-8")
+
+            allowed_files = {
+                "sources": {
+                    "path": sources_path,
+                    "label_zh": "测试源",
+                    "label_en": "Test sources",
+                },
+                "topics": {
+                    "path": topics_path,
+                    "label_zh": "测试话题",
+                    "label_en": "Test topics",
+                },
+            }
+
+            port = _get_free_port()
+
+            with patch.dict(server_module.ALLOWED_FILES, allowed_files):
+                server = server_module.HTTPServer(("127.0.0.1", port), server_module.ConfigEditorHandler)
+                server_thread = threading.Thread(target=server.serve_forever, daemon=True)
+                server_thread.start()
+                try:
+                    time.sleep(0.05)
+                    request_payload = {
+                        "key": "sources",
+                        "content": 1,
+                    }
+                    request = Request(
+                        f"http://127.0.0.1:{port}/api/file",
+                        data=json.dumps(request_payload, ensure_ascii=False).encode("utf-8"),
+                        method="POST",
+                        headers={
+                            "Content-Type": "application/json",
+                            "Origin": f"http://127.0.0.1:{port}",
+                        },
+                    )
+                    with self.assertRaises(HTTPError) as context:
+                        urlopen(request, timeout=2.0)
+                    self.assertEqual(context.exception.code, 400)
+                finally:
+                    server.shutdown()
+                    server.server_close()
+                    server_thread.join(timeout=1.0)
+
+    def test_get_returns_500_for_invalid_json_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            sources_path = Path(tmpdir) / "sources.json"
+            topics_path = Path(tmpdir) / "topics.json"
+
+            sources_path.write_text('{"sources": [}', encoding="utf-8")
+            topics_path.write_text("[]", encoding="utf-8")
+
+            allowed_files = {
+                "sources": {
+                    "path": sources_path,
+                    "label_zh": "测试源",
+                    "label_en": "Test sources",
+                },
+                "topics": {
+                    "path": topics_path,
+                    "label_zh": "测试话题",
+                    "label_en": "Test topics",
+                },
+            }
+
+            port = _get_free_port()
+
+            with patch.dict(server_module.ALLOWED_FILES, allowed_files):
+                server = server_module.HTTPServer(("127.0.0.1", port), server_module.ConfigEditorHandler)
+                server_thread = threading.Thread(target=server.serve_forever, daemon=True)
+                server_thread.start()
+                try:
+                    time.sleep(0.05)
+                    request = Request(
+                        f"http://127.0.0.1:{port}/api/file?key=sources",
+                        method="GET",
+                    )
+                    request.add_header("Origin", f"http://127.0.0.1:{port}")
+                    with self.assertRaises(HTTPError) as context:
+                        urlopen(request, timeout=2.0)
+                    self.assertEqual(context.exception.code, 500)
+                finally:
+                    server.shutdown()
+                    server.server_close()
+                    server_thread.join(timeout=1.0)
+
     def test_post_accepts_bound_host_origin(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             sources_path = Path(tmpdir) / "sources.json"
