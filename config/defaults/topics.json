@@ -36,22 +36,6 @@
       }
     },
     {
-      "id": "crypto",
-      "emoji": "💰",
-      "label": "Cryptocurrency",
-      "description": "Bitcoin, Ethereum, DeFi, NFTs, blockchain technology, and crypto market developments",
-      "search": {
-        "queries": ["cryptocurrency bitcoin ethereum latest news", "加密货币最新新闻", "DeFi breakthrough", "blockchain development"],
-        "twitter_queries": ["Bitcoin", "Ethereum", "加密货币"],
-        "must_include": ["crypto", "bitcoin", "ethereum", "blockchain", "DeFi", "NFT", "web3"],
-        "exclude": ["scam", "pump dump", "get rich quick"]
-      },
-      "display": {
-        "max_items": 6,
-        "style": "compact"
-      }
-    },
-    {
       "id": "frontier-tech",
       "emoji": "🔬",
       "label": "Frontier Tech",

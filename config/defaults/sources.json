@@ -137,66 +137,6 @@
       "note": "Google AI research"
     },
     {
-      "id": "vitalik-rss",
-      "type": "rss",
-      "name": "Vitalik Buterin",
-      "url": "https://vitalik.eth.limo/feed.xml",
-      "enabled": true,
-      "priority": true,
-      "topics": [
-        "crypto"
-      ],
-      "note": "Ethereum founder"
-    },
-    {
-      "id": "coindesk-rss",
-      "type": "rss",
-      "name": "CoinDesk",
-      "url": "https://www.coindesk.com/arc/outboundfeeds/rss/",
-      "enabled": true,
-      "priority": true,
-      "topics": [
-        "crypto"
-      ],
-      "note": "Major crypto news"
-    },
-    {
-      "id": "theblock-rss",
-      "type": "rss",
-      "name": "The Block",
-      "url": "https://www.theblock.co/rss.xml",
-      "enabled": true,
-      "priority": true,
-      "topics": [
-        "crypto"
-      ],
-      "note": "Crypto news"
-    },
-    {
-      "id": "decrypt-rss",
-      "type": "rss",
-      "name": "Decrypt",
-      "url": "https://decrypt.co/feed",
-      "enabled": true,
-      "priority": false,
-      "topics": [
-        "crypto"
-      ],
-      "note": "Crypto and web3 news"
-    },
-    {
-      "id": "cointelegraph-rss",
-      "type": "rss",
-      "name": "Cointelegraph",
-      "url": "https://cointelegraph.com/rss",
-      "enabled": true,
-      "priority": false,
-      "topics": [
-        "crypto"
-      ],
-      "note": "Crypto news and analysis"
-    },
-    {
       "id": "hn-rss",
       "type": "rss",
       "name": "Hacker News Frontpage",
@@ -341,19 +281,6 @@
         "frontier-tech"
       ],
       "note": "Reddit ML community"
-    },
-    {
-      "id": "36kr-rss",
-      "type": "rss",
-      "name": "36氪",
-      "url": "https://36kr.com/feed",
-      "enabled": true,
-      "priority": true,
-      "topics": [
-        "frontier-tech",
-        "crypto"
-      ],
-      "note": "中文科技媒体"
     },
     {
       "id": "synced-rss",
@@ -607,126 +534,6 @@
       "note": "AI researcher"
     },
     {
-      "id": "vitalik-twitter",
-      "type": "twitter",
-      "name": "Vitalik Buterin (Ethereum)",
-      "handle": "VitalikButerin",
-      "enabled": true,
-      "priority": true,
-      "topics": [
-        "crypto"
-      ],
-      "note": "Ethereum founder"
-    },
-    {
-      "id": "cz-twitter",
-      "type": "twitter",
-      "name": "CZ (Binance)",
-      "handle": "cz_binance",
-      "enabled": true,
-      "priority": true,
-      "topics": [
-        "crypto"
-      ],
-      "note": "Binance"
-    },
-    {
-      "id": "brian-twitter",
-      "type": "twitter",
-      "name": "Brian Armstrong (Coinbase)",
-      "handle": "brian_armstrong",
-      "enabled": true,
-      "priority": true,
-      "topics": [
-        "crypto"
-      ],
-      "note": "Coinbase"
-    },
-    {
-      "id": "saylor-twitter",
-      "type": "twitter",
-      "name": "Michael Saylor (MicroStrategy)",
-      "handle": "saylor",
-      "enabled": true,
-      "priority": true,
-      "topics": [
-        "crypto"
-      ],
-      "note": "MicroStrategy"
-    },
-    {
-      "id": "pomp-twitter",
-      "type": "twitter",
-      "name": "Anthony Pompliano",
-      "handle": "APompliano",
-      "enabled": true,
-      "priority": false,
-      "topics": [
-        "crypto"
-      ],
-      "note": "Crypto influencer"
-    },
-    {
-      "id": "zachxbt-twitter",
-      "type": "twitter",
-      "name": "ZachXBT",
-      "handle": "zachxbt",
-      "enabled": true,
-      "priority": false,
-      "topics": [
-        "crypto"
-      ],
-      "note": "on-chain investigator"
-    },
-    {
-      "id": "wu-twitter",
-      "type": "twitter",
-      "name": "Wu Blockchain",
-      "handle": "WuBlockchain",
-      "enabled": true,
-      "priority": true,
-      "topics": [
-        "crypto"
-      ],
-      "note": "吴说区块链"
-    },
-    {
-      "id": "discus-twitter",
-      "type": "twitter",
-      "name": "神鱼 DiscusFish",
-      "handle": "bitfish",
-      "enabled": true,
-      "priority": false,
-      "topics": [
-        "crypto"
-      ],
-      "note": "F2Pool/Cobo co-founder"
-    },
-    {
-      "id": "mindao-twitter",
-      "type": "twitter",
-      "name": "Mindao",
-      "handle": "mindaoyang",
-      "enabled": true,
-      "priority": false,
-      "topics": [
-        "crypto"
-      ],
-      "note": "dForce founder"
-    },
-    {
-      "id": "herbert-twitter",
-      "type": "twitter",
-      "name": "Herbert",
-      "handle": "herbertcrypto",
-      "enabled": true,
-      "priority": false,
-      "topics": [
-        "crypto"
-      ],
-      "note": "PANews founder"
-    },
-    {
       "id": "elon-twitter",
       "type": "twitter",
       "name": "Elon Musk",
@@ -749,19 +556,6 @@
         "frontier-tech"
       ],
       "note": "Google CEO"
-    },
-    {
-      "id": "pmarca-twitter",
-      "type": "twitter",
-      "name": "Marc Andreessen",
-      "handle": "pmarca",
-      "enabled": true,
-      "priority": false,
-      "topics": [
-        "frontier-tech",
-        "crypto"
-      ],
-      "note": "a16z"
     },
     {
       "id": "levie-twitter",
@@ -888,30 +682,6 @@
         "frontier-tech"
       ],
       "note": "New product discovery, AI tools"
-    },
-    {
-      "id": "messari-rss",
-      "type": "rss",
-      "name": "Messari",
-      "url": "https://messari.io/rss",
-      "enabled": true,
-      "priority": false,
-      "topics": [
-        "crypto"
-      ],
-      "note": "Crypto research reports"
-    },
-    {
-      "id": "defiant-rss",
-      "type": "rss",
-      "name": "The Defiant",
-      "url": "https://thedefiant.io/feed",
-      "enabled": true,
-      "priority": false,
-      "topics": [
-        "crypto"
-      ],
-      "note": "DeFi professional media"
     },
     {
       "id": "ifanr-rss",
@@ -1051,65 +821,332 @@
       "note": "Stanford Digital Economy Lab"
     },
     {
-      "id": "balaji-twitter",
+      "id": "paulg-twitter",
       "type": "twitter",
-      "name": "Balaji Srinivasan",
-      "handle": "balaji",
+      "name": "Paul Graham",
+      "handle": "paulg",
       "enabled": true,
-      "priority": true,
+      "priority": false,
       "topics": [
-        "crypto",
         "frontier-tech"
-      ],
-      "note": "Former Coinbase CTO, macro thinker"
+      ]
     },
     {
-      "id": "cobie-twitter",
+      "id": "kevin2kelly-twitter",
       "type": "twitter",
-      "name": "Cobie",
-      "handle": "cobie",
+      "name": "Kevin Kelly",
+      "handle": "kevin2kelly",
       "enabled": true,
       "priority": false,
       "topics": [
-        "crypto"
-      ],
-      "note": "Influential independent crypto analyst"
+        "frontier-tech"
+      ]
     },
     {
-      "id": "hsaka-twitter",
+      "id": "naval-twitter",
       "type": "twitter",
-      "name": "Hsaka",
-      "handle": "HsakaTrades",
+      "name": "Naval",
+      "handle": "naval",
       "enabled": true,
       "priority": false,
       "topics": [
-        "crypto"
-      ],
-      "note": "Crypto trading analysis"
+        "frontier-tech"
+      ]
     },
     {
-      "id": "cochran-twitter",
+      "id": "thsottiaux-twitter",
       "type": "twitter",
-      "name": "Adam Cochran",
-      "handle": "adamscochran",
+      "name": "thsottiaux",
+      "handle": "thsottiaux",
       "enabled": true,
       "priority": false,
       "topics": [
-        "crypto"
-      ],
-      "note": "Cinneamhain Ventures, on-chain analysis"
+        "llm",
+        "ai-agent"
+      ]
     },
     {
-      "id": "lcermak-twitter",
+      "id": "dotey-twitter",
       "type": "twitter",
-      "name": "Larry Cermak",
-      "handle": "lawmaster",
+      "name": "dotey",
+      "handle": "dotey",
       "enabled": true,
       "priority": false,
       "topics": [
-        "crypto"
-      ],
-      "note": "The Block research director"
+        "llm",
+        "ai-agent"
+      ]
+    },
+    {
+      "id": "fcoury-twitter",
+      "type": "twitter",
+      "name": "fcoury",
+      "handle": "fcoury",
+      "enabled": true,
+      "priority": false,
+      "topics": [
+        "ai-agent"
+      ]
+    },
+    {
+      "id": "romainhuet-twitter",
+      "type": "twitter",
+      "name": "Romain Huet",
+      "handle": "romainhuet",
+      "enabled": true,
+      "priority": false,
+      "topics": [
+        "ai-agent"
+      ]
+    },
+    {
+      "id": "lydiahallie-twitter",
+      "type": "twitter",
+      "name": "Lydia Hallie",
+      "handle": "lydiahallie",
+      "enabled": true,
+      "priority": false,
+      "topics": [
+        "ai-agent"
+      ]
+    },
+    {
+      "id": "garrytan-twitter",
+      "type": "twitter",
+      "name": "Garry Tan",
+      "handle": "garrytan",
+      "enabled": true,
+      "priority": false,
+      "topics": [
+        "llm",
+        "ai-agent"
+      ]
+    },
+    {
+      "id": "trq212-twitter",
+      "type": "twitter",
+      "name": "trq212",
+      "handle": "trq212",
+      "enabled": true,
+      "priority": false,
+      "topics": [
+        "llm",
+        "ai-agent"
+      ]
+    },
+    {
+      "id": "joshwoodward-twitter",
+      "type": "twitter",
+      "name": "Josh Woodward",
+      "handle": "joshwoodward",
+      "enabled": true,
+      "priority": false,
+      "topics": [
+        "llm",
+        "ai-agent"
+      ]
+    },
+    {
+      "id": "kevinweil-twitter",
+      "type": "twitter",
+      "name": "Kevin Weil",
+      "handle": "kevinweil",
+      "enabled": true,
+      "priority": false,
+      "topics": [
+        "llm"
+      ]
+    },
+    {
+      "id": "petergyang-twitter",
+      "type": "twitter",
+      "name": "Peter Yang",
+      "handle": "petergyang",
+      "enabled": true,
+      "priority": false,
+      "topics": [
+        "llm",
+        "ai-agent"
+      ]
+    },
+    {
+      "id": "madhuguru-twitter",
+      "type": "twitter",
+      "name": "Madhu Guru",
+      "handle": "realmadhuguru",
+      "enabled": true,
+      "priority": false,
+      "topics": [
+        "llm",
+        "ai-agent"
+      ]
+    },
+    {
+      "id": "AmandaAskell-twitter",
+      "type": "twitter",
+      "name": "Amanda Askell",
+      "handle": "AmandaAskell",
+      "enabled": true,
+      "priority": false,
+      "topics": [
+        "llm",
+        "ai-agent"
+      ]
+    },
+    {
+      "id": "catwu-twitter",
+      "type": "twitter",
+      "name": "Cat Wu",
+      "handle": "_catwu",
+      "enabled": true,
+      "priority": false,
+      "topics": [
+        "llm",
+        "ai-agent"
+      ]
+    },
+    {
+      "id": "googlelabs-twitter",
+      "type": "twitter",
+      "name": "Google Labs",
+      "handle": "GoogleLabs",
+      "enabled": true,
+      "priority": false,
+      "topics": [
+        "llm",
+        "ai-agent"
+      ]
+    },
+    {
+      "id": "amjadmasad-twitter",
+      "type": "twitter",
+      "name": "Amjad Masad",
+      "handle": "amasad",
+      "enabled": true,
+      "priority": false,
+      "topics": [
+        "llm",
+        "ai-agent"
+      ]
+    },
+    {
+      "id": "guillermorauch-twitter",
+      "type": "twitter",
+      "name": "Guillermo Rauch",
+      "handle": "rauchg",
+      "enabled": true,
+      "priority": false,
+      "topics": [
+        "llm",
+        "ai-agent"
+      ]
+    },
+    {
+      "id": "alexalbert-twitter",
+      "type": "twitter",
+      "name": "Alex Albert",
+      "handle": "alexalbert__",
+      "enabled": true,
+      "priority": false,
+      "topics": [
+        "llm",
+        "ai-agent"
+      ]
+    },
+    {
+      "id": "ryolu-twitter",
+      "type": "twitter",
+      "name": "Ryo Lu",
+      "handle": "ryolu_",
+      "enabled": true,
+      "priority": false,
+      "topics": [
+        "llm",
+        "ai-agent"
+      ]
+    },
+    {
+      "id": "mattturck-twitter",
+      "type": "twitter",
+      "name": "Matt Turck",
+      "handle": "mattturck",
+      "enabled": true,
+      "priority": false,
+      "topics": [
+        "llm",
+        "ai-agent"
+      ]
+    },
+    {
+      "id": "nikunjkothari-twitter",
+      "type": "twitter",
+      "name": "Nikunj Kothari",
+      "handle": "nikunj",
+      "enabled": true,
+      "priority": false,
+      "topics": [
+        "llm",
+        "ai-agent"
+      ]
+    },
+    {
+      "id": "danshipper-twitter",
+      "type": "twitter",
+      "name": "Dan Shipper",
+      "handle": "danshipper",
+      "enabled": true,
+      "priority": false,
+      "topics": [
+        "llm",
+        "ai-agent"
+      ]
+    },
+    {
+      "id": "adityaagarwal-twitter",
+      "type": "twitter",
+      "name": "Aditya Agarwal",
+      "handle": "adityaag",
+      "enabled": true,
+      "priority": false,
+      "topics": [
+        "llm",
+        "ai-agent"
+      ]
+    },
+    {
+      "id": "claude-twitter",
+      "type": "twitter",
+      "name": "Claude",
+      "handle": "claudeai",
+      "enabled": true,
+      "priority": false,
+      "topics": [
+        "llm",
+        "ai-agent"
+      ]
+    },
+    {
+      "id": "svwang1-twitter",
+      "type": "twitter",
+      "name": "svwang1",
+      "handle": "svwang1",
+      "enabled": true,
+      "priority": false,
+      "topics": [
+        "frontier-tech"
+      ]
+    },
+    {
+      "id": "zarazhang-twitter",
+      "type": "twitter",
+      "name": "Zara Zhang",
+      "handle": "zarazhangrui",
+      "enabled": true,
+      "priority": false,
+      "topics": [
+        "llm",
+        "ai-agent"
+      ]
     },
     {
       "id": "pytorch-github",
@@ -1257,54 +1294,6 @@
       "note": "Open source AI assistant platform"
     },
     {
-      "id": "go-ethereum-github",
-      "type": "github",
-      "name": "go-ethereum (Geth)",
-      "repo": "ethereum/go-ethereum",
-      "enabled": true,
-      "priority": true,
-      "topics": [
-        "crypto"
-      ],
-      "note": "Official Go implementation of Ethereum"
-    },
-    {
-      "id": "solidity-github",
-      "type": "github",
-      "name": "Solidity",
-      "repo": "ethereum/solidity",
-      "enabled": true,
-      "priority": false,
-      "topics": [
-        "crypto"
-      ],
-      "note": "Ethereum smart contract programming language"
-    },
-    {
-      "id": "foundry-github",
-      "type": "github",
-      "name": "Foundry",
-      "repo": "foundry-rs/foundry",
-      "enabled": true,
-      "priority": false,
-      "topics": [
-        "crypto"
-      ],
-      "note": "Fast, portable and modular Ethereum toolkit"
-    },
-    {
-      "id": "eips-github",
-      "type": "github",
-      "name": "Ethereum EIPs",
-      "repo": "ethereum/EIPs",
-      "enabled": true,
-      "priority": true,
-      "topics": [
-        "crypto"
-      ],
-      "note": "Ethereum Improvement Proposals repository"
-    },
-    {
       "id": "linux-github",
       "type": "github",
       "name": "Linux Kernel",
@@ -1365,28 +1354,6 @@
       ]
     },
     {
-      "id": "a16zcrypto-rss",
-      "type": "rss",
-      "name": "a16z Crypto",
-      "url": "https://a16zcrypto.substack.com/feed",
-      "enabled": true,
-      "priority": true,
-      "topics": [
-        "crypto"
-      ]
-    },
-    {
-      "id": "bankless-rss",
-      "type": "rss",
-      "name": "Bankless",
-      "url": "https://newsletter.banklesshq.com/feed",
-      "enabled": false,
-      "priority": true,
-      "topics": [
-        "crypto"
-      ]
-    },
-    {
       "id": "twitter-clementdelangue",
       "type": "twitter",
       "name": "Clement Delangue",
@@ -1434,17 +1401,6 @@
       ]
     },
     {
-      "id": "github-deepseek-v3",
-      "type": "github",
-      "name": "DeepSeek V3",
-      "repo": "deepseek-ai/DeepSeek-V3",
-      "enabled": true,
-      "priority": true,
-      "topics": [
-        "llm"
-      ]
-    },
-    {
       "id": "github-meta-llama",
       "type": "github",
       "name": "Meta Llama",
@@ -1485,20 +1441,6 @@
       ]
     },
     {
-      "id": "reddit-cryptocurrency",
-      "type": "reddit",
-      "name": "r/CryptoCurrency",
-      "subreddit": "CryptoCurrency",
-      "sort": "hot",
-      "limit": 25,
-      "min_score": 50,
-      "enabled": true,
-      "priority": true,
-      "topics": [
-        "crypto"
-      ]
-    },
-    {
       "id": "reddit-artificial",
       "type": "reddit",
       "name": "r/artificial",
@@ -1511,20 +1453,6 @@
       "topics": [
         "llm",
         "ai-agent"
-      ]
-    },
-    {
-      "id": "reddit-ethereum",
-      "type": "reddit",
-      "name": "r/ethereum",
-      "subreddit": "ethereum",
-      "sort": "hot",
-      "limit": 25,
-      "min_score": 30,
-      "enabled": true,
-      "priority": false,
-      "topics": [
-        "crypto"
       ]
     },
     {
@@ -1572,36 +1500,6 @@
       ]
     },
     {
-      "id": "reddit-bitcoin",
-      "type": "reddit",
-      "name": "r/Bitcoin",
-      "subreddit": "Bitcoin",
-      "sort": "hot",
-      "limit": 25,
-      "min_score": 50,
-      "enabled": true,
-      "priority": true,
-      "topics": [
-        "crypto"
-      ]
-    },
-    {
-      "id": "reddit-programming",
-      "type": "reddit",
-      "name": "r/programming",
-      "subreddit": "programming",
-      "sort": "hot",
-      "limit": 25,
-      "min_score": 50,
-      "enabled": true,
-      "priority": false,
-      "topics": [
-        "llm",
-        "ai-agent",
-        "crypto"
-      ]
-    },
-    {
       "id": "reddit-anthropic",
       "type": "reddit",
       "name": "r/Anthropic",
@@ -1614,20 +1512,6 @@
       "topics": [
         "llm",
         "ai-agent"
-      ]
-    },
-    {
-      "id": "reddit-defi",
-      "type": "reddit",
-      "name": "r/defi",
-      "subreddit": "defi",
-      "sort": "hot",
-      "limit": 25,
-      "min_score": 30,
-      "enabled": true,
-      "priority": false,
-      "topics": [
-        "crypto"
       ]
     },
     {
@@ -1742,18 +1626,6 @@
         "llm"
       ],
       "note": "Nous Research Hermes agent framework/project"
-    },
-    {
-      "id": "zeroclaw-github",
-      "type": "github",
-      "name": "ZeroClaw",
-      "repo": "zeroclaw-labs/zeroclaw",
-      "enabled": true,
-      "priority": false,
-      "topics": [
-        "crypto"
-      ],
-      "note": "ZeroClaw Labs project"
     },
     {
       "id": "overreacted-rss",
@@ -2006,40 +1878,6 @@
       "topics": [
         "ai-agent",
         "llm"
-      ],
-      "priority": false,
-      "enabled": true
-    },
-    {
-      "id": "youtube-bankless",
-      "type": "rss",
-      "name": "YouTube: Bankless",
-      "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UCAl9Ld79qaZxp9JzEOwd3aA",
-      "topics": [
-        "crypto"
-      ],
-      "priority": true,
-      "enabled": true
-    },
-    {
-      "id": "youtube-a16z-crypto",
-      "type": "rss",
-      "name": "YouTube: a16z crypto",
-      "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UCTHq3W46BiAYjKUYZq2qm-Q",
-      "topics": [
-        "crypto"
-      ],
-      "priority": false,
-      "enabled": true
-    },
-    {
-      "id": "youtube-lex-fridman",
-      "type": "rss",
-      "name": "YouTube: Lex Fridman",
-      "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UCSHZKyawb77ixDdsGog4iWA",
-      "topics": [
-        "llm",
-        "crypto"
       ],
       "priority": false,
       "enabled": true

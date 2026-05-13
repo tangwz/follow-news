@@ -80,7 +80,7 @@ From `topics.json`: `emoji` + `label` headers, `<ITEMS_PER_SECTION>` items each.
 
 **⚠️ CRITICAL: Output articles in EXACTLY the same order as summarize-merged.py output (quality_score descending). Do NOT reorder, group by subtopic, or rearrange. The 🔥 scores must appear in strictly decreasing order within each section.**
 
-**⚠️ Minimum score threshold: Only include articles with quality_score ≥ 5 in topic sections (LLM, AI Agent, Crypto, Frontier Tech). Skip anything below 5.**
+**⚠️ Minimum score threshold: Only include articles with quality_score ≥ 5 in topic sections (LLM, AI Agent, Frontier Tech). Skip anything below 5.**
 
 ### Fixed Sections (after topics)
 
