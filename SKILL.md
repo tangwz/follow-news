@@ -236,7 +236,7 @@ python3 scripts/fetch-github.py [--defaults DIR] [--config DIR] [--hours 168] [-
 ```bash
 python3 scripts/fetch-github.py --trending [--hours 48] [--output FILE] [--verbose]
 ```
-- Searches GitHub API for trending repos across 4 topics (LLM, AI Agent, Crypto, Frontier Tech)
+- Searches GitHub API for trending repos across configured topics (`llm`, `ai-agent`, `builder`, `kol`, `frontier-tech`)
 - Quality scoring: base 5 + daily_stars_est / 10, max 15
 
 #### `fetch-reddit.py` - Reddit Posts Fetcher
@@ -244,7 +244,7 @@ python3 scripts/fetch-github.py --trending [--hours 48] [--output FILE] [--verbo
 python3 scripts/fetch-reddit.py [--defaults DIR] [--config DIR] [--hours 48] [--output FILE]
 ```
 - Parallel fetching (4 workers), public JSON API (no auth required)
-- 13 subreddits with score filtering
+- 8 subreddits with score filtering
 
 
 #### `enrich-articles.py` - Article Full-Text Enrichment
@@ -357,13 +357,13 @@ Place custom configs in `workspace/config/` to override defaults:
 - Emoji icons, page headers/footers with page numbers
 - Generated via `scripts/generate-pdf.py` (requires `weasyprint`)
 
-## Default Sources (151 total)
+## Default Sources (156 total)
 
-- **RSS Feeds (62)**: AI labs, tech blogs, crypto news, Chinese tech media
-- **Twitter/X KOLs (48)**: AI researchers, crypto leaders, tech executives
-- **GitHub Repos (28)**: Major open-source projects (LangChain, vLLM, DeepSeek, Llama, etc.)
-- **Reddit (13)**: r/MachineLearning, r/LocalLLaMA, r/CryptoCurrency, r/ChatGPT, r/OpenAI, etc.
-- **Web Search (4 topics)**: LLM, AI Agent, Crypto, Frontier Tech
+- **RSS Feeds (65)**: AI labs, engineering blogs, founder/operator writing, Chinese tech media
+- **Twitter/X KOLs (60)**: AI researchers, builder accounts, product operators, technology commentators
+- **GitHub Repos (23)**: Major open-source projects (LangChain, vLLM, DeepSeek, Llama, etc.)
+- **Reddit (8)**: r/MachineLearning, r/LocalLLaMA, r/OpenAI, r/ExperiencedDevs, etc.
+- **Web Search (5 topics)**: `llm`, `ai-agent`, `builder`, `kol`, `frontier-tech`
 
 All sources pre-configured with appropriate topic tags and priority levels.
 

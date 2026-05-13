@@ -4,7 +4,7 @@
 #   ./test-pipeline.sh                          # run all sources
 #   ./test-pipeline.sh --only twitter,rss       # only these source types
 #   ./test-pipeline.sh --skip web               # skip web search
-#   ./test-pipeline.sh --topics crypto           # only sources with these topics
+#   ./test-pipeline.sh --topics builder,llm      # only sources with these topics
 #   ./test-pipeline.sh --ids sama-twitter,openai-rss  # specific source IDs
 #   ./test-pipeline.sh --hours 12               # custom time window
 #   ./test-pipeline.sh --keep                   # keep output dir after test
@@ -56,12 +56,12 @@ OPTIONS:
                     Example: --skip web,reddit
 
   --topics TOPICS   Only include sources matching these topics (comma-separated)
-                    Values: llm, ai-agent, frontier-tech, crypto
-                    Example: --topics crypto,llm
+                    Values: llm, ai-agent, builder, kol, frontier-tech
+                    Example: --topics builder,llm
 
   --ids IDS         Only include specific source IDs (comma-separated)
                     IDs are defined in config/defaults/sources.json
-                    Example: --ids sama-twitter,openai-rss,vitalik-twitter
+                    Example: --ids sama-twitter,openai-rss,paulg-twitter
 
   --hours N         Time window for fetching articles (default: 24)
                     Example: --hours 48
@@ -87,7 +87,7 @@ OPTIONS:
 EXAMPLES:
   ./test-pipeline.sh                                    # full pipeline, all sources
   ./test-pipeline.sh --only twitter --twitter-backend twitterapiio  # twitter only via twitterapi.io
-  ./test-pipeline.sh --topics crypto --hours 48 --keep  # crypto sources, 48h window
+  ./test-pipeline.sh --topics builder --hours 48 --keep # builder sources, 48h window
   ./test-pipeline.sh --skip web,reddit -v               # skip web+reddit, verbose
   ./test-pipeline.sh --ids sama-twitter,karpathy-twitter --only twitter
 

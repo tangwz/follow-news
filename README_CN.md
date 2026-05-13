@@ -19,9 +19,9 @@
 
 更多示例：
 
-> 🗣️ "配置一个每周 AI 周报，只要 LLM 和 AI Agent 板块，每周一发到 Discord #ai-weekly"
+> 🗣️ "配置一个每周 AI 周报，只要 `llm` 和 `ai-agent` 板块，每周一发到 Discord #ai-weekly"
 
-> 🗣️ "安装 follow-news，加上我的 RSS 源，发送科技新闻到 Telegram"
+> 🗣️ "安装 follow-news，加上我的 RSS 源，并包含 `builder` 和 `kol` 主题"
 
 > 🗣️ "现在就给我生成一份科技日报，跳过 Twitter 数据源"
 
@@ -36,11 +36,11 @@ clawhub install follow-news
 
 | 层级 | 数量 | 内容 |
 |------|------|------|
-| 📡 RSS | 65 个订阅源 | OpenAI、Anthropic、Ben's Bites、HN、36氪、CoinDesk… |
-| 🐦 Twitter/X | 60 个 KOL | @karpathy、@VitalikButerin、@sama、@elonmusk… |
-| 🔍 Web 搜索 | 5 个主题 | Tavily 或 Brave Search API + 时效过滤 |
+| 📡 RSS | 65 个订阅源 | OpenAI、Simon Willison、Hugging Face、HN、36氪… |
+| 🐦 Twitter/X | 60 个 KOL | @sama、@karpathy、@paulg、@garrytan、@dotey… |
+| 🔍 Web 搜索 | 5 个主题 | `llm`、`ai-agent`、`builder`、`kol`、`frontier-tech` + 时效过滤 |
 | 🐙 GitHub | 23 个仓库 | 关键项目的 Release 跟踪（LangChain、vLLM、DeepSeek、Llama…） |
-| 🗣️ Reddit | 8 个子版块 | r/MachineLearning、r/LocalLLaMA、r/CryptoCurrency… |
+| 🗣️ Reddit | 8 个子版块 | r/MachineLearning、r/LocalLLaMA、r/OpenAI、r/ExperiencedDevs… |
 
 ### 数据管道
 
@@ -63,7 +63,7 @@ clawhub install follow-news
 ## ⚙️ 配置
 
 - `config/defaults/sources.json` — 156 个内置数据源（65 RSS、60 Twitter、23 GitHub、8 Reddit）
-- `config/defaults/topics.json` — 5 个主题，含搜索查询和 Twitter 查询
+- `config/defaults/topics.json` — 5 个主题：`llm`、`ai-agent`、`builder`、`kol`、`frontier-tech`
 - 用户自定义配置放 `workspace/config/`，优先级更高
 
 ## 🎨 自定义数据源
@@ -85,7 +85,7 @@ cp config/defaults/topics.json workspace/config/follow-news-topics.json
 {
   "sources": [
     {"id": "my-blog", "type": "rss", "enabled": true, "url": "https://myblog.com/feed", "topics": ["llm"]},
-    {"id": "openai-blog", "enabled": false}
+    {"id": "openai-rss", "enabled": false}
   ]
 }
 ```
