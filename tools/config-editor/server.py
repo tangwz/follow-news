@@ -37,6 +37,7 @@ ALLOWED_FILES = {
 class ConfigEditorHandler(SimpleHTTPRequestHandler):
     _json_prefix = re.compile(r"^/api/")
     _LOCAL_ORIGINS = {"127.0.0.1", "localhost", "::1"}
+    _ALLOWED_SOURCE_TYPES = {"rss", "twitter", "web", "github", "reddit"}
 
     def _send_json(self, payload: Dict[str, Any], status: int = 200) -> None:
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
@@ -88,6 +89,54 @@ class ConfigEditorHandler(SimpleHTTPRequestHandler):
         if origin and self._is_allowed_write_origin():
             self.send_header("Access-Control-Allow-Origin", origin)
             self.send_header("Vary", "Origin")
+
+    def _validate_sources_payload(self, sources: Any) -> None:
+        if not isinstance(sources, list):
+            raise ValueError("'sources' should be a list")
+
+        for index, source in enumerate(sources):
+            if not isinstance(source, dict):
+                raise ValueError(f"Source at index {index} should be an object")
+
+            source_id = source.get("id", f"index:{index}")
+            missing = []
+            for field in ("id", "type", "name", "enabled", "priority", "topics"):
+                if field not in source:
+                    missing.append(field)
+            if missing:
+                raise ValueError(
+                    f"Source '{source_id}' missing required field(s): {', '.join(missing)}"
+                )
+
+            source_type = source["type"]
+            if not isinstance(source_type, str) or source_type not in self._ALLOWED_SOURCE_TYPES:
+                raise ValueError(f"Source '{source_id}' has unsupported type: {source_type}")
+
+            if not isinstance(source["id"], str) or not source["id"].strip():
+                raise ValueError(f"Source at index {index} has invalid 'id'")
+            if not isinstance(source["name"], str) or not source["name"].strip():
+                raise ValueError(f"Source '{source_id}' has invalid 'name'")
+            if not isinstance(source["enabled"], bool):
+                raise ValueError(f"Source '{source_id}' has invalid 'enabled' value")
+            if not isinstance(source["priority"], bool):
+                raise ValueError(f"Source '{source_id}' has invalid 'priority' value")
+
+            topics = source["topics"]
+            if not isinstance(topics, list) or not all(isinstance(topic, str) for topic in topics):
+                raise ValueError(f"Source '{source_id}' has invalid 'topics'; expected string array")
+
+            if source_type == "rss":
+                if not isinstance(source.get("url"), str) or not source["url"].strip():
+                    raise ValueError(f"Source '{source_id}' missing required field 'url'")
+            elif source_type == "twitter":
+                if not isinstance(source.get("handle"), str) or not source["handle"].strip():
+                    raise ValueError(f"Source '{source_id}' missing required field 'handle'")
+            elif source_type == "github":
+                if not isinstance(source.get("repo"), str) or not source["repo"].strip():
+                    raise ValueError(f"Source '{source_id}' missing required field 'repo'")
+            elif source_type == "reddit":
+                if not isinstance(source.get("subreddit"), str) or not source["subreddit"].strip():
+                    raise ValueError(f"Source '{source_id}' missing required field 'subreddit'")
 
     def do_OPTIONS(self) -> None:
         if not self.path.startswith("/api/"):
@@ -178,8 +227,8 @@ class ConfigEditorHandler(SimpleHTTPRequestHandler):
             path = ALLOWED_FILES[key]["path"]
             if key not in content:
                 raise ValueError(f"missing top-level key '{key}'")
-            if key == "sources" and not isinstance(content.get("sources"), list):
-                raise ValueError("'sources' should be a list")
+            if key == "sources":
+                self._validate_sources_payload(content.get("sources"))
             if key == "topics" and not isinstance(content.get("topics"), list):
                 raise ValueError("'topics' should be a list")
 
