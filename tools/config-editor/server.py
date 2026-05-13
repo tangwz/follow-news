@@ -272,7 +272,7 @@ class ConfigEditorHandler(SimpleHTTPRequestHandler):
         self._api_error(404, "not found")
 
     def do_POST(self) -> None:
-        if not self.path.startswith("/api/file"):
+        if urlparse(self.path).path != "/api/file":
             return self._api_error(404, "not found")
 
         if not self._is_allowed_write_origin():

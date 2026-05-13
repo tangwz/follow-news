@@ -12,6 +12,7 @@ import unittest
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
+from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 import importlib.util
 
@@ -102,6 +103,23 @@ class ConfigEditorServerTest(unittest.TestCase):
                     server.shutdown()
                     server.server_close()
                     server_thread.join(timeout=1.0)
+
+    def test_post_rejects_non_exact_file_route(self) -> None:
+        port = _get_free_port()
+        server = server_module.HTTPServer(("127.0.0.1", port), server_module.ConfigEditorHandler)
+        server_thread = threading.Thread(target=server.serve_forever, daemon=True)
+        server_thread.start()
+        try:
+            time.sleep(0.05)
+            request = Request(f"http://127.0.0.1:{port}/api/filezzz", method="POST")
+            request.add_header("Origin", f"http://127.0.0.1:{port}")
+            with self.assertRaises(HTTPError) as context:
+                urlopen(request, timeout=2.0)
+            self.assertEqual(context.exception.code, 404)
+        finally:
+            server.shutdown()
+            server.server_close()
+            server_thread.join(timeout=1.0)
 
 
 if __name__ == "__main__":
