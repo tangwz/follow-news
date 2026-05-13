@@ -109,9 +109,9 @@ class ConfigEditorHandler(SimpleHTTPRequestHandler):
 
     def _is_wildcard_request_local(self, host: str) -> bool:
         if host in self._WILDCARD_HOSTS:
-            return True
+            return self._is_client_loopback()
         if host in self._LOCAL_ORIGINS:
-            return True
+            return self._is_client_loopback()
 
         try:
             host_addr = ipaddress.ip_address(host)
@@ -119,7 +119,7 @@ class ConfigEditorHandler(SimpleHTTPRequestHandler):
             return False
 
         if host_addr.is_loopback:
-            return True
+            return self._is_client_loopback()
 
         client_host = self.client_address[0]
         try:
@@ -128,6 +128,13 @@ class ConfigEditorHandler(SimpleHTTPRequestHandler):
             return False
 
         return client_addr == host_addr
+
+    def _is_client_loopback(self) -> bool:
+        client_host = self.client_address[0]
+        try:
+            return ipaddress.ip_address(client_host).is_loopback
+        except ValueError:
+            return False
 
     def _get_request_host(self) -> Optional[str]:
         host_header = self.headers.get("Host")

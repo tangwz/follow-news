@@ -414,6 +414,22 @@ class ConfigEditorServerTest(unittest.TestCase):
                     server.server_close()
                     server_thread.join(timeout=1.0)
 
+    def test_wildcard_origin_host_validation_binds_local_aliases_to_client(self) -> None:
+        handler = server_module.ConfigEditorHandler.__new__(server_module.ConfigEditorHandler)
+
+        handler.client_address = ("127.0.0.1", 54321)
+        self.assertTrue(handler._is_wildcard_request_local("localhost"))
+        self.assertTrue(handler._is_wildcard_request_local("127.0.0.1"))
+
+        handler.client_address = ("192.168.1.99", 54321)
+        self.assertFalse(handler._is_wildcard_request_local("localhost"))
+        self.assertFalse(handler._is_wildcard_request_local("127.0.0.1"))
+        self.assertFalse(handler._is_wildcard_request_local("0.0.0.0"))
+
+        handler.client_address = ("192.168.1.99", 54321)
+        self.assertTrue(handler._is_wildcard_request_local("192.168.1.99"))
+        self.assertFalse(handler._is_wildcard_request_local("192.168.1.100"))
+
     def test_post_rejects_non_exact_file_route(self) -> None:
         port = _get_free_port()
         server = server_module.HTTPServer(("127.0.0.1", port), server_module.ConfigEditorHandler)
