@@ -176,7 +176,11 @@ class ConfigEditorHandler(SimpleHTTPRequestHandler):
 
     def do_OPTIONS(self) -> None:
         if not self.path.startswith("/api/"):
-            return super().do_OPTIONS()
+            self.send_response(200)
+            self.send_header("Allow", "GET, OPTIONS")
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            return
 
         if self.path.startswith("/api/file") and not self._is_allowed_write_origin():
             return self._api_error(403, "forbidden: cross-origin writes are not allowed")
@@ -224,8 +228,13 @@ class ConfigEditorHandler(SimpleHTTPRequestHandler):
             if not path.exists():
                 return self._api_error(404, f"config file not found: {path}")
 
-            with path.open("r", encoding="utf-8") as fp:
-                content = json.load(fp)
+            try:
+                with path.open("r", encoding="utf-8") as fp:
+                    content = json.load(fp)
+            except json.JSONDecodeError as exc:
+                return self._api_error(500, f"invalid config JSON in {path.name}: {exc}")
+            except OSError as exc:
+                return self._api_error(500, f"failed to read config file {path.name}: {exc}")
 
             return self._send_json(
                 {
@@ -260,6 +269,8 @@ class ConfigEditorHandler(SimpleHTTPRequestHandler):
 
         if content is None:
             return self._api_error(400, "missing content")
+        if not isinstance(content, dict):
+            return self._api_error(400, "invalid content type; expected object")
 
         try:
             path = ALLOWED_FILES[key]["path"]

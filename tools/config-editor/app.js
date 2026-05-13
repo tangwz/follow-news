@@ -680,8 +680,6 @@
     if (isTable) {
       ensureSourceFiltered();
       renderSourcesTable();
-    } else {
-      syncSourceJsonFromState();
     }
   }
 
@@ -692,8 +690,6 @@
     el.toggleTopicModeBtn.textContent = isTable ? t("actions.jsonMode") : t("actions.tableMode");
     if (isTable) {
       renderTopicsTable();
-    } else {
-      syncTopicJsonFromState();
     }
   }
 
