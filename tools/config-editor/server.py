@@ -36,10 +36,12 @@ ALLOWED_FILES = {
 
 class ConfigEditorHandler(SimpleHTTPRequestHandler):
     _json_prefix = re.compile(r"^/api/")
+    _LOCAL_ORIGINS = {"127.0.0.1", "localhost", "::1"}
 
     def _send_json(self, payload: Dict[str, Any], status: int = 200) -> None:
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
+        self._send_cors_headers()
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
@@ -64,11 +66,46 @@ class ConfigEditorHandler(SimpleHTTPRequestHandler):
             raise ValueError("unknown config key")
         return key
 
+    def _is_allowed_write_origin(self) -> bool:
+        origin = self.headers.get("Origin")
+        if not origin:
+            return False
+
+        parsed = urlparse(origin)
+        if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+            return False
+        if parsed.port is None:
+            return False
+
+        server_port = self.server.server_address[1]
+        if parsed.port != server_port:
+            return False
+
+        return parsed.hostname in self._LOCAL_ORIGINS
+
+    def _send_cors_headers(self) -> None:
+        origin = self.headers.get("Origin")
+        if origin and self._is_allowed_write_origin():
+            self.send_header("Access-Control-Allow-Origin", origin)
+            self.send_header("Vary", "Origin")
+
     def do_OPTIONS(self) -> None:
+        if not self.path.startswith("/api/"):
+            return super().do_OPTIONS()
+
+        if self.path.startswith("/api/file") and not self._is_allowed_write_origin():
+            return self._api_error(403, "forbidden: cross-origin writes are not allowed")
+
+        requested_method = (self.headers.get("Access-Control-Request-Method") or "").upper()
+        allow_methods = "GET, OPTIONS"
+        if requested_method == "POST" or self.path.startswith("/api/file"):
+            allow_methods = "GET, POST, OPTIONS"
+
         self.send_response(200)
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self._send_cors_headers()
+        self.send_header("Access-Control-Allow-Methods", allow_methods)
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header("Access-Control-Max-Age", "600")
         self.end_headers()
 
     def do_GET(self) -> None:
@@ -120,6 +157,9 @@ class ConfigEditorHandler(SimpleHTTPRequestHandler):
     def do_POST(self) -> None:
         if not self.path.startswith("/api/file"):
             return self._api_error(404, "not found")
+
+        if not self._is_allowed_write_origin():
+            return self._api_error(403, "forbidden: cross-origin writes are not allowed")
 
         try:
             payload = self._read_request_json()
