@@ -597,7 +597,7 @@ def load_trending_topics(defaults_dir: Path, config_dir: Optional[Path] = None) 
 
 def get_trending_queries(allowed_topics: Optional[Set[str]] = None) -> List[Dict[str, str]]:
     """Get trending queries for enabled topics."""
-    if not allowed_topics:
+    if allowed_topics is None:
         return TRENDING_QUERIES
     return [q for q in TRENDING_QUERIES if q["topic"] in allowed_topics]
 
