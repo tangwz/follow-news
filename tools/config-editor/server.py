@@ -9,6 +9,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import ipaddress
 import json
 import os
 import re
@@ -99,12 +100,34 @@ class ConfigEditorHandler(SimpleHTTPRequestHandler):
 
         origin_host = parsed.hostname.lower()
         if server_host in self._WILDCARD_HOSTS:
-            return origin_host == request_host
+            return origin_host == request_host and self._is_wildcard_request_local(origin_host)
 
         if origin_host in self._LOCAL_ORIGINS and request_host in self._LOCAL_ORIGINS:
             return True
 
         return origin_host == server_host
+
+    def _is_wildcard_request_local(self, host: str) -> bool:
+        if host in self._WILDCARD_HOSTS:
+            return True
+        if host in self._LOCAL_ORIGINS:
+            return True
+
+        try:
+            host_addr = ipaddress.ip_address(host)
+        except ValueError:
+            return False
+
+        if host_addr.is_loopback:
+            return True
+
+        client_host = self.client_address[0]
+        try:
+            client_addr = ipaddress.ip_address(client_host)
+        except ValueError:
+            return False
+
+        return client_addr == host_addr
 
     def _get_request_host(self) -> Optional[str]:
         host_header = self.headers.get("Host")
