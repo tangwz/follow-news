@@ -242,7 +242,7 @@ class ConfigEditorHandler(SimpleHTTPRequestHandler):
             }
             return self._send_json(payload)
 
-        if self.path.startswith("/api/file"):
+        if urlparse(self.path).path == "/api/file":
             try:
                 key = self._validate_key()
             except ValueError:
