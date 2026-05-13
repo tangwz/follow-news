@@ -828,7 +828,7 @@
       "enabled": true,
       "priority": false,
       "topics": [
-        "builder"
+        "kol"
       ]
     },
     {
@@ -839,7 +839,7 @@
       "enabled": true,
       "priority": false,
       "topics": [
-        "builder"
+        "kol"
       ]
     },
     {
@@ -850,7 +850,7 @@
       "enabled": true,
       "priority": false,
       "topics": [
-        "builder"
+        "kol"
       ]
     },
     {
@@ -872,7 +872,7 @@
       "enabled": true,
       "priority": false,
       "topics": [
-        "builder"
+        "kol"
       ]
     },
     {
