@@ -217,7 +217,7 @@ class ConfigEditorServerTest(unittest.TestCase):
                     server.server_close()
                     server_thread.join(timeout=1.0)
 
-    def test_post_accepts_bound_host_origin(self) -> None:
+    def test_post_accepts_bound_host_same_origin(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             sources_path = Path(tmpdir) / "sources.json"
             topics_path = Path(tmpdir) / "topics.json"
@@ -270,7 +270,7 @@ class ConfigEditorServerTest(unittest.TestCase):
                         method="POST",
                         headers={
                             "Content-Type": "application/json",
-                            "Origin": f"http://0.0.0.0:{port}",
+                            "Origin": f"http://127.0.0.1:{port}",
                         },
                     )
                     with urlopen(request, timeout=2.0) as response:
@@ -283,7 +283,7 @@ class ConfigEditorServerTest(unittest.TestCase):
                     server.server_close()
                     server_thread.join(timeout=1.0)
 
-    def test_post_accepts_bound_host_via_lan_origin(self) -> None:
+    def test_post_rejects_bound_host_mismatched_origin(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             sources_path = Path(tmpdir) / "sources.json"
             topics_path = Path(tmpdir) / "topics.json"
@@ -339,10 +339,9 @@ class ConfigEditorServerTest(unittest.TestCase):
                             "Origin": f"http://192.168.1.12:{port}",
                         },
                     )
-                    with urlopen(request, timeout=2.0) as response:
-                        body = response.read().decode("utf-8")
-                    data = json.loads(body)
-                    self.assertEqual(data, {"ok": True, "key": "sources", "message": "saved"})
+                    with self.assertRaises(HTTPError) as context:
+                        urlopen(request, timeout=2.0)
+                    self.assertEqual(context.exception.code, 403)
 
                 finally:
                     server.shutdown()

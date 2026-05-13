@@ -10,12 +10,11 @@ from __future__ import annotations
 
 import argparse
 import json
-import ipaddress
 import os
 import re
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from urllib.parse import parse_qs, unquote, urlparse
 
 
@@ -78,6 +77,10 @@ class ConfigEditorHandler(SimpleHTTPRequestHandler):
         if parsed.scheme not in {"http", "https"} or not parsed.hostname:
             return False
 
+        request_host = self._get_request_host()
+        if not request_host:
+            return False
+
         try:
             parsed_port = parsed.port
         except ValueError:
@@ -95,24 +98,20 @@ class ConfigEditorHandler(SimpleHTTPRequestHandler):
             return False
 
         origin_host = parsed.hostname.lower()
-        if origin_host in self._LOCAL_ORIGINS:
-            return True
+        if server_host in self._WILDCARD_HOSTS:
+            return origin_host == request_host
 
-        if server_host in self._WILDCARD_HOSTS and self._is_local_host(origin_host):
+        if origin_host in self._LOCAL_ORIGINS and request_host in self._LOCAL_ORIGINS:
             return True
 
         return origin_host == server_host
 
-    def _is_local_host(self, host: str) -> bool:
-        if not host:
-            return False
-        if host in self._LOCAL_ORIGINS | self._WILDCARD_HOSTS:
-            return True
-        try:
-            ip = ipaddress.ip_address(host)
-        except ValueError:
-            return False
-        return ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved
+    def _get_request_host(self) -> Optional[str]:
+        host_header = self.headers.get("Host")
+        if not host_header:
+            return None
+        parsed_host = urlparse(f"//{host_header}")
+        return parsed_host.hostname.lower() if parsed_host.hostname else None
 
     def _is_safe_static_path(self, path: Path, base: Path) -> bool:
         try:
