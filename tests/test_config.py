@@ -19,12 +19,14 @@ README_ZH = Path(__file__).parent.parent / "README_CN.md"
 
 def get_source_counts():
     sources = load_merged_sources(DEFAULTS_DIR)
+    topics = load_merged_topics(DEFAULTS_DIR)
     return {
         "total": len(sources),
         "rss": len([s for s in sources if s["type"] == "rss"]),
         "twitter": len([s for s in sources if s["type"] == "twitter"]),
         "github": len([s for s in sources if s["type"] == "github"]),
         "reddit": len([s for s in sources if s["type"] == "reddit"]),
+        "topics": len(topics),
     }
 
 
@@ -142,7 +144,7 @@ class TestReadmeCounts(unittest.TestCase):
             content,
         )
         self.assertIn(
-            f"A quality-scored, deduplicated tech digest built from **{counts['total']} built-in sources** plus **4 web search topics**:",
+            f"A quality-scored, deduplicated tech digest built from **{counts['total']} built-in sources** plus **{counts['topics']} web search topics**:",
             content,
         )
         self.assertIn(
@@ -166,7 +168,7 @@ class TestReadmeCounts(unittest.TestCase):
             content,
         )
         self.assertIn(
-            f"基于 **{counts['total']} 个内置数据源** + **4 个 Web 搜索主题** 的质量评分、去重科技日报：",
+            f"基于 **{counts['total']} 个内置数据源** + **{counts['topics']} 个 Web 搜索主题** 的质量评分、去重科技日报：",
             content,
         )
         self.assertIn(
