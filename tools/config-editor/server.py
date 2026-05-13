@@ -13,6 +13,7 @@ import ipaddress
 import json
 import os
 import re
+import socket
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
 from typing import Dict, Any, Optional
@@ -55,7 +56,14 @@ class ConfigEditorHandler(SimpleHTTPRequestHandler):
         self._send_json({"ok": False, "error": message}, status=status)
 
     def _read_request_json(self) -> Dict[str, Any]:
-        length = int(self.headers.get("Content-Length", "0") or 0)
+        raw_length = self.headers.get("Content-Length", "0").strip()
+        try:
+            length = int(raw_length)
+        except ValueError as exc:
+            raise ValueError("invalid content length") from exc
+        if length < 0:
+            raise ValueError("invalid content length")
+
         raw = self.rfile.read(length).decode("utf-8")
         if not raw:
             return {}
@@ -140,8 +148,19 @@ class ConfigEditorHandler(SimpleHTTPRequestHandler):
         host_header = self.headers.get("Host")
         if not host_header:
             return None
-        parsed_host = urlparse(f"//{host_header}")
+        try:
+            parsed_host = urlparse(f"//{host_header}")
+        except ValueError:
+            return None
         return parsed_host.hostname.lower() if parsed_host.hostname else None
+
+    @staticmethod
+    def _is_ipv6_host(host: str) -> bool:
+        try:
+            ip = ipaddress.ip_address(host)
+        except ValueError:
+            return False
+        return ip.version == 6
 
     def _is_safe_static_path(self, path: Path, base: Path) -> bool:
         try:
@@ -364,7 +383,7 @@ class ConfigEditorHandler(SimpleHTTPRequestHandler):
                 raise TypeError("invalid request body")
             key = payload.get("key")
             content = payload.get("content")
-        except (json.JSONDecodeError, TypeError):
+        except (json.JSONDecodeError, TypeError, UnicodeDecodeError, ValueError):
             return self._api_error(400, "invalid request body")
 
         if key not in ALLOWED_FILES:
@@ -397,6 +416,14 @@ class ConfigEditorHandler(SimpleHTTPRequestHandler):
             return self._api_error(500, str(exc))
 
 
+class ConfigEditorHTTPServer(HTTPServer):
+    pass
+
+
+class IPv6ConfigEditorHTTPServer(ConfigEditorHTTPServer):
+    address_family = socket.AF_INET6
+
+
 def create_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Config editor backend for follow-news")
     parser.add_argument("--host", default="127.0.0.1", help="Bind host")
@@ -407,7 +434,8 @@ def create_parser() -> argparse.ArgumentParser:
 def main() -> int:
     args = create_parser().parse_args()
     os.chdir(STATIC_DIR)
-    httpd = HTTPServer((args.host, args.port), ConfigEditorHandler)
+    server_class = IPv6ConfigEditorHTTPServer if ConfigEditorHandler._is_ipv6_host(args.host) else ConfigEditorHTTPServer
+    httpd = server_class((args.host, args.port), ConfigEditorHandler)
     print(f"Config editor started at http://{args.host}:{args.port}")
     print(f"Serving static files from: {STATIC_DIR}")
     print("Editable files:")

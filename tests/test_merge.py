@@ -193,6 +193,19 @@ class TestGroupByTopics(unittest.TestCase):
         self.assertIn("ai_agent", groups)
         self.assertNotIn("ai-agent", groups, "only the actual article topic should be retained for this article")
 
+    def test_topic_priority_maps_ai_agent_both_directions(self):
+        articles = [
+            {"title": "A", "topics": ["ai-agent", "frontier-tech"], "quality_score": 10},
+        ]
+        groups = group_by_topics(
+            articles,
+            allowed_topics={"ai_agent", "frontier-tech"},
+            topic_priority={"ai_agent": 0, "frontier-tech": 1},
+        )
+        self.assertIn("ai-agent", groups, "ai-agent should inherit priority from ai_agent")
+        self.assertEqual(len(groups["ai-agent"]), 1)
+        self.assertEqual(groups["ai-agent"][0]["primary_topic"], "ai-agent")
+
 
 class TestFixtureData(unittest.TestCase):
     """Validate fixture data structure."""

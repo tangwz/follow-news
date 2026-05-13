@@ -430,6 +430,8 @@ def group_by_topics(
         }
     if "ai-agent" in topic_priority:
         topic_priority.setdefault("ai_agent", topic_priority["ai-agent"])
+    if "ai_agent" in topic_priority:
+        topic_priority.setdefault("ai-agent", topic_priority["ai_agent"])
     if allowed_topics is None:
         # No topic filter configuration available: preserve article topic labels.
         allowed_topics = None

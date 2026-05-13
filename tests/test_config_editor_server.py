@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+from io import BytesIO
 import socket
 import tempfile
 import threading
@@ -217,6 +218,32 @@ class ConfigEditorServerTest(unittest.TestCase):
                     server.server_close()
                     server_thread.join(timeout=1.0)
 
+    def test_get_request_host_with_invalid_host_header(self) -> None:
+        handler = server_module.ConfigEditorHandler.__new__(server_module.ConfigEditorHandler)
+        handler.headers = {"Host": "[::1"}
+        self.assertIsNone(handler._get_request_host())
+
+    def test_read_request_json_rejects_invalid_content_length(self) -> None:
+        handler = server_module.ConfigEditorHandler.__new__(server_module.ConfigEditorHandler)
+        handler.headers = {"Content-Length": "abc"}
+        handler.rfile = BytesIO(b"{}")
+        with self.assertRaises(ValueError):
+            handler._read_request_json()
+
+    def test_read_request_json_rejects_negative_content_length(self) -> None:
+        handler = server_module.ConfigEditorHandler.__new__(server_module.ConfigEditorHandler)
+        handler.headers = {"Content-Length": "-1"}
+        handler.rfile = BytesIO(b"")
+        with self.assertRaises(ValueError):
+            handler._read_request_json()
+
+    def test_read_request_json_rejects_non_utf8_body(self) -> None:
+        handler = server_module.ConfigEditorHandler.__new__(server_module.ConfigEditorHandler)
+        handler.headers = {"Content-Length": "2"}
+        handler.rfile = BytesIO(b"\xff\x00")
+        with self.assertRaises(UnicodeDecodeError):
+            handler._read_request_json()
+
     def test_post_accepts_bound_host_same_origin(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             sources_path = Path(tmpdir) / "sources.json"
@@ -282,6 +309,220 @@ class ConfigEditorServerTest(unittest.TestCase):
                     server.shutdown()
                     server.server_close()
                     server_thread.join(timeout=1.0)
+
+    def test_post_rejects_malformed_host_header(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            sources_path = Path(tmpdir) / "sources.json"
+            topics_path = Path(tmpdir) / "topics.json"
+
+            sources_path.write_text('{"sources": []}', encoding="utf-8")
+            topics_path.write_text("[]", encoding="utf-8")
+
+            allowed_files = {
+                "sources": {
+                    "path": sources_path,
+                    "label_zh": "测试源",
+                    "label_en": "Test sources",
+                },
+                "topics": {
+                    "path": topics_path,
+                    "label_zh": "测试话题",
+                    "label_en": "Test topics",
+                },
+            }
+
+            port = _get_free_port()
+
+            with patch.dict(server_module.ALLOWED_FILES, allowed_files):
+                server = server_module.HTTPServer(("127.0.0.1", port), server_module.ConfigEditorHandler)
+                server_thread = threading.Thread(target=server.serve_forever, daemon=True)
+                server_thread.start()
+                try:
+                    time.sleep(0.05)
+
+                    request = Request(
+                        f"http://127.0.0.1:{port}/api/file",
+                        data=b'{"key":"sources","content":{"sources":[]}}',
+                        method="POST",
+                        headers={
+                            "Content-Type": "application/json",
+                            "Origin": f"http://127.0.0.1:{port}",
+                            "Host": "[::1",
+                        },
+                    )
+                    with self.assertRaises(HTTPError) as context:
+                        urlopen(request, timeout=2.0)
+                    self.assertEqual(context.exception.code, 403)
+                finally:
+                    server.shutdown()
+                    server.server_close()
+                    server_thread.join(timeout=1.0)
+
+    def test_post_rejects_non_utf8_request_body(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            sources_path = Path(tmpdir) / "sources.json"
+            topics_path = Path(tmpdir) / "topics.json"
+
+            payload_source = {"sources": []}
+            sources_path.write_text(json.dumps(payload_source, ensure_ascii=False, indent=2), encoding="utf-8")
+            topics_path.write_text("[]", encoding="utf-8")
+
+            allowed_files = {
+                "sources": {
+                    "path": sources_path,
+                    "label_zh": "测试源",
+                    "label_en": "Test sources",
+                },
+                "topics": {
+                    "path": topics_path,
+                    "label_zh": "测试话题",
+                    "label_en": "Test topics",
+                },
+            }
+
+            port = _get_free_port()
+            with patch.dict(server_module.ALLOWED_FILES, allowed_files):
+                server = server_module.HTTPServer(("127.0.0.1", port), server_module.ConfigEditorHandler)
+                server_thread = threading.Thread(target=server.serve_forever, daemon=True)
+                server_thread.start()
+                try:
+                    time.sleep(0.05)
+
+                    request = Request(
+                        f"http://127.0.0.1:{port}/api/file",
+                        data=b"\xff\xfe",
+                        method="POST",
+                        headers={
+                            "Content-Type": "application/json",
+                            "Origin": f"http://127.0.0.1:{port}",
+                            "Content-Length": "2",
+                        },
+                    )
+                    with self.assertRaises(HTTPError) as context:
+                        urlopen(request, timeout=2.0)
+                    self.assertEqual(context.exception.code, 400)
+                finally:
+                    server.shutdown()
+                    server.server_close()
+                    server_thread.join(timeout=1.0)
+
+    def test_post_rejects_invalid_content_length(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            sources_path = Path(tmpdir) / "sources.json"
+            topics_path = Path(tmpdir) / "topics.json"
+
+            sources_path.write_text('{"sources": []}', encoding="utf-8")
+            topics_path.write_text("[]", encoding="utf-8")
+
+            allowed_files = {
+                "sources": {
+                    "path": sources_path,
+                    "label_zh": "测试源",
+                    "label_en": "Test sources",
+                },
+                "topics": {
+                    "path": topics_path,
+                    "label_zh": "测试话题",
+                    "label_en": "Test topics",
+                },
+            }
+
+            port = _get_free_port()
+
+            with patch.dict(server_module.ALLOWED_FILES, allowed_files):
+                server = server_module.HTTPServer(("127.0.0.1", port), server_module.ConfigEditorHandler)
+                server_thread = threading.Thread(target=server.serve_forever, daemon=True)
+                server_thread.start()
+                try:
+                    time.sleep(0.05)
+                    request_payload = {"key": "sources", "content": {"sources": []}}
+                    request = Request(
+                        f"http://127.0.0.1:{port}/api/file",
+                        data=json.dumps(request_payload, ensure_ascii=False).encode("utf-8"),
+                        method="POST",
+                        headers={
+                            "Content-Type": "application/json",
+                            "Origin": f"http://127.0.0.1:{port}",
+                            "Content-Length": "abc",
+                        },
+                    )
+                    with self.assertRaises(HTTPError) as context:
+                        urlopen(request, timeout=2.0)
+                    self.assertEqual(context.exception.code, 400)
+                finally:
+                    server.shutdown()
+                    server.server_close()
+                    server_thread.join(timeout=1.0)
+
+    def test_post_rejects_negative_content_length(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            sources_path = Path(tmpdir) / "sources.json"
+            topics_path = Path(tmpdir) / "topics.json"
+
+            sources_path.write_text('{"sources": []}', encoding="utf-8")
+            topics_path.write_text("[]", encoding="utf-8")
+
+            allowed_files = {
+                "sources": {
+                    "path": sources_path,
+                    "label_zh": "测试源",
+                    "label_en": "Test sources",
+                },
+                "topics": {
+                    "path": topics_path,
+                    "label_zh": "测试话题",
+                    "label_en": "Test topics",
+                },
+            }
+
+            port = _get_free_port()
+
+            with patch.dict(server_module.ALLOWED_FILES, allowed_files):
+                server = server_module.HTTPServer(("127.0.0.1", port), server_module.ConfigEditorHandler)
+                server_thread = threading.Thread(target=server.serve_forever, daemon=True)
+                server_thread.start()
+                try:
+                    time.sleep(0.05)
+                    request_payload = {"key": "sources", "content": {"sources": []}}
+                    request = Request(
+                        f"http://127.0.0.1:{port}/api/file",
+                        data=json.dumps(request_payload, ensure_ascii=False).encode("utf-8"),
+                        method="POST",
+                        headers={
+                            "Content-Type": "application/json",
+                            "Origin": f"http://127.0.0.1:{port}",
+                            "Content-Length": "-1",
+                        },
+                    )
+                    with self.assertRaises(HTTPError) as context:
+                        urlopen(request, timeout=2.0)
+                    self.assertEqual(context.exception.code, 400)
+                finally:
+                    server.shutdown()
+                    server.server_close()
+                    server_thread.join(timeout=1.0)
+
+    def test_server_can_bind_ipv6_host(self) -> None:
+        if not socket.has_ipv6:
+            self.skipTest("IPv6 is not supported in this environment")
+
+        port = _get_free_port()
+        server = server_module.IPv6ConfigEditorHTTPServer(("::1", port), server_module.ConfigEditorHandler)
+        server_thread = threading.Thread(target=server.serve_forever, daemon=True)
+        server_thread.start()
+        try:
+            time.sleep(0.05)
+
+            request = Request(f"http://[::1]:{port}/api/file?key=sources", method="GET")
+            with urlopen(request, timeout=2.0) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+            self.assertEqual(payload["key"], "sources")
+            self.assertIn("ok", payload)
+            self.assertTrue(payload["ok"])
+        finally:
+            server.shutdown()
+            server.server_close()
+            server_thread.join(timeout=1.0)
 
     def test_post_rejects_bound_host_mismatched_origin(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
