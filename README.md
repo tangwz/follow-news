@@ -1,6 +1,6 @@
 # Follow News
 
-> Automated tech news digest — 168 built-in sources, 6-source pipeline, one chat message to install.
+> Automated tech news digest — 156 built-in sources, 6-source pipeline, one chat message to install.
 
 **English** | [中文](README_CN.md)
 
@@ -32,14 +32,14 @@ clawhub install follow-news
 
 ## 📊 What You Get
 
-A quality-scored, deduplicated tech digest built from **168 built-in sources** plus **4 web search topics**:
+A quality-scored, deduplicated tech digest built from **156 built-in sources** plus **4 web search topics**:
 
 | Layer | Sources | What |
 |-------|---------|------|
-| 📡 RSS | 78 feeds | OpenAI, Anthropic, Ben's Bites, HN, 36氪, CoinDesk… |
+| 📡 RSS | 65 feeds | OpenAI, Anthropic, Ben's Bites, HN, 36氪, CoinDesk… |
 | 🐦 Twitter/X | 48 KOLs | @karpathy, @VitalikButerin, @sama, @elonmusk… |
 | 🔍 Web Search | 4 topics | Tavily or Brave Search API with freshness filters, browser fallback when unavailable |
-| 🐙 GitHub | 29 repos | Releases from key projects (LangChain, vLLM, DeepSeek, Llama…) |
+| 🐙 GitHub | 23 repos | Releases from key projects (LangChain, vLLM, DeepSeek, Llama…) |
 | 🗣️ Reddit | 13 subs | r/MachineLearning, r/LocalLLaMA, r/CryptoCurrency… |
 
 ### Pipeline
@@ -62,13 +62,13 @@ A quality-scored, deduplicated tech digest built from **168 built-in sources** p
 
 ## ⚙️ Configuration
 
-- `config/defaults/sources.json` — 168 built-in sources (78 RSS, 48 Twitter, 29 GitHub, 13 Reddit)
+- `config/defaults/sources.json` — 156 built-in sources (65 RSS, 60 Twitter, 23 GitHub, 8 Reddit)
 - `config/defaults/topics.json` — 4 topics with search queries & Twitter queries
 - User overrides in `workspace/config/` take priority
 
 ## 🎨 Customize Your Sources
 
-Works out of the box with 168 built-in sources (78 RSS, 48 Twitter, 29 GitHub, 13 Reddit) — but fully customizable. Copy the defaults to your workspace config and override:
+Works out of the box with 156 built-in sources (65 RSS, 60 Twitter, 23 GitHub, 8 Reddit) — but fully customizable. Copy the defaults to your workspace config and override:
 
 ```bash
 # Copy and customize
