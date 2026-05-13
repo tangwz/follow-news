@@ -178,7 +178,14 @@ def main() -> int:
         ("RSS", "fetch-rss.py", common + verbose_flag, tmp_rss),
         ("Twitter", "fetch-twitter.py", common + verbose_flag + (["--backend", args.twitter_backend] if args.twitter_backend else []), tmp_twitter),
         ("GitHub", "fetch-github.py", common + verbose_flag, tmp_github),
-        ("GitHub Trending", "fetch-github.py", ["--trending", "--hours", str(args.hours)] + verbose_flag, tmp_trending),
+        (
+            "GitHub Trending",
+            "fetch-github.py",
+            ["--trending", "--defaults", str(args.defaults), "--hours", str(args.hours)]
+            + (["--config", str(args.config)] if args.config else [])
+            + verbose_flag,
+            tmp_trending,
+        ),
         ("Reddit", "fetch-reddit.py", common + verbose_flag, tmp_reddit),
         ("Web", "fetch-web.py",
          ["--defaults", str(args.defaults)]
@@ -226,7 +233,10 @@ def main() -> int:
 
     # Phase 2: Merge
     logger.info("🔀 Merging & scoring...")
-    merge_args = ["--verbose"] if args.verbose else []
+    merge_args = ["--defaults", str(args.defaults)]
+    if args.config:
+        merge_args += ["--config", str(args.config)]
+    merge_args += ["--verbose"] if args.verbose else []
     for flag, path in [("--rss", tmp_rss), ("--twitter", tmp_twitter),
                        ("--github", tmp_github), ("--trending", tmp_trending), ("--reddit", tmp_reddit),
                        ("--web", tmp_web)]:

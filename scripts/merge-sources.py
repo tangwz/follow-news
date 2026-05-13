@@ -64,6 +64,20 @@ def load_source_data(file_path: Optional[Path]) -> Dict[str, Any]:
         return {"sources": [], "total_articles": 0}
 
 
+def load_topics(defaults_dir: Path, config_dir: Optional[Path] = None) -> List[Dict[str, Any]]:
+    """Load topics from configuration with overlay support."""
+    try:
+        from config_loader import load_merged_topics
+    except ImportError:
+        import sys
+        sys.path.append(str(Path(__file__).parent))
+        from config_loader import load_merged_topics
+
+    topics = load_merged_topics(defaults_dir, config_dir)
+    logging.info(f"Loaded {len(topics)} topics for merge")
+    return topics
+
+
 def normalize_title(title: str) -> str:
     """Normalize title for comparison."""
     # Remove common prefixes/suffixes
@@ -385,7 +399,12 @@ def apply_previous_digest_penalty(articles: List[Dict[str, Any]],
     return articles
 
 
-def group_by_topics(articles: List[Dict[str, Any]], dedup_across_topics: bool = True) -> Dict[str, List[Dict[str, Any]]]:
+def group_by_topics(
+    articles: List[Dict[str, Any]],
+    dedup_across_topics: bool = True,
+    allowed_topics: Optional[Set[str]] = None,
+    topic_priority: Optional[Dict[str, int]] = None,
+) -> Dict[str, List[Dict[str, Any]]]:
     """Group articles by their topics.
     
     Args:
@@ -397,15 +416,27 @@ def group_by_topics(articles: List[Dict[str, Any]], dedup_across_topics: bool = 
     seen_article_ids: Set[str] = set()  # Track which articles have been placed
     
     # Topic priority order (higher priority topics get first pick)
-    # If an article matches multiple topics, it goes to the highest priority one
-    topic_priority = {
-        "llm": 0,
-        "ai_agent": 1,
-        "crypto": 2,
-        "github": 3,
-        "trending": 4,
-        "uncategorized": 5,
-    }
+    # If an article matches multiple topics, it goes to the highest priority one.
+    # `topic_priority` may be overridden by runtime topic definitions.
+    if topic_priority is None:
+        topic_priority = {
+            "llm": 0,
+            "ai-agent": 1,
+            "ai_agent": 1,
+            "crypto": 2,
+            "github": 3,
+            "trending": 4,
+            "uncategorized": 5,
+        }
+    if "ai-agent" in topic_priority:
+        topic_priority.setdefault("ai_agent", topic_priority["ai-agent"])
+    if allowed_topics is None:
+        allowed_topics = set(topic_priority.keys())
+    else:
+        if "ai-agent" in allowed_topics:
+            allowed_topics = set(allowed_topics) | {"ai_agent"}
+        else:
+            allowed_topics = set(allowed_topics)
     
     # Sort topics by priority for deterministic assignment
     def get_topic_priority(topic: str) -> int:
@@ -413,6 +444,7 @@ def group_by_topics(articles: List[Dict[str, Any]], dedup_across_topics: bool = 
     
     for article in articles:
         topics = article.get("topics", [])
+        topics = [topic for topic in topics if topic in allowed_topics]
         if not topics:
             topics = ["uncategorized"]
         
@@ -513,6 +545,19 @@ Examples:
         "--verbose", "-v",
         action="store_true",
         help="Enable verbose logging"
+    )
+
+    parser.add_argument(
+        "--defaults",
+        type=Path,
+        default=Path("config/defaults"),
+        help="Default configuration directory with topic definitions (default: config/defaults)"
+    )
+
+    parser.add_argument(
+        "--config",
+        type=Path,
+        help="User configuration directory for overlays (optional)"
     )
     
     args = parser.parse_args()
@@ -643,7 +688,27 @@ Examples:
         all_articles = deduplicate_articles(all_articles)
         
         # Group by topics (with cross-topic deduplication)
-        topic_groups = group_by_topics(all_articles, dedup_across_topics=True)
+        topic_ids: Optional[Set[str]] = None
+        topic_priority = None
+        try:
+            configured_topics = load_topics(args.defaults, args.config)
+            ordered_topic_ids = [
+                topic.get("id")
+                for topic in configured_topics
+                if isinstance(topic, dict) and topic.get("id")
+            ]
+            topic_ids = {topic_id for topic_id in ordered_topic_ids}
+            topic_priority = {topic_id: index for index, topic_id in enumerate(ordered_topic_ids)}
+            topic_priority["uncategorized"] = len(topic_ids) + 1
+        except Exception as e:
+            logger.warning(f"Failed to load configured topics from {args.defaults}: {e}")
+
+        topic_groups = group_by_topics(
+            all_articles,
+            dedup_across_topics=True,
+            allowed_topics=topic_ids,
+            topic_priority=topic_priority,
+        )
         
         # Apply per-topic domain limits (max 3 articles per domain per topic)
         for topic in topic_groups:
