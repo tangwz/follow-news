@@ -35,11 +35,11 @@
       },
       sources: {
         title: "订阅源配置",
-        searchPlaceholder: "搜索 id / 名称 / URL...",
+        searchPlaceholder: "搜索 id / 名称 / 来源字段...",
         thId: "ID",
         thType: "类型",
         thName: "名称",
-        thUrl: "链接",
+        thSourceField: "来源字段",
         thEnabled: "启用",
         thPriority: "优先",
         thTopics: "topics",
@@ -93,11 +93,11 @@
       },
       sources: {
         title: "Sources",
-        searchPlaceholder: "Search by id / name / url",
+        searchPlaceholder: "Search by id / name / source field",
         thId: "ID",
         thType: "Type",
         thName: "Name",
-        thUrl: "URL",
+        thSourceField: "Source field",
         thEnabled: "Enabled",
         thPriority: "Priority",
         thTopics: "topics",
@@ -218,16 +218,41 @@
   }
 
   function normalizeSource(raw = {}) {
+    const sourceType = raw.type || "rss";
     return {
       ...raw,
       id: raw.id || "",
-      type: raw.type || "rss",
+      type: sourceType,
       name: raw.name || "",
       url: raw.url || "",
+      handle: raw.handle || "",
+      repo: raw.repo || "",
+      subreddit: raw.subreddit || "",
       enabled: toBool(raw.enabled),
       priority: toBool(raw.priority),
       topics: Array.isArray(raw.topics) ? raw.topics.map((item) => String(item)) : [],
     };
+  }
+
+  function getSourcePrimaryFieldKey(type = "rss") {
+    const normalizedType = String(type || "rss").toLowerCase();
+    const fieldByType = {
+      rss: "url",
+      web: "url",
+      x: "handle",
+      twitter: "handle",
+      github: "repo",
+      reddit: "subreddit",
+    };
+    return fieldByType[normalizedType] || "url";
+  }
+
+  function getSourcePrimaryFieldLabel(type = "rss") {
+    const field = getSourcePrimaryFieldKey(type);
+    if (field === "handle") return state.lang === "zh" ? "handle" : "Handle";
+    if (field === "repo") return state.lang === "zh" ? "repo" : "Repo";
+    if (field === "subreddit") return state.lang === "zh" ? "subreddit" : "Subreddit";
+    return "URL";
   }
 
   function normalizeTopic(raw = {}) {
@@ -313,7 +338,9 @@
           return false;
         }
         if (!query) return true;
-        const haystack = `${row.id} ${row.type} ${row.name} ${row.url} ${row.topics?.join(",")}`.toLowerCase();
+        const sourceFieldKey = getSourcePrimaryFieldKey(row.type);
+        const sourceFieldValue = row[sourceFieldKey] || "";
+        const haystack = `${row.id} ${row.type} ${row.name} ${sourceFieldValue} ${row.topics?.join(",")}`.toLowerCase();
         return haystack.includes(query);
       });
   }
@@ -389,13 +416,15 @@
       const tdName = document.createElement("td");
       tdName.appendChild(nameInput);
 
-      const urlInput = document.createElement("input");
-      urlInput.value = row.url || "";
-      urlInput.addEventListener("input", (e) => {
-        row.url = e.target.value;
+      const sourceFieldKey = getSourcePrimaryFieldKey(row.type);
+      const sourceFieldInput = document.createElement("input");
+      sourceFieldInput.value = row[sourceFieldKey] || "";
+      sourceFieldInput.placeholder = getSourcePrimaryFieldLabel(row.type);
+      sourceFieldInput.addEventListener("input", (e) => {
+        row[sourceFieldKey] = e.target.value;
       });
       const tdUrl = document.createElement("td");
-      tdUrl.appendChild(urlInput);
+      tdUrl.appendChild(sourceFieldInput);
 
       const enabledInput = document.createElement("input");
       enabledInput.type = "checkbox";

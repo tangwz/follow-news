@@ -75,11 +75,16 @@ class ConfigEditorHandler(SimpleHTTPRequestHandler):
         parsed = urlparse(origin)
         if parsed.scheme not in {"http", "https"} or not parsed.hostname:
             return False
+
         if parsed.port is None:
+            normalized_port = {"http": 80, "https": 443}.get(parsed.scheme)
+        else:
+            normalized_port = parsed.port
+        if normalized_port is None:
             return False
 
         server_port = self.server.server_address[1]
-        if parsed.port != server_port:
+        if normalized_port != server_port:
             return False
 
         return parsed.hostname in self._LOCAL_ORIGINS
@@ -137,6 +142,37 @@ class ConfigEditorHandler(SimpleHTTPRequestHandler):
             elif source_type == "reddit":
                 if not isinstance(source.get("subreddit"), str) or not source["subreddit"].strip():
                     raise ValueError(f"Source '{source_id}' missing required field 'subreddit'")
+
+    def _validate_topics_payload(self, topics: Any) -> None:
+        if not isinstance(topics, list):
+            raise ValueError("'topics' should be a list")
+
+        for index, topic in enumerate(topics):
+            if not isinstance(topic, dict):
+                raise ValueError(f"Topic at index {index} should be an object")
+
+            topic_id = topic.get("id", f"index:{index}")
+            missing = []
+            for field in ("id", "search"):
+                if field not in topic:
+                    missing.append(field)
+            if missing:
+                raise ValueError(
+                    f"Topic '{topic_id}' missing required field(s): {', '.join(missing)}"
+                )
+
+            if not isinstance(topic["id"], str) or not topic["id"].strip():
+                raise ValueError(f"Topic '{topic_id}' has invalid 'id'")
+
+            search = topic["search"]
+            if not isinstance(search, dict):
+                raise ValueError(f"Topic '{topic_id}' has invalid 'search' value")
+
+            queries = search.get("queries")
+            if "queries" not in search:
+                raise ValueError(f"Topic '{topic_id}' missing required field 'search.queries'")
+            if not isinstance(queries, list) or not all(isinstance(query, str) for query in queries):
+                raise ValueError(f"Topic '{topic_id}' has invalid field 'search.queries'; expected string array")
 
     def do_OPTIONS(self) -> None:
         if not self.path.startswith("/api/"):
@@ -212,9 +248,11 @@ class ConfigEditorHandler(SimpleHTTPRequestHandler):
 
         try:
             payload = self._read_request_json()
+            if not isinstance(payload, dict):
+                raise TypeError("invalid request body")
             key = payload.get("key")
             content = payload.get("content")
-        except json.JSONDecodeError:
+        except (json.JSONDecodeError, TypeError):
             return self._api_error(400, "invalid request body")
 
         if key not in ALLOWED_FILES:
@@ -229,8 +267,8 @@ class ConfigEditorHandler(SimpleHTTPRequestHandler):
                 raise ValueError(f"missing top-level key '{key}'")
             if key == "sources":
                 self._validate_sources_payload(content.get("sources"))
-            if key == "topics" and not isinstance(content.get("topics"), list):
-                raise ValueError("'topics' should be a list")
+            if key == "topics":
+                self._validate_topics_payload(content.get("topics"))
 
             path.parent.mkdir(parents=True, exist_ok=True)
             with path.open("w", encoding="utf-8") as fp:

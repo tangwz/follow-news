@@ -37,10 +37,10 @@ clawhub install follow-news
 | 层级 | 数量 | 内容 |
 |------|------|------|
 | 📡 RSS | 65 个订阅源 | OpenAI、Anthropic、Ben's Bites、HN、36氪、CoinDesk… |
-| 🐦 Twitter/X | 48 个 KOL | @karpathy、@VitalikButerin、@sama、@elonmusk… |
+| 🐦 Twitter/X | 60 个 KOL | @karpathy、@VitalikButerin、@sama、@elonmusk… |
 | 🔍 Web 搜索 | 5 个主题 | Tavily 或 Brave Search API + 时效过滤 |
 | 🐙 GitHub | 23 个仓库 | 关键项目的 Release 跟踪（LangChain、vLLM、DeepSeek、Llama…） |
-| 🗣️ Reddit | 13 个子版块 | r/MachineLearning、r/LocalLLaMA、r/CryptoCurrency… |
+| 🗣️ Reddit | 8 个子版块 | r/MachineLearning、r/LocalLLaMA、r/CryptoCurrency… |
 
 ### 数据管道
 

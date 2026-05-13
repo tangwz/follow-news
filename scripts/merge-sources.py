@@ -431,7 +431,8 @@ def group_by_topics(
     if "ai-agent" in topic_priority:
         topic_priority.setdefault("ai_agent", topic_priority["ai-agent"])
     if allowed_topics is None:
-        allowed_topics = set(topic_priority.keys())
+        # No topic filter configuration available: preserve article topic labels.
+        allowed_topics = None
     else:
         if "ai-agent" in allowed_topics:
             allowed_topics = set(allowed_topics) | {"ai_agent"}
@@ -444,7 +445,7 @@ def group_by_topics(
     
     for article in articles:
         topics = article.get("topics", [])
-        topics = [topic for topic in topics if topic in allowed_topics]
+        topics = [topic for topic in topics if allowed_topics is None or topic in allowed_topics]
         if not topics:
             topics = ["uncategorized"]
         

@@ -599,7 +599,33 @@ def get_trending_queries(allowed_topics: Optional[Set[str]] = None) -> List[Dict
     """Get trending queries for enabled topics."""
     if allowed_topics is None:
         return TRENDING_QUERIES
-    return [q for q in TRENDING_QUERIES if q["topic"] in allowed_topics]
+    if not allowed_topics:
+        return []
+
+    normalized_topics = set()
+    for topic in allowed_topics:
+        if not isinstance(topic, str):
+            continue
+
+        normalized = topic.strip().lower()
+        if not normalized:
+            continue
+
+        normalized_topics.add(normalized)
+        if normalized == "ai-agent":
+            normalized_topics.add("ai_agent")
+        elif normalized == "ai_agent":
+            normalized_topics.add("ai-agent")
+
+    queries = [q for q in TRENDING_QUERIES if q["topic"] in normalized_topics]
+    if queries:
+        return queries
+
+    logging.warning(
+        "No matching trending queries for topics: %s, falling back to default trending queries",
+        ", ".join(sorted(normalized_topics)),
+    )
+    return TRENDING_QUERIES
 
 
 def fetch_trending_repos(
