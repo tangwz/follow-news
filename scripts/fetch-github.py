@@ -23,7 +23,7 @@ from urllib.request import urlopen, Request
 from urllib.error import HTTPError
 from urllib.parse import quote
 from pathlib import Path
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Set
 
 TIMEOUT = 30
 MAX_WORKERS = 10
@@ -571,15 +571,68 @@ Environment Variables:
 TRENDING_QUERIES = [
     {"topic": "llm", "q": "llm large-language-model in:topics,name,description"},
     {"topic": "ai-agent", "q": "ai-agent autonomous-agent in:topics,name,description"},
-    {"topic": "crypto", "q": "blockchain ethereum solidity defi in:topics,name,description"},
     {"topic": "frontier-tech", "q": "machine-learning deep-learning in:topics,name,description"},
 ]
 
 TRENDING_CACHE_PATH = "/tmp/follow-news-trending-cache.json"
 
 
-def fetch_trending_repos(hours: int = 48, github_token: Optional[str] = None,
-                         min_stars: int = 50, per_topic: int = 15) -> List[Dict[str, Any]]:
+def load_trending_topics(defaults_dir: Path, config_dir: Optional[Path] = None) -> Set[str]:
+    """Load trending topic IDs from topic configuration."""
+    try:
+        from config_loader import load_merged_topics
+    except ImportError:
+        import sys
+        sys.path.append(str(Path(__file__).parent))
+        from config_loader import load_merged_topics
+
+    try:
+        topics = load_merged_topics(defaults_dir, config_dir)
+        return {topic.get("id") for topic in topics if isinstance(topic, dict) and topic.get("id")}
+    except Exception as exc:
+        logging.warning(f"Failed to load trend topics from {defaults_dir}: {exc}")
+        return {q["topic"] for q in TRENDING_QUERIES}
+
+
+def get_trending_queries(allowed_topics: Optional[Set[str]] = None) -> List[Dict[str, str]]:
+    """Get trending queries for enabled topics."""
+    if allowed_topics is None:
+        return TRENDING_QUERIES
+    if not allowed_topics:
+        return []
+
+    normalized_topics = set()
+
+    for topic in allowed_topics:
+        if not isinstance(topic, str):
+            continue
+
+        normalized = topic.strip().lower()
+        if not normalized:
+            continue
+
+        normalized_topics.add(normalized)
+        if normalized == "ai-agent":
+            normalized_topics.add("ai_agent")
+        elif normalized == "ai_agent":
+            normalized_topics.add("ai-agent")
+
+    queries = [q for q in TRENDING_QUERIES if q["topic"] in normalized_topics]
+    if not queries and allowed_topics:
+        logging.warning(
+            "No matching trending queries for topics: %s",
+            ", ".join(sorted(normalized_topics)),
+        )
+    return queries
+
+
+def fetch_trending_repos(
+    hours: int = 48,
+    github_token: Optional[str] = None,
+    min_stars: int = 50,
+    per_topic: int = 15,
+    trending_queries: Optional[List[Dict[str, str]]] = None,
+) -> List[Dict[str, Any]]:
     """Fetch trending repos via GitHub Search API (created or pushed recently, sorted by stars).
     
     Strategy: search repos pushed within `hours`, with min stars, sorted by stars desc.
@@ -598,7 +651,9 @@ def fetch_trending_repos(hours: int = 48, github_token: Optional[str] = None,
     all_repos = []
     seen_repos = set()
 
-    for tq in TRENDING_QUERIES:
+    trending_queries = trending_queries if trending_queries is not None else TRENDING_QUERIES
+
+    for tq in trending_queries:
         q = f"{tq['q']} pushed:>{cutoff_str} stars:>{min_stars}"
         url = f"https://api.github.com/search/repositories?q={quote(q)}&sort=stars&order=desc&per_page={per_topic}"
 
@@ -644,7 +699,7 @@ def fetch_trending_repos(hours: int = 48, github_token: Optional[str] = None,
 
     # Sort by stars desc
     all_repos.sort(key=lambda x: -x["stars"])
-    logging.info(f"🔥 Trending: {len(all_repos)} repos found across {len(TRENDING_QUERIES)} topics")
+    logging.info(f"🔥 Trending: {len(all_repos)} repos found across {len(trending_queries)} topics")
     return all_repos
 
 
@@ -654,6 +709,17 @@ def cmd_trending():
     parser.add_argument("--hours", type=int, default=48, help="Lookback window (default: 48)")
     parser.add_argument("--min-stars", type=int, default=50, help="Minimum stars (default: 50)")
     parser.add_argument("--per-topic", type=int, default=15, help="Max repos per topic (default: 15)")
+    parser.add_argument(
+        "--defaults",
+        type=Path,
+        default=Path("config/defaults"),
+        help="Default configuration directory with skill defaults (default: config/defaults)"
+    )
+    parser.add_argument(
+        "--config",
+        type=Path,
+        help="User configuration directory for overlays (optional)"
+    )
     parser.add_argument("--output", "-o", type=Path, help="Output JSON path")
     parser.add_argument("--verbose", "-v", action="store_true")
     parser.add_argument("--force", action="store_true", help="Ignored (compat)")
@@ -661,7 +727,14 @@ def cmd_trending():
 
     setup_logging(args.verbose)
     github_token = resolve_github_token()
-    repos = fetch_trending_repos(args.hours, github_token, args.min_stars, args.per_topic)
+    allowed_topics = load_trending_topics(args.defaults, args.config)
+    repos = fetch_trending_repos(
+        args.hours,
+        github_token,
+        args.min_stars,
+        args.per_topic,
+        trending_queries=get_trending_queries(allowed_topics),
+    )
 
     output = {
         "generated": datetime.now(timezone.utc).isoformat(),

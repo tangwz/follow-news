@@ -36,15 +36,31 @@
       }
     },
     {
-      "id": "crypto",
-      "emoji": "💰",
-      "label": "Cryptocurrency",
-      "description": "Bitcoin, Ethereum, DeFi, NFTs, blockchain technology, and crypto market developments",
+      "id": "builder",
+      "emoji": "🏗️",
+      "label": "Builder",
+      "description": "Founders, operators, and practical execution leaders in AI and software engineering",
       "search": {
-        "queries": ["cryptocurrency bitcoin ethereum latest news", "加密货币最新新闻", "DeFi breakthrough", "blockchain development"],
-        "twitter_queries": ["Bitcoin", "Ethereum", "加密货币"],
-        "must_include": ["crypto", "bitcoin", "ethereum", "blockchain", "DeFi", "NFT", "web3"],
-        "exclude": ["scam", "pump dump", "get rich quick"]
+        "queries": ["AI startup founding", "product launch", "builder mindset", "创业者观点", "AI公司动态"],
+        "twitter_queries": ["AI startup", "产品发布", "创业", "founder"],
+        "must_include": ["founder", "startup", "build", "execution", "company"],
+        "exclude": ["romance", "sports", "entertainment"]
+      },
+      "display": {
+        "max_items": 6,
+        "style": "detailed"
+      }
+    },
+    {
+      "id": "kol",
+      "emoji": "🎤",
+      "label": "KOL",
+      "description": "Opinion leaders, keynote speakers, and influential commentators in technology",
+      "search": {
+        "queries": ["AI opinion leader", "tech keynote", "industry voice", "KOL", "行业观点"],
+        "twitter_queries": ["技术观点", "tech commentator", "AI opinion", "industry leader"],
+        "must_include": ["opinion", "comment", "speaker", "观点", "leader"],
+        "exclude": ["marketing", "promotional", "sponsored"]
       },
       "display": {
         "max_items": 6,

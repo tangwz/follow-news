@@ -26,7 +26,7 @@ python3 scripts/generate-pdf.py --input /tmp/td-report.md --output /tmp/td-diges
 
 - **A4 layout** with 2cm/2.5cm margins
 - **Noto Sans CJK SC** font for native Chinese rendering
-- **Emoji support** — section icons (🧠🤖💰🔬) render correctly
+- **Emoji support** — section icons (🧠🤖🔬) render correctly
 - **Page headers/footers** — "Tech Digest" header, page numbers
 - **Blue accent color scheme** — headers, links, blockquote borders
 - **Blockquote summary** — highlighted executive summary area
@@ -49,11 +49,6 @@ The PDF generator accepts the same markdown format as the Discord template:
 
 • **Anthropic Claude 4 上线** — 更强的代码能力
   <https://anthropic.com/claude-4>
-
-## 💰 Crypto / 区块链
-
-• **以太坊 Pectra 升级完成** — EIP-7702 正式上线
-  <https://ethereum.org/pectra>
 
 ---
 📊 数据源: RSS 180 | Twitter 98 | Reddit 45 | Web 20 | GitHub 15

@@ -114,14 +114,6 @@ The agent should generate an HTML email body. Use inline styles (email clients s
     </li>
   </ul>
 
-  <h2 style="font-size:17px;margin-top:24px;color:#333">💰 Cryptocurrency</h2>
-  <ul style="padding-left:20px">
-    <li style="margin-bottom:10px">
-      <strong>X to launch crypto & stock trading</strong> — Smart Cashtags feature coming soon
-      <br><a href="https://www.theblock.co/post/389952" style="color:#0969da;font-size:13px">theblock.co</a>
-    </li>
-  </ul>
-
   <hr style="border:none;border-top:1px solid #e5e5e5;margin:24px 0">
   <p style="font-size:12px;color:#888">
     📊 Data Sources: RSS 287 | Twitter 71 | Reddit 45 | Web 60 | GitHub 29 releases | After dedup: 140 articles

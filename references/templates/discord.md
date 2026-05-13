@@ -57,18 +57,11 @@ Discord-optimized format with bullet points and link suppression.
 • 🔥14 | LangChain launches production-ready agent framework
   <https://blog.langchain.dev/production-agents>
 
-## 💰 Cryptocurrency
-
-• 🔥18 | Bitcoin reaches new ATH at $67,000 amid ETF approval
-  <https://coindesk.com/markets/btc-ath-etf>
-  *[2 sources]*
 
 ## 📢 KOL Updates
 
 • **Elon Musk** (@elonmusk) — Confirmed X's crypto trading feature `👁 2.1M | 💬 12.3K | 🔁 8.5K | ❤️ 49.8K`
   <https://twitter.com/elonmusk/status/123456789>
-• **@saylor** — Valentine's BTC enthusiasm `👁 450K | 💬 1.2K | 🔁 3.1K | ❤️ 13K`
-  <https://twitter.com/saylor/status/987654321>
 
 ---
 📊 Data Sources: RSS 285 | Twitter 67 | Reddit 45 | Web 60 | GitHub 29 releases + 33 trending | After dedup: 95 articles

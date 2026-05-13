@@ -36,12 +36,14 @@ def read_skill_metadata():
 
 def get_source_counts():
     sources = load_merged_sources(DEFAULTS_DIR)
+    topics = load_merged_topics(DEFAULTS_DIR)
     return {
         "total": len(sources),
         "rss": len([s for s in sources if s["type"] == "rss"]),
         "twitter": len([s for s in sources if s["type"] == "twitter"]),
         "github": len([s for s in sources if s["type"] == "github"]),
         "reddit": len([s for s in sources if s["type"] == "reddit"]),
+        "topics": len(topics),
     }
 
 
@@ -122,7 +124,7 @@ class TestLoadTopics(unittest.TestCase):
         topics = load_merged_topics(DEFAULTS_DIR)
         ids = [t["id"] for t in topics]
         self.assertIn("llm", ids)
-        self.assertIn("crypto", ids)
+        self.assertIn("frontier-tech", ids)
 
 
 class TestSourceCounts(unittest.TestCase):
@@ -135,19 +137,19 @@ class TestSourceCounts(unittest.TestCase):
 
     def test_twitter_count(self):
         counts = get_source_counts()
-        self.assertEqual(counts["twitter"], 48)
+        self.assertEqual(counts["twitter"], 60)
 
     def test_rss_count(self):
         counts = get_source_counts()
-        self.assertEqual(counts["rss"], 78)  # 62 original + 16 YouTube RSS
+        self.assertEqual(counts["rss"], 65)
 
     def test_github_count(self):
         counts = get_source_counts()
-        self.assertEqual(counts["github"], 29)
+        self.assertEqual(counts["github"], 23)
 
     def test_reddit_count(self):
         counts = get_source_counts()
-        self.assertEqual(counts["reddit"], 13)
+        self.assertEqual(counts["reddit"], 8)
 
 
 class TestReadmeCounts(unittest.TestCase):
@@ -159,7 +161,7 @@ class TestReadmeCounts(unittest.TestCase):
             content,
         )
         self.assertIn(
-            f"A quality-scored, deduplicated tech digest built from **{counts['total']} built-in sources** plus **4 web search topics**:",
+            f"A quality-scored, deduplicated tech digest built from **{counts['total']} built-in sources** plus **{counts['topics']} web search topics**:",
             content,
         )
         self.assertIn(
@@ -183,7 +185,7 @@ class TestReadmeCounts(unittest.TestCase):
             content,
         )
         self.assertIn(
-            f"基于 **{counts['total']} 个内置数据源** + **4 个 Web 搜索主题** 的质量评分、去重科技日报：",
+            f"基于 **{counts['total']} 个内置数据源** + **{counts['topics']} 个 Web 搜索主题** 的质量评分、去重科技日报：",
             content,
         )
         self.assertIn(
