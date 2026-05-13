@@ -87,6 +87,9 @@ class ConfigEditorHandler(SimpleHTTPRequestHandler):
         if normalized_port != server_port:
             return False
 
+        if server_host in {"0.0.0.0", "::", "::0"}:
+            return True
+
         if parsed.hostname in self._LOCAL_ORIGINS:
             return True
 
