@@ -8,7 +8,7 @@
 ## 快速启动
 
 ```bash
-cd /Users/tangwz/workspace/git/tech-news
+cd "$(git -C tools/config-editor rev-parse --show-toplevel)"
 python3 tools/config-editor/server.py
 ```
 
