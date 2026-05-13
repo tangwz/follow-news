@@ -83,11 +83,14 @@ class ConfigEditorHandler(SimpleHTTPRequestHandler):
         if normalized_port is None:
             return False
 
-        server_port = self.server.server_address[1]
+        server_host, server_port = self.server.server_address
         if normalized_port != server_port:
             return False
 
-        return parsed.hostname in self._LOCAL_ORIGINS
+        if parsed.hostname in self._LOCAL_ORIGINS:
+            return True
+
+        return parsed.hostname == server_host
 
     def _normalize_source_type(self, source_type: Any) -> str:
         if source_type == "x":
