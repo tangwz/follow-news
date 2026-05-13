@@ -37,7 +37,7 @@ ALLOWED_FILES = {
 class ConfigEditorHandler(SimpleHTTPRequestHandler):
     _json_prefix = re.compile(r"^/api/")
     _LOCAL_ORIGINS = {"127.0.0.1", "localhost", "::1"}
-    _ALLOWED_SOURCE_TYPES = {"rss", "twitter", "x", "web", "github", "reddit"}
+    _ALLOWED_SOURCE_TYPES = {"rss", "twitter", "web", "github", "reddit"}
 
     def _send_json(self, payload: Dict[str, Any], status: int = 200) -> None:
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
@@ -89,6 +89,26 @@ class ConfigEditorHandler(SimpleHTTPRequestHandler):
 
         return parsed.hostname in self._LOCAL_ORIGINS
 
+    def _normalize_source_type(self, source_type: Any) -> str:
+        if source_type == "x":
+            return "twitter"
+        return source_type
+
+    def _normalize_sources_payload(self, sources: Any) -> int:
+        if not isinstance(sources, list):
+            return 0
+
+        normalized_count = 0
+        for source in sources:
+            if not isinstance(source, dict):
+                continue
+            original = source.get("type")
+            normalized = self._normalize_source_type(original)
+            if normalized != original:
+                source["type"] = normalized
+                normalized_count += 1
+        return normalized_count
+
     def _send_cors_headers(self) -> None:
         origin = self.headers.get("Origin")
         if origin and self._is_allowed_write_origin():
@@ -133,7 +153,7 @@ class ConfigEditorHandler(SimpleHTTPRequestHandler):
             if source_type == "rss":
                 if not isinstance(source.get("url"), str) or not source["url"].strip():
                     raise ValueError(f"Source '{source_id}' missing required field 'url'")
-            elif source_type in ("twitter", "x"):
+            elif source_type == "twitter":
                 if not isinstance(source.get("handle"), str) or not source["handle"].strip():
                     raise ValueError(f"Source '{source_id}' missing required field 'handle'")
             elif source_type == "github":
@@ -277,6 +297,7 @@ class ConfigEditorHandler(SimpleHTTPRequestHandler):
             if key not in content:
                 raise ValueError(f"missing top-level key '{key}'")
             if key == "sources":
+                self._normalize_sources_payload(content.get("sources"))
                 self._validate_sources_payload(content.get("sources"))
             if key == "topics":
                 self._validate_topics_payload(content.get("topics"))
