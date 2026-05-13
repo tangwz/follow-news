@@ -105,7 +105,7 @@ class TestLoadTopics(unittest.TestCase):
         topics = load_merged_topics(DEFAULTS_DIR)
         ids = [t["id"] for t in topics]
         self.assertIn("llm", ids)
-        self.assertIn("crypto", ids)
+        self.assertIn("frontier-tech", ids)
 
 
 class TestSourceCounts(unittest.TestCase):
@@ -118,19 +118,19 @@ class TestSourceCounts(unittest.TestCase):
 
     def test_twitter_count(self):
         counts = get_source_counts()
-        self.assertEqual(counts["twitter"], 48)
+        self.assertEqual(counts["twitter"], 60)
 
     def test_rss_count(self):
         counts = get_source_counts()
-        self.assertEqual(counts["rss"], 78)  # 62 original + 16 YouTube RSS
+        self.assertEqual(counts["rss"], 65)
 
     def test_github_count(self):
         counts = get_source_counts()
-        self.assertEqual(counts["github"], 29)
+        self.assertEqual(counts["github"], 23)
 
     def test_reddit_count(self):
         counts = get_source_counts()
-        self.assertEqual(counts["reddit"], 13)
+        self.assertEqual(counts["reddit"], 8)
 
 
 class TestReadmeCounts(unittest.TestCase):
