@@ -64,7 +64,10 @@ class ConfigEditorHandler(SimpleHTTPRequestHandler):
         if length < 0:
             raise ValueError("invalid content length")
 
-        raw = self.rfile.read(length).decode("utf-8")
+        try:
+            raw = self.rfile.read(length).decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise ValueError("invalid request body encoding") from exc
         if not raw:
             return {}
         return json.loads(raw)
@@ -102,7 +105,10 @@ class ConfigEditorHandler(SimpleHTTPRequestHandler):
         if normalized_port is None:
             return False
 
-        server_host, server_port = self.server.server_address
+        server_address = self.server.server_address
+        if not isinstance(server_address, tuple) or len(server_address) < 2:
+            return False
+        server_host, server_port = server_address[:2]
         if normalized_port != server_port:
             return False
 
@@ -128,14 +134,29 @@ class ConfigEditorHandler(SimpleHTTPRequestHandler):
 
         if host_addr.is_loopback:
             return self._is_client_loopback()
+        return self._is_local_interface_host(host)
 
-        client_host = self.client_address[0]
+    def _is_local_interface_host(self, host: str) -> bool:
         try:
-            client_addr = ipaddress.ip_address(client_host)
+            host_addr = ipaddress.ip_address(host)
         except ValueError:
             return False
 
-        return client_addr == host_addr
+        try:
+            local_info = socket.getaddrinfo(socket.gethostname(), None, socket.AF_UNSPEC, socket.SOCK_STREAM)
+        except OSError:
+            return False
+
+        for _, _, _, _, sockaddr in local_info:
+            if not sockaddr:
+                continue
+            try:
+                if ipaddress.ip_address(sockaddr[0]) == host_addr:
+                    return True
+            except (ValueError, IndexError):
+                continue
+
+        return False
 
     def _is_client_loopback(self) -> bool:
         client_host = self.client_address[0]

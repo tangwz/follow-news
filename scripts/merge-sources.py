@@ -428,19 +428,24 @@ def group_by_topics(
             "trending": 4,
             "uncategorized": 5,
         }
+
     if "ai-agent" in topic_priority:
         topic_priority.setdefault("ai_agent", topic_priority["ai-agent"])
     if "ai_agent" in topic_priority:
         topic_priority.setdefault("ai-agent", topic_priority["ai_agent"])
+
+    def _add_ai_agent_aliases_to_topics(topics: Set[str]) -> None:
+        if "ai-agent" in topics:
+            topics.add("ai_agent")
+        if "ai_agent" in topics:
+            topics.add("ai-agent")
+
     if allowed_topics is None:
         # No topic filter configuration available: preserve article topic labels.
         allowed_topics = None
     else:
         normalized_allowed = set(allowed_topics)
-        if "ai-agent" in normalized_allowed:
-            normalized_allowed.add("ai_agent")
-        if "ai_agent" in normalized_allowed:
-            normalized_allowed.add("ai-agent")
+        _add_ai_agent_aliases_to_topics(normalized_allowed)
         allowed_topics = normalized_allowed
     
     # Sort topics by priority for deterministic assignment

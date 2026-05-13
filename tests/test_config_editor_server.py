@@ -241,7 +241,7 @@ class ConfigEditorServerTest(unittest.TestCase):
         handler = server_module.ConfigEditorHandler.__new__(server_module.ConfigEditorHandler)
         handler.headers = {"Content-Length": "2"}
         handler.rfile = BytesIO(b"\xff\x00")
-        with self.assertRaises(UnicodeDecodeError):
+        with self.assertRaises(ValueError):
             handler._read_request_json()
 
     def test_post_accepts_bound_host_same_origin(self) -> None:
@@ -524,6 +524,61 @@ class ConfigEditorServerTest(unittest.TestCase):
             server.server_close()
             server_thread.join(timeout=1.0)
 
+    def test_post_accepts_ipv6_origin_when_ipv6_bound(self) -> None:
+        if not socket.has_ipv6:
+            self.skipTest("IPv6 is not supported in this environment")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            sources_path = Path(tmpdir) / "sources.json"
+            topics_path = Path(tmpdir) / "topics.json"
+
+            payload_source = {"sources": []}
+            sources_path.write_text(json.dumps(payload_source, ensure_ascii=False, indent=2), encoding="utf-8")
+            topics_path.write_text("[]", encoding="utf-8")
+
+            allowed_files = {
+                "sources": {
+                    "path": sources_path,
+                    "label_zh": "测试源",
+                    "label_en": "Test sources",
+                },
+                "topics": {
+                    "path": topics_path,
+                    "label_zh": "测试话题",
+                    "label_en": "Test topics",
+                },
+            }
+
+            port = _get_free_port()
+            with patch.dict(server_module.ALLOWED_FILES, allowed_files):
+                server = server_module.IPv6ConfigEditorHTTPServer(("::1", port), server_module.ConfigEditorHandler)
+                server_thread = threading.Thread(target=server.serve_forever, daemon=True)
+                server_thread.start()
+                try:
+                    time.sleep(0.05)
+
+                    request_payload = {
+                        "key": "sources",
+                        "content": payload_source,
+                    }
+                    request = Request(
+                        f"http://[::1]:{port}/api/file",
+                        data=json.dumps(request_payload, ensure_ascii=False).encode("utf-8"),
+                        method="POST",
+                        headers={
+                            "Content-Type": "application/json",
+                            "Origin": f"http://[::1]:{port}",
+                        },
+                    )
+                    with urlopen(request, timeout=2.0) as response:
+                        payload = json.loads(response.read().decode("utf-8"))
+                    self.assertEqual(payload["key"], "sources")
+                    self.assertEqual(payload["message"], "saved")
+                finally:
+                    server.shutdown()
+                    server.server_close()
+                    server_thread.join(timeout=1.0)
+
     def test_post_rejects_bound_host_mismatched_origin(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             sources_path = Path(tmpdir) / "sources.json"
@@ -668,7 +723,7 @@ class ConfigEditorServerTest(unittest.TestCase):
         self.assertFalse(handler._is_wildcard_request_local("0.0.0.0"))
 
         handler.client_address = ("192.168.1.99", 54321)
-        self.assertTrue(handler._is_wildcard_request_local("192.168.1.99"))
+        self.assertFalse(handler._is_wildcard_request_local("192.168.1.99"))
         self.assertFalse(handler._is_wildcard_request_local("192.168.1.100"))
 
     def test_post_rejects_non_exact_file_route(self) -> None:
