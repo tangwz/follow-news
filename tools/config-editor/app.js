@@ -336,6 +336,10 @@
   function renderSourcesTable() {
     state.sources.filtered = state.sources.filtered || [];
     el.sourceTableBody.innerHTML = "";
+    const total = state.sources.filtered.length;
+    const pageTotal = Math.max(1, Math.ceil(total / PAGE_SIZE));
+    state.sources.page = Math.min(Math.max(state.sources.page, 1), pageTotal);
+
     const start = (state.sources.page - 1) * PAGE_SIZE;
     const end = start + PAGE_SIZE;
     const visible = state.sources.filtered.slice(start, end);
@@ -347,6 +351,7 @@
       td.textContent = t("searchHint");
       tr.appendChild(td);
       el.sourceTableBody.appendChild(tr);
+      renderSourcesSummary();
       return;
     }
 
