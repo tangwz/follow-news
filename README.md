@@ -32,13 +32,13 @@ clawhub install follow-news
 
 ## 📊 What You Get
 
-A quality-scored, deduplicated tech digest built from **156 built-in sources** plus **3 web search topics**:
+A quality-scored, deduplicated tech digest built from **156 built-in sources** plus **5 web search topics**:
 
 | Layer | Sources | What |
 |-------|---------|------|
 | 📡 RSS | 65 feeds | OpenAI, Anthropic, Ben's Bites, HN, 36氪, CoinDesk… |
 | 🐦 Twitter/X | 48 KOLs | @karpathy, @VitalikButerin, @sama, @elonmusk… |
-| 🔍 Web Search | 3 topics | Tavily or Brave Search API with freshness filters, browser fallback when unavailable |
+| 🔍 Web Search | 5 topics | Tavily or Brave Search API with freshness filters, browser fallback when unavailable |
 | 🐙 GitHub | 23 repos | Releases from key projects (LangChain, vLLM, DeepSeek, Llama…) |
 | 🗣️ Reddit | 13 subs | r/MachineLearning, r/LocalLLaMA, r/CryptoCurrency… |
 
@@ -63,7 +63,7 @@ A quality-scored, deduplicated tech digest built from **156 built-in sources** p
 ## ⚙️ Configuration
 
 - `config/defaults/sources.json` — 156 built-in sources (65 RSS, 60 Twitter, 23 GitHub, 8 Reddit)
-- `config/defaults/topics.json` — 3 topics with search queries & Twitter queries
+- `config/defaults/topics.json` — 5 topics with search queries & Twitter queries
 - User overrides in `workspace/config/` take priority
 
 ## 🎨 Customize Your Sources

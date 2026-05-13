@@ -828,7 +828,7 @@
       "enabled": true,
       "priority": false,
       "topics": [
-        "frontier-tech"
+        "builder"
       ]
     },
     {
@@ -839,7 +839,7 @@
       "enabled": true,
       "priority": false,
       "topics": [
-        "frontier-tech"
+        "builder"
       ]
     },
     {
@@ -850,7 +850,7 @@
       "enabled": true,
       "priority": false,
       "topics": [
-        "frontier-tech"
+        "builder"
       ]
     },
     {
@@ -861,8 +861,7 @@
       "enabled": true,
       "priority": false,
       "topics": [
-        "llm",
-        "ai-agent"
+        "builder"
       ]
     },
     {
@@ -873,8 +872,7 @@
       "enabled": true,
       "priority": false,
       "topics": [
-        "llm",
-        "ai-agent"
+        "builder"
       ]
     },
     {
@@ -885,7 +883,7 @@
       "enabled": true,
       "priority": false,
       "topics": [
-        "ai-agent"
+        "builder"
       ]
     },
     {
@@ -896,7 +894,7 @@
       "enabled": true,
       "priority": false,
       "topics": [
-        "ai-agent"
+        "builder"
       ]
     },
     {
@@ -907,7 +905,7 @@
       "enabled": true,
       "priority": false,
       "topics": [
-        "ai-agent"
+        "builder"
       ]
     },
     {
@@ -918,8 +916,7 @@
       "enabled": true,
       "priority": false,
       "topics": [
-        "llm",
-        "ai-agent"
+        "builder"
       ]
     },
     {
@@ -930,8 +927,7 @@
       "enabled": true,
       "priority": false,
       "topics": [
-        "llm",
-        "ai-agent"
+        "builder"
       ]
     },
     {
@@ -1133,7 +1129,7 @@
       "enabled": true,
       "priority": false,
       "topics": [
-        "frontier-tech"
+        "builder"
       ]
     },
     {
@@ -1144,8 +1140,7 @@
       "enabled": true,
       "priority": false,
       "topics": [
-        "llm",
-        "ai-agent"
+        "builder"
       ]
     },
     {
