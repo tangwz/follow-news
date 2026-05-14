@@ -14,7 +14,7 @@ import time
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 from urllib.error import URLError
 from urllib.parse import urljoin, urlparse
 from urllib.request import Request, urlopen
@@ -28,9 +28,11 @@ except ImportError:
 
 TIMEOUT = 30
 MAX_EPISODES_PER_SOURCE = 20
+YOUTUBE_PLAYLIST_ITEM_SPEC = f"1:{MAX_EPISODES_PER_SOURCE},-{MAX_EPISODES_PER_SOURCE}:"
 YOUTUBE_METADATA_WORKERS = 4
 PODCAST_CACHE_PATH = "/tmp/follow-news-podcast-cache.json"
 METADATA_CACHE_TTL_SECONDS = 3600
+METADATA_CACHE_VERSION = 2
 TRANSCRIPT_SUCCESS_TTL_SECONDS = 30 * 86400
 TRANSCRIPT_FAILURE_TTL_SECONDS = 6 * 3600
 
@@ -207,6 +209,7 @@ def normalize_youtube_metadata(
         raw_entries = [payload]
 
     episodes: List[Dict[str, Any]] = []
+    seen_video_ids: Set[str] = set()
     for entry in raw_entries:
         if not isinstance(entry, dict):
             continue
@@ -221,6 +224,9 @@ def normalize_youtube_metadata(
             link = f"https://www.youtube.com/watch?v={video_id}"
         if not title or not link or not video_id or not published or published < cutoff:
             continue
+        if video_id in seen_video_ids:
+            continue
+        seen_video_ids.add(video_id)
 
         episode = build_episode(
             source,
@@ -235,6 +241,7 @@ def normalize_youtube_metadata(
             episode["duration_seconds"] = int(duration)
         episodes.append(episode)
 
+    episodes.sort(key=lambda episode: episode["date"], reverse=True)
     return episodes[:MAX_EPISODES_PER_SOURCE]
 
 
@@ -264,8 +271,21 @@ def resolve_ytdlp_bin() -> Optional[str]:
     return which("yt-dlp")
 
 
-def transcript_cache_key(episode: Dict[str, Any]) -> str:
-    return str(episode.get("guid") or episode.get("link") or episode.get("title") or "")
+def source_identity(source: Dict[str, Any]) -> str:
+    return str(
+        source.get("id")
+        or source.get("url")
+        or source.get("name")
+        or ""
+    )
+
+
+def transcript_cache_key(episode: Dict[str, Any], source: Optional[Dict[str, Any]] = None) -> str:
+    episode_key = str(episode.get("guid") or episode.get("link") or episode.get("title") or "")
+    source_key = source_identity(source or {})
+    if source_key and episode_key:
+        return f"{source_key}:{episode_key}"
+    return episode_key
 
 
 def transcript_languages(source: Dict[str, Any]) -> List[str]:
@@ -312,6 +332,7 @@ def run_ytdlp_transcript(
                 "vtt",
                 "--output",
                 str(language_dir / "%(id)s.%(ext)s"),
+                "--no-playlist",
                 episode["link"],
             ]
             try:
@@ -399,7 +420,7 @@ def cache_entry_valid(entry: Dict[str, Any], now: float) -> bool:
 
 def metadata_cache_key(source: Dict[str, Any]) -> str:
     platform = source.get("platform") or infer_platform(source.get("url", ""))
-    return f"{platform}:{source.get('url', '')}:{MAX_EPISODES_PER_SOURCE}"
+    return f"{platform}:{source.get('url', '')}:{MAX_EPISODES_PER_SOURCE}:v{METADATA_CACHE_VERSION}"
 
 
 def metadata_cache_entry_valid(entry: Dict[str, Any], now: float) -> bool:
@@ -421,7 +442,7 @@ def enrich_episode_transcript(
         episode["transcript_status"] = "disabled"
         return episode
 
-    key = transcript_cache_key(episode)
+    key = transcript_cache_key(episode, source)
     now = time.time()
     if key and not no_cache:
         cached = cache.get("transcripts", {}).get(key)
@@ -555,8 +576,8 @@ def run_ytdlp_metadata(
         ytdlp_bin,
         "--dump-single-json",
         "--flat-playlist",
-        "--playlist-end",
-        str(MAX_EPISODES_PER_SOURCE),
+        "--playlist-items",
+        YOUTUBE_PLAYLIST_ITEM_SPEC,
         source["url"],
     ]
     try:
@@ -745,6 +766,7 @@ def run_fetch(
     output: Path,
     cache: Dict[str, Any],
     no_cache: bool = False,
+    request_params: Optional[Dict[str, Any]] = None,
 ) -> int:
     cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
     source_results = [
@@ -758,6 +780,8 @@ def run_fetch(
         "total_articles": sum(int(result.get("count", 0)) for result in source_results),
         "sources": source_results,
     }
+    if request_params is not None:
+        payload["input_params"] = request_params
 
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(
@@ -767,7 +791,25 @@ def run_fetch(
     return 0
 
 
-def output_cache_is_fresh(output: Path, max_age_seconds: int = 3600) -> bool:
+def output_request_params(
+    defaults_dir: Path,
+    config_dir: Optional[Path],
+    hours: int,
+    no_cache: bool = False,
+) -> Dict[str, Any]:
+    return {
+        "defaults": str(defaults_dir.resolve()),
+        "config": str(config_dir.resolve()) if config_dir else None,
+        "hours": hours,
+        "no_cache": no_cache,
+    }
+
+
+def output_cache_is_fresh(
+    output: Path,
+    expected_params: Optional[Dict[str, Any]] = None,
+    max_age_seconds: int = 3600,
+) -> bool:
     if not output.exists():
         return False
     try:
@@ -780,6 +822,8 @@ def output_cache_is_fresh(output: Path, max_age_seconds: int = 3600) -> bool:
     if payload.get("source_type") != "podcast":
         return False
     if not isinstance(payload.get("sources"), list):
+        return False
+    if expected_params is not None and payload.get("input_params") != expected_params:
         return False
     return age < max_age_seconds
 
@@ -804,7 +848,8 @@ def main() -> int:
     setup_logging(args.verbose)
 
     output = args.output or create_default_output_path()
-    if not args.force and output_cache_is_fresh(output):
+    request_params = output_request_params(args.defaults, args.config, args.hours, args.no_cache)
+    if not args.force and output_cache_is_fresh(output, request_params):
         logging.info("Using fresh podcast output: %s", output)
         return 0
 
@@ -816,6 +861,7 @@ def main() -> int:
         output,
         cache,
         no_cache=args.no_cache,
+        request_params=request_params,
     )
     if not args.no_cache:
         save_podcast_cache(cache)

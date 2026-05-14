@@ -193,6 +193,54 @@ class TestYoutubeMetadataNormalization(unittest.TestCase):
         self.assertEqual(len(episodes), 1)
         self.assertEqual(episodes[0]["link"], "https://www.youtube.com/watch?v=abc123")
 
+    def test_normalizes_youtube_entries_newest_first_before_limit(self):
+        payload = {
+            "entries": [
+                {
+                    "id": "older",
+                    "title": "Older Episode",
+                    "webpage_url": "https://www.youtube.com/watch?v=older",
+                    "upload_date": "20260502",
+                },
+                {
+                    "id": "newer",
+                    "title": "Newer Episode",
+                    "webpage_url": "https://www.youtube.com/watch?v=newer",
+                    "upload_date": "20260504",
+                },
+            ]
+        }
+
+        episodes = fetch_podcast.normalize_youtube_metadata(payload, self.source, self.cutoff)
+
+        self.assertEqual(
+            [episode["guid"] for episode in episodes],
+            ["youtube:newer", "youtube:older"],
+        )
+
+    def test_normalizes_youtube_entries_deduplicates_playlist_edges(self):
+        payload = {
+            "entries": [
+                {
+                    "id": "same",
+                    "title": "Same Episode",
+                    "webpage_url": "https://www.youtube.com/watch?v=same",
+                    "upload_date": "20260504",
+                },
+                {
+                    "id": "same",
+                    "title": "Same Episode Duplicate",
+                    "webpage_url": "https://www.youtube.com/watch?v=same",
+                    "upload_date": "20260504",
+                },
+            ]
+        }
+
+        episodes = fetch_podcast.normalize_youtube_metadata(payload, self.source, self.cutoff)
+
+        self.assertEqual([episode["guid"] for episode in episodes], ["youtube:same"])
+
+
     @patch("fetch_podcast.run_ytdlp_video_metadata")
     def test_hydrates_flat_youtube_entry_dates_before_normalization(self, run_video_metadata):
         run_video_metadata.return_value = {
@@ -293,6 +341,7 @@ class TestTranscriptBackend(unittest.TestCase):
         self.assertEqual(result["status"], "ok")
         self.assertIn("zh transcript.", result["transcript"])
         self.assertEqual(run.call_count, 1)
+        self.assertIn("--no-playlist", run.call_args.args[0])
 
     @patch("subprocess.run")
     def test_ytdlp_transcript_falls_back_to_next_language(self, run):
@@ -324,9 +373,49 @@ class TestTranscriptBackend(unittest.TestCase):
         self.assertIn("English transcript.", result["transcript"])
 
     def test_cache_key_uses_guid(self):
-        key = fetch_podcast.transcript_cache_key(self.episode)
+        key = fetch_podcast.transcript_cache_key(self.episode, self.source)
 
-        self.assertEqual(key, "youtube:abc123")
+        self.assertEqual(key, "training-data-podcast:youtube:abc123")
+
+    def test_cache_key_namespaces_same_guid_by_source(self):
+        other_source = {
+            "id": "other-podcast",
+            "name": "Other Podcast",
+            "url": "https://example.com/feed.xml",
+        }
+
+        key = fetch_podcast.transcript_cache_key(self.episode, self.source)
+        other_key = fetch_podcast.transcript_cache_key(self.episode, other_source)
+
+        self.assertNotEqual(key, other_key)
+        self.assertEqual(other_key, "other-podcast:youtube:abc123")
+
+    @patch("fetch_podcast.resolve_ytdlp_bin", return_value=None)
+    def test_transcript_cache_does_not_cross_sources_with_same_guid(self, _resolve):
+        other_source = {
+            **self.source,
+            "id": "other-podcast",
+            "name": "Other Podcast",
+        }
+        cache = {
+            "transcripts": {
+                fetch_podcast.transcript_cache_key(self.episode, self.source): {
+                    "status": "ok",
+                    "transcript": "Wrong source transcript.",
+                    "error": "",
+                    "ts": time.time(),
+                }
+            }
+        }
+
+        result = fetch_podcast.enrich_episode_transcript(
+            self.episode.copy(),
+            other_source,
+            cache,
+        )
+
+        self.assertEqual(result["transcript_status"], "backend_unavailable")
+        self.assertNotIn("transcript", result)
 
     @patch("subprocess.run", side_effect=OSError("missing binary"))
     def test_ytdlp_os_error_returns_error_status(self, _run):
@@ -568,7 +657,11 @@ class TestPodcastCliOutput(unittest.TestCase):
 
         cmd = run.call_args.args[0]
         self.assertIn("--flat-playlist", cmd)
-        self.assertIn("--playlist-end", cmd)
+        self.assertIn("--playlist-items", cmd)
+        self.assertEqual(
+            cmd[cmd.index("--playlist-items") + 1],
+            "1:20,-20:",
+        )
 
     @patch(
         "subprocess.run",
@@ -600,6 +693,58 @@ class TestPodcastCliOutput(unittest.TestCase):
     def test_output_cache_is_fresh_accepts_valid_podcast_output(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             output = Path(tmpdir) / "podcast.json"
+            params = {
+                "defaults": str(Path(tmpdir) / "defaults"),
+                "config": None,
+                "hours": 336,
+                "no_cache": False,
+            }
+            output.write_text(
+                json.dumps(
+                    {
+                        "source_type": "podcast",
+                        "sources": [],
+                        "input_params": params,
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            self.assertTrue(fetch_podcast.output_cache_is_fresh(output, params))
+
+    def test_output_cache_is_fresh_rejects_different_runtime_params(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output = Path(tmpdir) / "podcast.json"
+            params = {
+                "defaults": str(Path(tmpdir) / "defaults"),
+                "config": None,
+                "hours": 1,
+                "no_cache": False,
+            }
+            output.write_text(
+                json.dumps(
+                    {
+                        "source_type": "podcast",
+                        "sources": [],
+                        "input_params": params,
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            expected = {**params, "hours": 336}
+
+            self.assertFalse(fetch_podcast.output_cache_is_fresh(output, expected))
+
+    def test_output_cache_is_fresh_rejects_missing_runtime_params_when_expected(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output = Path(tmpdir) / "podcast.json"
+            expected = {
+                "defaults": str(Path(tmpdir) / "defaults"),
+                "config": None,
+                "hours": 336,
+                "no_cache": False,
+            }
             output.write_text(
                 json.dumps(
                     {
@@ -610,7 +755,7 @@ class TestPodcastCliOutput(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            self.assertTrue(fetch_podcast.output_cache_is_fresh(output))
+            self.assertFalse(fetch_podcast.output_cache_is_fresh(output, expected))
 
     @patch("fetch_podcast.save_podcast_cache")
     @patch("fetch_podcast.run_fetch", return_value=0)
