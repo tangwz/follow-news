@@ -4,6 +4,7 @@ Fetch podcast and YouTube episode metadata from unified sources configuration.
 """
 
 import argparse
+import hashlib
 import json
 import logging
 import os
@@ -130,6 +131,10 @@ def build_episode(
     return episode
 
 
+def newest_episodes(episodes: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    return sorted(episodes, key=lambda episode: episode["date"], reverse=True)[:MAX_EPISODES_PER_SOURCE]
+
+
 def parse_rss_episodes(
     content: str,
     source: Dict[str, Any],
@@ -139,7 +144,7 @@ def parse_rss_episodes(
     episodes: List[Dict[str, Any]] = []
     if HAS_FEEDPARSER:
         feed = feedparser.parse(content)
-        for entry in feed.entries[:MAX_EPISODES_PER_SOURCE]:
+        for entry in feed.entries:
             title = str(entry.get("title", "")).strip()
             link = resolve_link(str(entry.get("link", "")).strip(), feed_url)
             guid = str(entry.get("id") or entry.get("guid") or link)
@@ -148,7 +153,7 @@ def parse_rss_episodes(
             if title and link and published and published >= cutoff:
                 episodes.append(build_episode(source, title, link, published, guid, "rss"))
         if episodes:
-            return episodes
+            return newest_episodes(episodes)
 
     for item in re.finditer(r"<item[^>]*>(.*?)</item>", content, re.DOTALL | re.IGNORECASE):
         block = item.group(1)
@@ -158,7 +163,7 @@ def parse_rss_episodes(
         published = parse_podcast_date(get_tag(block, "pubDate") or get_tag(block, "dc:date"))
         if title and link and published and published >= cutoff:
             episodes.append(build_episode(source, title, link, published, guid, "rss"))
-    return episodes[:MAX_EPISODES_PER_SOURCE]
+    return newest_episodes(episodes)
 
 
 def youtube_video_id(url: str) -> str:
@@ -241,8 +246,7 @@ def normalize_youtube_metadata(
             episode["duration_seconds"] = int(duration)
         episodes.append(episode)
 
-    episodes.sort(key=lambda episode: episode["date"], reverse=True)
-    return episodes[:MAX_EPISODES_PER_SOURCE]
+    return newest_episodes(episodes)
 
 
 def youtube_entry_published_at(entry: Dict[str, Any]) -> Optional[datetime]:
@@ -656,7 +660,7 @@ def hydrate_youtube_metadata(
 
     hydrated_entries: List[Dict[str, Any]] = []
     hydrate_jobs: Dict[int, str] = {}
-    for entry in raw_entries[:MAX_EPISODES_PER_SOURCE]:
+    for entry in raw_entries[:MAX_EPISODES_PER_SOURCE * 2]:
         if not isinstance(entry, dict):
             continue
         hydrated_entries.append(entry)
@@ -791,6 +795,22 @@ def run_fetch(
     return 0
 
 
+def directory_json_fingerprint(directory: Optional[Path]) -> Optional[str]:
+    if directory is None or not directory.exists() or not directory.is_dir():
+        return None
+
+    digest = hashlib.sha256()
+    files = sorted(path for path in directory.iterdir() if path.is_file() and path.suffix == ".json")
+    for path in files:
+        data = path.read_bytes()
+        digest.update(path.name.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(str(len(data)).encode("ascii"))
+        digest.update(b"\0")
+        digest.update(data)
+    return digest.hexdigest()
+
+
 def output_request_params(
     defaults_dir: Path,
     config_dir: Optional[Path],
@@ -799,7 +819,9 @@ def output_request_params(
 ) -> Dict[str, Any]:
     return {
         "defaults": str(defaults_dir.resolve()),
+        "defaults_fingerprint": directory_json_fingerprint(defaults_dir),
         "config": str(config_dir.resolve()) if config_dir else None,
+        "config_fingerprint": directory_json_fingerprint(config_dir),
         "hours": hours,
         "no_cache": no_cache,
     }

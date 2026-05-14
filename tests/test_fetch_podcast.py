@@ -87,6 +87,44 @@ class TestPodcastRssParsing(unittest.TestCase):
         self.assertEqual(episodes[0]["platform"], "rss")
         self.assertEqual(episodes[0]["transcript_status"], "disabled")
 
+    def test_feedparser_path_scans_full_feed_before_limiting(self):
+        old_entries = [
+            {
+                "title": f"Older Episode {index}",
+                "id": f"older-{index}",
+                "link": f"https://example.com/episodes/older-{index}",
+                "published": f"Mon, {index + 1:02d} May 2026 20:05:00 +0000",
+            }
+            for index in range(fetch_podcast.MAX_EPISODES_PER_SOURCE)
+        ]
+        newest_entry = {
+            "title": "Newest Episode",
+            "id": "newest",
+            "link": "https://example.com/episodes/newest",
+            "published": "Sun, 31 May 2026 20:05:00 +0000",
+        }
+
+        class FakeFeedparser:
+            @staticmethod
+            def parse(_content):
+                return type("Feed", (), {"entries": old_entries + [newest_entry]})()
+
+        source = {
+            "id": "test-podcast",
+            "name": "Test Podcast",
+            "topics": ["llm"],
+            "url": "https://example.com/feed.xml",
+        }
+        cutoff = utc("2026-05-01T00:00:00Z")
+
+        with patch.object(fetch_podcast, "HAS_FEEDPARSER", True):
+            with patch.object(fetch_podcast, "feedparser", FakeFeedparser, create=True):
+                episodes = fetch_podcast.parse_rss_episodes("", source, cutoff)
+
+        self.assertEqual(len(episodes), fetch_podcast.MAX_EPISODES_PER_SOURCE)
+        self.assertEqual(episodes[0]["guid"], "newest")
+        self.assertNotIn("older-0", {episode["guid"] for episode in episodes})
+
 
 class TestPodcastSourceLoading(unittest.TestCase):
     def test_load_podcast_sources_filters_enabled_podcast_sources(self):
@@ -271,6 +309,43 @@ class TestYoutubeMetadataNormalization(unittest.TestCase):
         self.assertEqual(episodes[0]["title"], "Hydrated Episode")
         self.assertEqual(episodes[0]["date"], "2026-05-04T00:00:00+00:00")
         self.assertEqual(episodes[0]["duration_seconds"], 1800)
+
+    @patch("fetch_podcast.run_ytdlp_video_metadata")
+    def test_hydrates_tail_playlist_window_before_normalization(self, run_video_metadata):
+        run_video_metadata.return_value = {
+            "id": "tail",
+            "title": "Tail Window Episode",
+            "webpage_url": "https://www.youtube.com/watch?v=tail",
+            "upload_date": "20260531",
+        }
+        entries = [
+            {
+                "id": f"head-{index}",
+                "title": f"Head Episode {index}",
+                "webpage_url": f"https://www.youtube.com/watch?v=head-{index}",
+                "upload_date": "20260501",
+            }
+            for index in range(fetch_podcast.MAX_EPISODES_PER_SOURCE)
+        ]
+        entries.append(
+            {
+                "id": "tail",
+                "title": "Flat Tail Episode",
+                "url": "tail",
+            }
+        )
+
+        hydrated = fetch_podcast.hydrate_youtube_metadata(
+            {"entries": entries},
+            "/usr/local/bin/yt-dlp",
+        )
+        episodes = fetch_podcast.normalize_youtube_metadata(hydrated, self.source, self.cutoff)
+
+        run_video_metadata.assert_called_once_with(
+            "/usr/local/bin/yt-dlp",
+            "https://www.youtube.com/watch?v=tail",
+        )
+        self.assertEqual(episodes[0]["guid"], "youtube:tail")
 
 
 class TestTranscriptBackend(unittest.TestCase):
@@ -756,6 +831,33 @@ class TestPodcastCliOutput(unittest.TestCase):
             )
 
             self.assertFalse(fetch_podcast.output_cache_is_fresh(output, expected))
+
+    def test_output_request_params_change_when_config_contents_change(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            defaults = Path(tmpdir) / "defaults"
+            config = Path(tmpdir) / "config"
+            defaults.mkdir()
+            config.mkdir()
+            (defaults / "sources.json").write_text(
+                json.dumps({"sources": []}),
+                encoding="utf-8",
+            )
+            overlay = config / "follow-news-sources.json"
+            overlay.write_text(
+                json.dumps({"sources": [{"id": "one"}]}),
+                encoding="utf-8",
+            )
+
+            first = fetch_podcast.output_request_params(defaults, config, 336)
+            overlay.write_text(
+                json.dumps({"sources": [{"id": "two"}]}),
+                encoding="utf-8",
+            )
+            second = fetch_podcast.output_request_params(defaults, config, 336)
+
+        self.assertEqual(first["defaults"], second["defaults"])
+        self.assertEqual(first["config"], second["config"])
+        self.assertNotEqual(first["config_fingerprint"], second["config_fingerprint"])
 
     @patch("fetch_podcast.save_podcast_cache")
     @patch("fetch_podcast.run_fetch", return_value=0)
