@@ -2,7 +2,7 @@
 """
 Unified data collection pipeline for follow-news.
 
-Runs all 6 fetch steps (RSS, Twitter, GitHub, GitHub Trending, Reddit, Web) in parallel,
+Runs all fetch steps (RSS, Twitter, GitHub, GitHub Trending, Reddit, Web, Podcast) in parallel,
 then merges + deduplicates + scores into a single output JSON.
 
 Replaces the agent's sequential 6-step tool-call loop with one command,
@@ -133,8 +133,8 @@ def main() -> int:
     parser.add_argument("--verbose", "-v", action="store_true")
     parser.add_argument("--force", action="store_true", help="Force re-fetch ignoring caches")
     parser.add_argument("--enrich", action="store_true", help="Enable full-text enrichment for top articles")
-    parser.add_argument("--skip", type=str, default="", help="Comma-separated list of steps to skip (rss,twitter,github,trending,reddit,web)")
-    parser.add_argument("--only", type=str, default="", help="Comma-separated list of steps to run (rss,twitter,github,trending,reddit,web). Others are skipped.")
+    parser.add_argument("--skip", type=str, default="", help="Comma-separated list of steps to skip (rss,twitter,github,trending,reddit,web,podcast)")
+    parser.add_argument("--only", type=str, default="", help="Comma-separated list of steps to run (rss,twitter,github,trending,reddit,web,podcast). Others are skipped.")
     parser.add_argument("--reuse-dir", type=Path, default=None, help="Reuse existing intermediate directory instead of creating new one")
     parser.add_argument("--debug", action="store_true", help="Keep intermediate fetch outputs (rss.json, twitter.json, etc.) alongside final output")
 
@@ -147,7 +147,7 @@ def main() -> int:
     
     # --only takes precedence: skip everything not in the list
     if only_steps:
-        all_step_keys = {"rss", "twitter", "github", "github trending", "reddit", "web"}
+        all_step_keys = {"rss", "twitter", "github", "github trending", "reddit", "web", "podcast"}
         skip_steps = all_step_keys - {k for k in all_step_keys if any(o in k for o in only_steps)}
         logger.info(f"🎯 --only {args.only} → running: {all_step_keys - skip_steps}")
 
@@ -164,6 +164,7 @@ def main() -> int:
     tmp_trending = Path(_run_dir) / "trending.json"
     tmp_reddit = Path(_run_dir) / "reddit.json"
     tmp_web = Path(_run_dir) / "web.json"
+    tmp_podcast = Path(_run_dir) / "podcast.json"
     logger.info(f"📁 Run directory: {_run_dir}")
 
     # Common args for all fetch scripts
@@ -173,7 +174,7 @@ def main() -> int:
     common += ["--hours", str(args.hours)]
     verbose_flag = ["--verbose"] if args.verbose else []
 
-    # Define the 5 parallel fetch steps
+    # Define the parallel fetch steps
     steps = [
         ("RSS", "fetch-rss.py", common + verbose_flag, tmp_rss),
         ("Twitter", "fetch-twitter.py", common + verbose_flag + (["--backend", args.twitter_backend] if args.twitter_backend else []), tmp_twitter),
@@ -193,6 +194,7 @@ def main() -> int:
          + ["--freshness", args.freshness]
          + verbose_flag,
          tmp_web),
+        ("Podcast", "fetch-podcast.py", common + verbose_flag, tmp_podcast),
     ]
 
     # Filter steps by --skip and --reuse-dir
@@ -239,7 +241,7 @@ def main() -> int:
     merge_args += ["--verbose"] if args.verbose else []
     for flag, path in [("--rss", tmp_rss), ("--twitter", tmp_twitter),
                        ("--github", tmp_github), ("--trending", tmp_trending), ("--reddit", tmp_reddit),
-                       ("--web", tmp_web)]:
+                       ("--web", tmp_web), ("--podcast", tmp_podcast)]:
         if path.exists():
             merge_args += [flag, str(path)]
     if args.archive_dir:
@@ -260,7 +262,7 @@ def main() -> int:
     # Phase 4: Record source health from the fetch outputs
     health_output = Path(_run_dir) / "health.json"
     health_args = []
-    for flag, path in [("--rss", tmp_rss), ("--twitter", tmp_twitter), ("--github", tmp_github), ("--reddit", tmp_reddit), ("--web", tmp_web)]:
+    for flag, path in [("--rss", tmp_rss), ("--twitter", tmp_twitter), ("--github", tmp_github), ("--reddit", tmp_reddit), ("--web", tmp_web), ("--podcast", tmp_podcast)]:
         if path.exists():
             health_args += [flag, str(path)]
     health_args += ["--output", str(health_output)]
