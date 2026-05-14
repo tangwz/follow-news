@@ -16,6 +16,7 @@ import sys
 import os
 from pathlib import Path
 from typing import Dict, Any, Set
+from urllib.parse import urlparse
 
 try:
     import jsonschema
@@ -137,6 +138,15 @@ def validate_sources_consistency(sources_data: Dict[str, Any],
         return True
 
 
+def is_http_url_with_hostname(value: Any) -> bool:
+    """Return whether value is an HTTP(S) URL with a hostname."""
+    if not isinstance(value, str):
+        return False
+
+    parsed = urlparse(value.strip())
+    return parsed.scheme in {"http", "https"} and bool(parsed.hostname)
+
+
 def validate_source_types(sources_data: Dict[str, Any]) -> bool:
     """Validate source-type specific requirements."""
     errors = []
@@ -158,8 +168,11 @@ def validate_source_types(sources_data: Dict[str, Any]) -> bool:
             if not source.get("subreddit"):
                 errors.append(f"Reddit source '{source_id}' missing required 'subreddit' field")
         elif source_type == "podcast":
-            if not source.get("url"):
+            url = source.get("url")
+            if not url:
                 errors.append(f"Podcast source '{source_id}' missing required 'url' field")
+            elif not is_http_url_with_hostname(url):
+                errors.append(f"Podcast source '{source_id}' has invalid url: {url}")
             platform = source.get("platform", "auto")
             if platform not in {"auto", "rss", "youtube"}:
                 errors.append(

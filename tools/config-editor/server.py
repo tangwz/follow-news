@@ -39,7 +39,7 @@ ALLOWED_FILES = {
 class ConfigEditorHandler(SimpleHTTPRequestHandler):
     _json_prefix = re.compile(r"^/api/")
     _LOCAL_ORIGINS = {"127.0.0.1", "localhost", "::1"}
-    _ALLOWED_SOURCE_TYPES = {"rss", "twitter", "web", "github", "reddit"}
+    _ALLOWED_SOURCE_TYPES = {"rss", "twitter", "web", "github", "reddit", "podcast"}
     _WILDCARD_HOSTS = {"0.0.0.0", "::", "::0"}
 
     def _send_json(self, payload: Dict[str, Any], status: int = 200) -> None:

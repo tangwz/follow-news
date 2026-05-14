@@ -281,16 +281,47 @@ class TestLoadTopics(unittest.TestCase):
 
 
 class TestPodcastConfigValidation(unittest.TestCase):
+    def podcast_source(self, **overrides):
+        source = {
+            "id": "test-podcast",
+            "type": "podcast",
+            "url": "https://example.com/feed.xml",
+            "platform": "rss",
+        }
+        source.update(overrides)
+        return source
+
+    def test_validate_source_types_rejects_invalid_podcast_url(self):
+        sources_data = {
+            "sources": [
+                self.podcast_source(url="not a url"),
+            ]
+        }
+
+        self.assertFalse(validate_source_types(sources_data))
+
+    def test_validate_source_types_rejects_invalid_podcast_platform(self):
+        sources_data = {
+            "sources": [
+                self.podcast_source(platform="vimeo"),
+            ]
+        }
+
+        self.assertFalse(validate_source_types(sources_data))
+
     def test_validate_source_types_rejects_non_object_transcript(self):
         sources_data = {
             "sources": [
-                {
-                    "id": "broken-podcast",
-                    "type": "podcast",
-                    "url": "https://example.com/feed.xml",
-                    "platform": "rss",
-                    "transcript": [],
-                }
+                self.podcast_source(transcript=[]),
+            ]
+        }
+
+        self.assertFalse(validate_source_types(sources_data))
+
+    def test_validate_source_types_rejects_invalid_transcript_backend(self):
+        sources_data = {
+            "sources": [
+                self.podcast_source(transcript={"backend": "manual"}),
             ]
         }
 
