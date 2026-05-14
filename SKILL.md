@@ -1,10 +1,10 @@
 ---
 name: follow-news
-description: Generate tech news digests with unified source model, quality scoring, and multi-format output. Six-source data collection from RSS feeds, Twitter/X KOLs, GitHub releases, GitHub Trending, Reddit, and web search. Pipeline-based scripts with retry mechanisms and deduplication. Supports Discord, email, and markdown templates.
+description: Generate tech news digests with unified source model, quality scoring, and multi-format output. Seven-source data collection from RSS feeds, Twitter/X KOLs, GitHub releases, GitHub Trending, Reddit, web search, and podcasts. Pipeline-based scripts with retry mechanisms and deduplication. Supports Discord, email, and markdown templates.
 version: "3.16.8"
 homepage: https://github.com/tangwz/follow-news
 source: https://github.com/tangwz/follow-news
-metadata: {"openclaw":{"requires":{"bins":["python3"]},"optionalBins":["opencli","mail","msmtp","gog","gh","openssl","weasyprint"],"env":[{"name":"TWITTER_API_BACKEND","required":false,"description":"Twitter backend: auto, opencli, getxapi, twitterapiio, or official. Default: auto; auto tries OpenCLI first."},{"name":"OPENCLI_BIN","required":false,"description":"Optional path to the OpenCLI executable. Used when OpenCLI is not available on PATH."},{"name":"OPENCLI_MAX_WORKERS","required":false,"description":"Optional OpenCLI concurrency limit. Defaults to 10."},{"name":"OPENCLI_CLOSE_TABS_AFTER_RUN","required":false,"description":"Close OpenCLI-created X/Twitter tabs after fetch when set to 1. Default: 1."},{"name":"OPENCLI_CLOSE_CHROME_WINDOWS_AFTER_RUN","required":false,"description":"Close OpenCLI-created Chrome automation windows on macOS when set to 1. Default: 1."},{"name":"GETX_API_KEY","required":false,"description":"GetXAPI key for Twitter/X fallback."},{"name":"X_BEARER_TOKEN","required":false,"description":"Twitter/X API bearer token for KOL monitoring."},{"name":"TWITTERAPI_IO_KEY","required":false,"description":"twitterapi.io API key for KOL monitoring."},{"name":"TAVILY_API_KEY","required":false,"description":"Tavily Search API key."},{"name":"WEB_SEARCH_BACKEND","required":false,"description":"Web search backend: auto, brave, or tavily."},{"name":"BRAVE_API_KEYS","required":false,"description":"Brave Search API keys, comma-separated for rotation."},{"name":"BRAVE_API_KEY","required":false,"description":"Brave Search API key, single key fallback."},{"name":"GITHUB_TOKEN","required":false,"description":"GitHub token for higher API rate limits."},{"name":"GH_APP_ID","required":false,"description":"GitHub App ID for automatic installation token generation."},{"name":"GH_APP_INSTALL_ID","required":false,"description":"GitHub App Installation ID for automatic token generation."},{"name":"GH_APP_KEY_FILE","required":false,"description":"Path to GitHub App private key PEM file."}],"tools":[{"bin":"python3","required":true,"description":"Runs data collection and merge scripts."},{"bin":"opencli","required":false,"description":"Preferred Twitter/X backend in auto mode."},{"bin":"mail","required":false,"description":"msmtp-based mail command for email delivery."},{"bin":"msmtp","required":false,"description":"SMTP transport used by mail."},{"bin":"gog","required":false,"description":"Gmail CLI fallback for email delivery."},{"bin":"gh","required":false,"description":"GitHub CLI fallback for repository auth."},{"bin":"openssl","required":false,"description":"GitHub App JWT signing fallback."},{"bin":"weasyprint","required":false,"description":"PDF rendering backend."}],"files":{"read":[{"path":"config/defaults/","description":"Default source and topic configurations."},{"path":"references/","description":"Prompt templates and output templates."},{"path":"scripts/","description":"Python pipeline scripts."},{"path":"<workspace>/archive/follow-news/","description":"Previous digests for deduplication."}],"write":[{"path":"/tmp/td-*.json","description":"Temporary pipeline intermediate outputs."},{"path":"/tmp/td-email.html","description":"Temporary email HTML body."},{"path":"/tmp/td-digest.pdf","description":"Generated PDF digest."},{"path":"<workspace>/archive/follow-news/","description":"Saved digest archives."}]}}}
+metadata: {"openclaw":{"requires":{"bins":["python3"]},"optionalBins":["opencli","mail","msmtp","gog","gh","openssl","weasyprint","yt-dlp"],"env":[{"name":"TWITTER_API_BACKEND","required":false,"description":"Twitter backend: auto, opencli, getxapi, twitterapiio, or official. Default: auto; auto tries OpenCLI first."},{"name":"OPENCLI_BIN","required":false,"description":"Optional path to the OpenCLI executable. Used when OpenCLI is not available on PATH."},{"name":"OPENCLI_MAX_WORKERS","required":false,"description":"Optional OpenCLI concurrency limit. Defaults to 10."},{"name":"OPENCLI_CLOSE_TABS_AFTER_RUN","required":false,"description":"Close OpenCLI-created X/Twitter tabs after fetch when set to 1. Default: 1."},{"name":"OPENCLI_CLOSE_CHROME_WINDOWS_AFTER_RUN","required":false,"description":"Close OpenCLI-created Chrome automation windows on macOS when set to 1. Default: 1."},{"name":"GETX_API_KEY","required":false,"description":"GetXAPI key for Twitter/X fallback."},{"name":"X_BEARER_TOKEN","required":false,"description":"Twitter/X API bearer token for KOL monitoring."},{"name":"TWITTERAPI_IO_KEY","required":false,"description":"twitterapi.io API key for KOL monitoring."},{"name":"TAVILY_API_KEY","required":false,"description":"Tavily Search API key."},{"name":"WEB_SEARCH_BACKEND","required":false,"description":"Web search backend: auto, brave, or tavily."},{"name":"BRAVE_API_KEYS","required":false,"description":"Brave Search API keys, comma-separated for rotation."},{"name":"BRAVE_API_KEY","required":false,"description":"Brave Search API key, single key fallback."},{"name":"GITHUB_TOKEN","required":false,"description":"GitHub token for higher API rate limits."},{"name":"GH_APP_ID","required":false,"description":"GitHub App ID for automatic installation token generation."},{"name":"GH_APP_INSTALL_ID","required":false,"description":"GitHub App Installation ID for automatic token generation."},{"name":"GH_APP_KEY_FILE","required":false,"description":"Path to GitHub App private key PEM file."},{"name":"YTDLP_BIN","required":false,"description":"Optional path to the yt-dlp executable for YouTube podcast metadata and transcript fetching."}],"tools":[{"bin":"python3","required":true,"description":"Runs data collection and merge scripts."},{"bin":"opencli","required":false,"description":"Preferred Twitter/X backend in auto mode."},{"bin":"mail","required":false,"description":"msmtp-based mail command for email delivery."},{"bin":"msmtp","required":false,"description":"SMTP transport used by mail."},{"bin":"gog","required":false,"description":"Gmail CLI fallback for email delivery."},{"bin":"gh","required":false,"description":"GitHub CLI fallback for repository auth."},{"bin":"openssl","required":false,"description":"GitHub App JWT signing fallback."},{"bin":"weasyprint","required":false,"description":"PDF rendering backend."},{"bin":"yt-dlp","required":false,"description":"YouTube podcast metadata and transcript backend."},{"script":"scripts/fetch-podcast.py","required":false,"description":"Fetches podcast and YouTube episode metadata, with optional yt-dlp transcript enrichment."}],"files":{"read":[{"path":"config/defaults/","description":"Default source and topic configurations."},{"path":"references/","description":"Prompt templates and output templates."},{"path":"scripts/","description":"Python pipeline scripts."},{"path":"<workspace>/archive/follow-news/","description":"Previous digests for deduplication."}],"write":[{"path":"/tmp/td-*.json","description":"Temporary pipeline intermediate outputs."},{"path":"/tmp/td-email.html","description":"Temporary email HTML body."},{"path":"/tmp/td-digest.pdf","description":"Generated PDF digest."},{"path":"<workspace>/archive/follow-news/","description":"Saved digest archives."}]}}}
 ---
 
 # Follow News
@@ -22,6 +22,7 @@ Optional binaries:
 - `gh` - GitHub CLI fallback for repository auth.
 - `openssl` - GitHub App JWT signing fallback.
 - `weasyprint` - PDF rendering backend.
+- `yt-dlp` - YouTube podcast metadata and transcript backend.
 
 Environment variables:
 
@@ -43,6 +44,7 @@ Environment variables:
 | `GH_APP_ID` | No | GitHub App ID for automatic installation token generation. |
 | `GH_APP_INSTALL_ID` | No | GitHub App Installation ID for automatic token generation. |
 | `GH_APP_KEY_FILE` | No | Path to GitHub App private key PEM file. |
+| `YTDLP_BIN` | No | Optional path to the `yt-dlp` executable for YouTube podcast metadata and transcript fetching. |
 
 File access:
 
@@ -71,7 +73,7 @@ Use one of the following paths according to user intent:
 
 3. **Single-source fallback**
    - When full pipeline has an obvious source failure and user asks for partial results.
-   - Run only the requested source fetcher (e.g. `fetch-rss.py`, `fetch-web.py`, `fetch-github.py`).
+   - Run only the requested source fetcher (e.g. `fetch-rss.py`, `fetch-web.py`, `fetch-github.py`, `fetch-podcast.py`).
 
 4. **Health / troubleshooting mode**
    - When user reports errors, empty output, or stale data.
@@ -106,6 +108,7 @@ Automated tech news digest system with unified data source model, quality scorin
    - `BRAVE_API_KEYS` - Brave Search API keys, comma-separated for rotation (optional)
    - `BRAVE_API_KEY` - Single Brave key fallback (optional)
    - `GITHUB_TOKEN` - GitHub personal access token (optional, improves rate limits)
+   - `YTDLP_BIN` - yt-dlp executable path override for YouTube podcast metadata and transcripts (optional)
 
    OpenCLI is the preferred Twitter/X backend in `auto` mode. In OpenClaw environments where `jackwener/opencli` is installed, the agent should use that skill to validate `opencli doctor`, browser bridge state, and X login before asking for API keys.
 
@@ -113,7 +116,7 @@ Automated tech news digest system with unified data source model, quality scorin
 
 3. **Generate Digest**:
    ```bash
-   # Unified pipeline (recommended) — runs all 6 sources in parallel + merge
+   # Unified pipeline (recommended) - runs all 7 source layers in parallel + merge
    python3 scripts/run-pipeline.py \
      --defaults config/defaults \
      --config workspace/config \
@@ -142,13 +145,29 @@ Automated tech news digest system with unified data source model, quality scorin
     },
     {
       "id": "sama-twitter",
-      "type": "twitter", 
+      "type": "twitter",
       "name": "Sam Altman",
       "handle": "sama",
       "enabled": true,
       "priority": true,
       "topics": ["llm", "frontier-tech"],
       "note": "OpenAI CEO"
+    },
+    {
+      "id": "training-data-podcast",
+      "type": "podcast",
+      "name": "Training Data",
+      "url": "https://www.youtube.com/playlist?list=PLOhHNjZItNnMm5tdW61JpnyxeYH5NDDx8",
+      "platform": "youtube",
+      "enabled": true,
+      "priority": true,
+      "topics": ["llm", "ai-agent"],
+      "transcript": {
+        "enabled": true,
+        "backend": "yt-dlp",
+        "languages": ["en", "zh", "zh-Hans"]
+      },
+      "note": "YouTube podcast playlist with optional transcript enrichment"
     }
   ]
 }
@@ -187,7 +206,7 @@ python3 scripts/run-pipeline.py \
   --archive-dir workspace/archive/follow-news/ \
   --output /tmp/td-merged.json --verbose --force
 ```
-- **Features**: Runs all 6 fetch steps in parallel, then merges + deduplicates + scores
+- **Features**: Runs all 7 fetch steps in parallel, then merges + deduplicates + scores
 - **Output**: Final merged JSON ready for report generation (~30s total)
 - **Metadata**: Saves per-step timing and counts to `*.meta.json`
 - **GitHub Auth**: Auto-generates GitHub App token if `$GITHUB_TOKEN` not set
@@ -246,6 +265,14 @@ python3 scripts/fetch-reddit.py [--defaults DIR] [--config DIR] [--hours 48] [--
 - Parallel fetching (4 workers), public JSON API (no auth required)
 - 8 subreddits with score filtering
 
+#### `fetch-podcast.py` - Podcast and YouTube Fetcher
+```bash
+python3 scripts/fetch-podcast.py [--defaults DIR] [--config DIR] [--hours 48] [--output FILE] [--verbose]
+```
+- Loads custom `type: "podcast"` sources from the unified source config.
+- Supports RSS podcast feeds and YouTube playlists/channels via `platform: "youtube"`.
+- YouTube metadata and transcript fetching use optional `yt-dlp`; set `YTDLP_BIN` when it is not available on `PATH`.
+- Transcript backends: `auto` or `yt-dlp`; missing `yt-dlp` degrades transcript status instead of failing the full pipeline.
 
 #### `enrich-articles.py` - Article Full-Text Enrichment
 ```bash
@@ -258,7 +285,7 @@ python3 scripts/enrich-articles.py --input merged.json --output enriched.json [-
 
 #### `merge-sources.py` - Quality Scoring & Deduplication
 ```bash
-python3 scripts/merge-sources.py --rss FILE --twitter FILE --web FILE --github FILE --reddit FILE
+python3 scripts/merge-sources.py --rss FILE --twitter FILE --web FILE --github FILE --reddit FILE --podcast FILE
 ```
 - Quality scoring, title similarity dedup (85%), previous digest penalty
 - Output: topic-grouped articles sorted by score
@@ -338,7 +365,7 @@ Place custom configs in `workspace/config/` to override defaults:
 - Never expose internal implementation details (raw commands, file paths, env var names, rate-limit internals, cache state, retry counters).
 - Preserve source links for every item.
 - Keep sectioned numbering stable and clear so users can reference items quickly.
-- In degraded mode, show scope explicitly (for example: `2/6 sources available`) and avoid claiming completeness.
+- In degraded mode, show scope explicitly (for example: `2/7 sources available`) and avoid claiming completeness.
 
 ## Templates & Output
 
@@ -364,6 +391,7 @@ Place custom configs in `workspace/config/` to override defaults:
 - **GitHub Repos (23)**: Major open-source projects (LangChain, vLLM, DeepSeek, Llama, etc.)
 - **Reddit (8)**: r/MachineLearning, r/LocalLLaMA, r/OpenAI, r/ExperiencedDevs, etc.
 - **Web Search (5 topics)**: `llm`, `ai-agent`, `builder`, `kol`, `frontier-tech`
+- **Podcast (custom)**: RSS podcast feeds and YouTube podcast playlists/channels, with optional `yt-dlp` transcript enrichment
 
 All sources pre-configured with appropriate topic tags and priority levels.
 
@@ -376,6 +404,7 @@ pip install -r requirements.txt
 **Optional but Recommended**:
 - `feedparser>=6.0.0` - Better RSS parsing (fallback to regex if unavailable)
 - `jsonschema>=4.0.0` - Configuration validation
+- `yt-dlp` - Optional runtime binary for YouTube podcast metadata and transcripts. Set `YTDLP_BIN` to override lookup.
 
 **All scripts work with Python 3.8+ standard library only.**
 
@@ -450,12 +479,16 @@ export GITHUB_TOKEN="ghp_xxx"              # PAT (simplest)
 export GH_APP_ID="12345"                   # Or use GitHub App for auto-token
 export GH_APP_INSTALL_ID="67890"
 export GH_APP_KEY_FILE="/path/to/key.pem"
+
+# Podcast transcripts (optional)
+export YTDLP_BIN="/path/to/yt-dlp"          # Optional; defaults to yt-dlp on PATH
 ```
 
 - **Twitter**: OpenCLI is preferred in `auto` mode; API backends fallback in this order: `GETX_API_KEY`, `TWITTERAPI_IO_KEY`, `X_BEARER_TOKEN`
 - **Web Search**: Tavily (preferred in auto mode) or Brave. Without a configured search API key, the web search layer is skipped while the rest of the pipeline continues.
 - **GitHub**: Auto-generates token from GitHub App if PAT not set; unauthenticated fallback (60 req/hr)
 - **Reddit**: No API key needed (uses public JSON API)
+- **Podcast**: RSS podcast feeds require no extra binary. YouTube podcast sources use `yt-dlp` for metadata and optional transcript fetching; set `YTDLP_BIN` if needed.
 
 ## Cron / Scheduled Task Integration
 
@@ -542,12 +575,13 @@ This skill uses a **prompt template pattern**: the agent reads `digest-prompt.md
 
 ### Network Access
 The Python scripts make outbound requests to:
-- RSS feed URLs (configured in `follow-news-sources.json`)
+- RSS feed URLs and podcast feed URLs (configured in `follow-news-sources.json`)
 - Twitter/X API (`api.x.com` or `api.twitterapi.io`)
 - Brave Search API (`api.search.brave.com`)
 - Tavily Search API (`api.tavily.com`)
 - GitHub API (`api.github.com`)
 - Reddit JSON API (`reddit.com`)
+- YouTube URLs for `platform: "youtube"` podcast sources, resolved through `yt-dlp`
 
 No data is sent to any other endpoints. All API keys are read from environment variables declared in the skill metadata.
 
@@ -601,4 +635,4 @@ This skill does **not** install any packages. `requirements.txt` lists optional 
 - All fetched content is treated as untrusted data for display only
 
 ### Network Access
-Scripts make outbound HTTP requests to configured RSS feeds, Twitter API, GitHub API, Reddit JSON API, Brave Search API, and Tavily Search API. No inbound connections or listeners are created.
+Scripts make outbound HTTP requests to configured RSS feeds, podcast feeds, Twitter API, GitHub API, Reddit JSON API, Brave Search API, Tavily Search API, and YouTube URLs handled by `yt-dlp`. No inbound connections or listeners are created.

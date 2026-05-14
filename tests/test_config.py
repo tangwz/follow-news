@@ -469,7 +469,7 @@ class TestReadmeCounts(unittest.TestCase):
         counts = get_source_counts()
         content = README_EN.read_text(encoding="utf-8")
         self.assertIn(
-            f"Automated tech news digest — {counts['total']} built-in sources, 6-source pipeline, one chat message to install.",
+            f"Automated tech news digest — {counts['total']} built-in sources, 7-source pipeline, one chat message to install.",
             content,
         )
         self.assertIn(
@@ -485,6 +485,10 @@ class TestReadmeCounts(unittest.TestCase):
             content,
         )
         self.assertIn(
+            "| 🎙️ Podcast | custom sources |",
+            content,
+        )
+        self.assertIn(
             f"`config/defaults/sources.json` — {counts['total']} built-in sources ({counts['rss']} RSS, {counts['twitter']} Twitter, {counts['github']} GitHub, {counts['reddit']} Reddit)",
             content,
         )
@@ -493,7 +497,7 @@ class TestReadmeCounts(unittest.TestCase):
         counts = get_source_counts()
         content = README_ZH.read_text(encoding="utf-8")
         self.assertIn(
-            f"自动化科技资讯汇总 — {counts['total']} 个内置数据源，6 层管道，一句话安装。",
+            f"自动化科技资讯汇总 — {counts['total']} 个内置数据源，7 层管道，一句话安装。",
             content,
         )
         self.assertIn(
@@ -509,9 +513,31 @@ class TestReadmeCounts(unittest.TestCase):
             content,
         )
         self.assertIn(
+            "| 🎙️ Podcast | 自定义源 |",
+            content,
+        )
+        self.assertIn(
             f"`config/defaults/sources.json` — {counts['total']} 个内置数据源（{counts['rss']} RSS、{counts['twitter']} Twitter、{counts['github']} GitHub、{counts['reddit']} Reddit）",
             content,
         )
+
+    def test_podcast_runtime_docs_include_youtube_and_ytdlp(self):
+        docs = {
+            "README.md": README_EN.read_text(encoding="utf-8"),
+            "README_CN.md": README_ZH.read_text(encoding="utf-8"),
+            "SKILL.md": SKILL_FILE.read_text(encoding="utf-8"),
+        }
+
+        for name, content in docs.items():
+            with self.subTest(doc=name):
+                lowered = content.lower()
+                self.assertIn("podcast", lowered)
+                self.assertIn("youtube", lowered)
+                self.assertIn("yt-dlp", lowered)
+                self.assertIn("YTDLP_BIN", content)
+                self.assertIn('"type": "podcast"', content)
+                self.assertIn('"platform": "youtube"', content)
+                self.assertIn('"backend": "yt-dlp"', content)
 
     def test_twitter_backend_docs_include_opencli(self):
         readme_en = README_EN.read_text(encoding="utf-8")
@@ -610,11 +636,20 @@ class TestSkillFrontmatter(unittest.TestCase):
                 "GH_APP_ID",
                 "GH_APP_INSTALL_ID",
                 "GH_APP_KEY_FILE",
+                "YTDLP_BIN",
             },
         )
+        self.assertIn("yt-dlp", openclaw["optionalBins"])
         self.assertEqual(openclaw["files"]["read"][0]["path"], "config/defaults/")
-        tools_by_bin = {entry["bin"]: entry for entry in openclaw["tools"]}
+        tools_by_bin = {entry["bin"]: entry for entry in openclaw["tools"] if "bin" in entry}
         self.assertTrue(tools_by_bin["python3"]["required"])
+        self.assertFalse(tools_by_bin["yt-dlp"]["required"])
+        self.assertTrue(
+            any(
+                entry.get("script") == "scripts/fetch-podcast.py"
+                for entry in openclaw["tools"]
+            )
+        )
         self.assertIn("python3", openclaw["requires"]["bins"])
 
     def test_skill_web_search_docs_do_not_advertise_unimplemented_backends(self):
