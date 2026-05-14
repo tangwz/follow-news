@@ -517,6 +517,7 @@ class TestReadmeCounts(unittest.TestCase):
             "| 🎙️ Podcast | 自定义源 |",
             content,
         )
+        self.assertIn("RSS 播客订阅源、YouTube 播放列表/频道，以及可选转录文本", content)
         self.assertIn("GitHub Tr.", content)
         self.assertIn(
             f"`config/defaults/sources.json` — {counts['total']} 个内置数据源（{counts['rss']} RSS、{counts['twitter']} Twitter、{counts['github']} GitHub、{counts['reddit']} Reddit）",
@@ -543,6 +544,13 @@ class TestReadmeCounts(unittest.TestCase):
 
         skill = docs["SKILL.md"]
         self.assertIn("--trending FILE", skill)
+
+        readme_zh = docs["README_CN.md"]
+        self.assertIn("```bash\n# Twitter/X Backend", readme_zh)
+        self.assertIn('export BRAVE_PLAN="free"           # Override Brave rate limit: free|pro\n```', readme_zh)
+        self.assertIn("播客元数据和转录文本增强", readme_zh)
+        self.assertNotIn("可选 transcript", readme_zh)
+        self.assertNotIn("metadata/transcript enrich", readme_zh)
 
     def test_twitter_backend_docs_include_opencli(self):
         readme_en = README_EN.read_text(encoding="utf-8")
