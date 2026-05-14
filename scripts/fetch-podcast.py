@@ -157,6 +157,240 @@ def parse_rss_episodes(
     return episodes[:MAX_EPISODES_PER_SOURCE]
 
 
+def youtube_video_id(url: str) -> str:
+    parsed = urlparse(url)
+    host = (parsed.hostname or "").lower()
+    if host == "youtu.be":
+        return parsed.path.strip("/")
+    if host in {"youtube.com", "www.youtube.com", "m.youtube.com"}:
+        query = parsed.query.split("&") if parsed.query else []
+        for part in query:
+            if part.startswith("v="):
+                return part.split("=", 1)[1]
+    return ""
+
+
+def timestamp_to_datetime(value: Any) -> Optional[datetime]:
+    if value is None:
+        return None
+    try:
+        return datetime.fromtimestamp(int(value), tz=timezone.utc)
+    except (TypeError, ValueError, OSError):
+        return None
+
+
+def parse_youtube_date(value: Any) -> Optional[datetime]:
+    if not value:
+        return None
+    text = str(value).strip()
+    if re.match(r"^\d{8}$", text):
+        try:
+            return datetime.strptime(text, "%Y%m%d").replace(tzinfo=timezone.utc)
+        except ValueError:
+            return None
+    return parse_podcast_date(text)
+
+
+def normalize_youtube_metadata(
+    payload: Dict[str, Any],
+    source: Dict[str, Any],
+    cutoff: datetime,
+) -> List[Dict[str, Any]]:
+    raw_entries = payload.get("entries") if isinstance(payload, dict) else None
+    if raw_entries is None:
+        raw_entries = [payload]
+
+    episodes: List[Dict[str, Any]] = []
+    for entry in raw_entries:
+        if not isinstance(entry, dict):
+            continue
+
+        title = str(entry.get("title") or "").strip()
+        link = str(entry.get("webpage_url") or entry.get("url") or "").strip()
+        video_id = str(entry.get("id") or youtube_video_id(link)).strip()
+        published = timestamp_to_datetime(entry.get("timestamp")) or parse_youtube_date(
+            entry.get("upload_date") or entry.get("release_date")
+        )
+        if not link and video_id:
+            link = f"https://www.youtube.com/watch?v={video_id}"
+        if not title or not link or not video_id or not published or published < cutoff:
+            continue
+
+        episode = build_episode(
+            source,
+            title,
+            link,
+            published,
+            f"youtube:{video_id}",
+            "youtube",
+        )
+        duration = entry.get("duration")
+        if isinstance(duration, (int, float)) and duration > 0:
+            episode["duration_seconds"] = int(duration)
+        episodes.append(episode)
+
+    return episodes[:MAX_EPISODES_PER_SOURCE]
+
+
+def resolve_ytdlp_bin() -> Optional[str]:
+    configured = os.environ.get("YTDLP_BIN") or os.environ.get("YT_DLP_BIN")
+    if configured:
+        return configured
+
+    from shutil import which
+
+    return which("yt-dlp")
+
+
+def transcript_cache_key(episode: Dict[str, Any]) -> str:
+    return str(episode.get("guid") or episode.get("link") or episode.get("title") or "")
+
+
+def transcript_languages(source: Dict[str, Any]) -> List[str]:
+    config = transcript_config(source)
+    languages = config.get("languages")
+    if isinstance(languages, list) and languages:
+        return [str(language) for language in languages if str(language).strip()]
+    return ["en", "zh", "zh-Hans"]
+
+
+def run_ytdlp_transcript(
+    ytdlp_bin: str,
+    episode: Dict[str, Any],
+    languages: List[str],
+    timeout: int = 60,
+) -> Dict[str, str]:
+    import subprocess
+
+    with tempfile.TemporaryDirectory(prefix="follow-news-ytdlp-") as tmpdir:
+        cmd = [
+            ytdlp_bin,
+            "--skip-download",
+            "--write-subs",
+            "--write-auto-subs",
+            "--sub-langs",
+            ",".join(languages),
+            "--sub-format",
+            "vtt",
+            "--convert-subs",
+            "vtt",
+            "--output",
+            str(Path(tmpdir) / "%(id)s.%(ext)s"),
+            episode["link"],
+        ]
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+            )
+        except subprocess.TimeoutExpired:
+            return {"status": "timeout", "error": "yt-dlp transcript command timed out"}
+
+        if result.returncode != 0:
+            message = (result.stderr or result.stdout or "yt-dlp transcript command failed").strip()
+            return {"status": "error", "error": message[:200]}
+
+        vtt_files = sorted(Path(tmpdir).glob("*.vtt"))
+        if not vtt_files:
+            return {"status": "missing", "error": "No subtitle track found"}
+
+        try:
+            transcript = parse_vtt_transcript(
+                vtt_files[0].read_text(encoding="utf-8", errors="replace")
+            )
+        except OSError as exc:
+            return {"status": "parse_error", "error": str(exc)[:200]}
+        if not transcript.strip():
+            return {"status": "parse_error", "error": "Subtitle file did not contain transcript text"}
+        return {"status": "ok", "transcript": transcript}
+
+
+def parse_vtt_transcript(content: str) -> str:
+    lines: List[str] = []
+    current_time = ""
+    for raw_line in content.splitlines():
+        line = raw_line.strip()
+        if not line or line == "WEBVTT" or line.startswith(("NOTE", "Kind:", "Language:")):
+            continue
+        if "-->" in line:
+            current_time = line.split("-->", 1)[0].strip()
+            continue
+        if re.match(r"^\d+$", line):
+            continue
+        text = re.sub(r"<[^>]+>", "", line).strip()
+        if text:
+            if current_time:
+                lines.append(f"{current_time} {text}")
+            else:
+                lines.append(text)
+    return "\n".join(lines)
+
+
+def cache_entry_valid(entry: Dict[str, Any], now: float) -> bool:
+    status = entry.get("status")
+    ttl = TRANSCRIPT_SUCCESS_TTL_SECONDS if status == "ok" else TRANSCRIPT_FAILURE_TTL_SECONDS
+    try:
+        ts = float(entry.get("ts", 0))
+    except (TypeError, ValueError):
+        return False
+    return now - ts < ttl
+
+
+def enrich_episode_transcript(
+    episode: Dict[str, Any],
+    source: Dict[str, Any],
+    cache: Dict[str, Any],
+    no_cache: bool = False,
+) -> Dict[str, Any]:
+    config = transcript_config(source)
+    if not config.get("enabled"):
+        episode["transcript_status"] = "disabled"
+        return episode
+
+    key = transcript_cache_key(episode)
+    now = time.time()
+    if key and not no_cache:
+        cached = cache.get("transcripts", {}).get(key)
+        if isinstance(cached, dict) and cache_entry_valid(cached, now):
+            episode["transcript_status"] = cached.get("status", "error")
+            if cached.get("transcript"):
+                episode["transcript"] = cached["transcript"]
+            if cached.get("error"):
+                episode["transcript_error"] = cached["error"]
+            return episode
+
+    backend = config.get("backend", "auto")
+    if backend not in {"auto", "yt-dlp"}:
+        episode["transcript_status"] = "error"
+        episode["transcript_error"] = f"Unsupported transcript backend: {backend}"
+        return episode
+
+    ytdlp_bin = resolve_ytdlp_bin()
+    if not ytdlp_bin:
+        result = {"status": "backend_unavailable", "error": "yt-dlp is not available"}
+    else:
+        result = run_ytdlp_transcript(ytdlp_bin, episode, transcript_languages(source))
+
+    episode["transcript_status"] = result.get("status", "error")
+    episode.pop("transcript", None)
+    episode.pop("transcript_error", None)
+    if result.get("transcript"):
+        episode["transcript"] = result["transcript"]
+    if result.get("error"):
+        episode["transcript_error"] = result["error"]
+
+    if key:
+        cache.setdefault("transcripts", {})[key] = {
+            "status": episode["transcript_status"],
+            "transcript": episode.get("transcript", ""),
+            "error": episode.get("transcript_error", ""),
+            "ts": now,
+        }
+    return episode
+
+
 def load_podcast_sources(defaults_dir: Path, config_dir: Optional[Path] = None) -> List[Dict[str, Any]]:
     try:
         from config_loader import load_merged_sources

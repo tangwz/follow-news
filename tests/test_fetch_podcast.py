@@ -3,6 +3,7 @@
 
 import importlib.util
 import json
+import sys
 import tempfile
 import unittest
 from datetime import datetime, timezone
@@ -12,6 +13,7 @@ from unittest.mock import patch
 SCRIPTS_DIR = Path(__file__).parent.parent / "scripts"
 spec = importlib.util.spec_from_file_location("fetch_podcast", SCRIPTS_DIR / "fetch-podcast.py")
 fetch_podcast = importlib.util.module_from_spec(spec)
+sys.modules["fetch_podcast"] = fetch_podcast
 spec.loader.exec_module(fetch_podcast)
 
 
@@ -130,3 +132,95 @@ class TestPodcastSourceLoading(unittest.TestCase):
             sources = fetch_podcast.load_podcast_sources(defaults, None)
 
             self.assertEqual([s["id"] for s in sources], ["podcast-source"])
+
+
+class TestYoutubeMetadataNormalization(unittest.TestCase):
+    def setUp(self):
+        self.source = {
+            "id": "training-data-podcast",
+            "name": "Training Data",
+            "url": "https://www.youtube.com/playlist?list=PLOhHNjZItNnMm5tdW61JpnyxeYH5NDDx8",
+            "topics": ["llm", "ai-agent"],
+            "transcript": {"enabled": True, "backend": "auto"},
+        }
+        self.cutoff = utc("2026-05-01T00:00:00Z")
+
+    def test_normalizes_youtube_entries_from_ytdlp(self):
+        payload = {
+            "entries": [
+                {
+                    "id": "abc123",
+                    "title": "Waymo Autonomy",
+                    "webpage_url": "https://www.youtube.com/watch?v=abc123",
+                    "timestamp": 1777925100,
+                    "duration": 3600,
+                },
+                {
+                    "id": "old123",
+                    "title": "Old Episode",
+                    "webpage_url": "https://www.youtube.com/watch?v=old123",
+                    "timestamp": 1700000000,
+                },
+            ]
+        }
+
+        episodes = fetch_podcast.normalize_youtube_metadata(payload, self.source, self.cutoff)
+
+        self.assertEqual(len(episodes), 1)
+        self.assertEqual(episodes[0]["title"], "Waymo Autonomy")
+        self.assertEqual(episodes[0]["guid"], "youtube:abc123")
+        self.assertEqual(episodes[0]["link"], "https://www.youtube.com/watch?v=abc123")
+        self.assertEqual(episodes[0]["platform"], "youtube")
+        self.assertEqual(episodes[0]["duration_seconds"], 3600)
+        self.assertEqual(episodes[0]["transcript_status"], "missing")
+
+
+class TestTranscriptBackend(unittest.TestCase):
+    def setUp(self):
+        self.source = {
+            "id": "training-data-podcast",
+            "name": "Training Data",
+            "url": "https://www.youtube.com/playlist?list=listid",
+            "topics": ["llm"],
+            "transcript": {
+                "enabled": True,
+                "backend": "auto",
+                "languages": ["en", "zh"],
+            },
+        }
+        self.episode = {
+            "title": "Episode",
+            "link": "https://www.youtube.com/watch?v=abc123",
+            "date": "2026-05-04T20:05:00+00:00",
+            "guid": "youtube:abc123",
+            "topics": ["llm"],
+            "show_name": "Training Data",
+            "platform": "youtube",
+            "transcript_status": "missing",
+        }
+
+    @patch("fetch_podcast.resolve_ytdlp_bin", return_value=None)
+    def test_transcript_backend_unavailable_keeps_episode(self, _resolve):
+        result = fetch_podcast.enrich_episode_transcript(self.episode.copy(), self.source, {}, no_cache=True)
+
+        self.assertEqual(result["transcript_status"], "backend_unavailable")
+        self.assertIn("transcript_error", result)
+        self.assertNotIn("transcript", result)
+
+    @patch("fetch_podcast.run_ytdlp_transcript")
+    @patch("fetch_podcast.resolve_ytdlp_bin", return_value="/usr/local/bin/yt-dlp")
+    def test_transcript_success_attaches_text(self, _resolve, run_transcript):
+        run_transcript.return_value = {
+            "status": "ok",
+            "transcript": "Speaker 1 | 00:00 - 00:05 Hello world.",
+        }
+
+        result = fetch_podcast.enrich_episode_transcript(self.episode.copy(), self.source, {}, no_cache=True)
+
+        self.assertEqual(result["transcript_status"], "ok")
+        self.assertEqual(result["transcript"], "Speaker 1 | 00:00 - 00:05 Hello world.")
+
+    def test_cache_key_uses_guid(self):
+        key = fetch_podcast.transcript_cache_key(self.episode)
+
+        self.assertEqual(key, "youtube:abc123")
