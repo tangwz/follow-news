@@ -3,6 +3,7 @@
 
 import importlib.util
 import json
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -334,3 +335,126 @@ class TestPodcastCliOutput(unittest.TestCase):
         self.assertEqual(data["source_type"], "podcast")
         self.assertEqual(data["total_articles"], 1)
         self.assertEqual(data["sources"][0]["source_id"], "test-podcast")
+
+    def test_save_podcast_cache_round_trips_via_atomic_path(self):
+        cache = {
+            "transcripts": {
+                "episode": {
+                    "status": "ok",
+                    "transcript": "Text",
+                    "error": "",
+                    "ts": 1777925100,
+                }
+            }
+        }
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_path = Path(tmpdir) / "podcast-cache.json"
+            with patch.object(fetch_podcast, "PODCAST_CACHE_PATH", str(cache_path)):
+                fetch_podcast.save_podcast_cache(cache)
+
+                loaded = fetch_podcast.load_podcast_cache()
+
+        self.assertEqual(loaded, cache)
+
+    def test_save_podcast_cache_suppresses_replace_failure(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_path = Path(tmpdir) / "podcast-cache.json"
+            with patch.object(fetch_podcast, "PODCAST_CACHE_PATH", str(cache_path)):
+                with patch("fetch_podcast.os.replace", side_effect=OSError("replace failed")) as replace:
+                    fetch_podcast.save_podcast_cache({"transcripts": {}})
+
+            leftovers = list(Path(tmpdir).glob("follow-news-podcast-cache-*"))
+
+        replace.assert_called_once()
+        self.assertEqual(leftovers, [])
+
+    @patch("fetch_podcast.fetch_rss_source", side_effect=RuntimeError("network failed"))
+    def test_fetch_source_returns_error_result_on_fetch_failure(self, _fetch_rss):
+        source = {
+            "id": "test-podcast",
+            "type": "podcast",
+            "name": "Test Podcast",
+            "url": "https://example.com/feed.xml",
+            "topics": ["llm"],
+        }
+        cutoff = utc("2026-05-01T00:00:00Z")
+
+        result = fetch_podcast.fetch_source(source, cutoff, {"transcripts": {}}, no_cache=True)
+
+        self.assertEqual(result["status"], "error")
+        self.assertEqual(result["count"], 0)
+        self.assertEqual(result["articles"], [])
+        self.assertIn("network failed", result["error"])
+
+    @patch(
+        "subprocess.run",
+        return_value=subprocess.CompletedProcess(
+            args=["yt-dlp"],
+            returncode=0,
+            stdout="{not-json",
+            stderr="",
+        ),
+    )
+    def test_run_ytdlp_metadata_raises_on_invalid_json(self, _run):
+        source = {"url": "https://www.youtube.com/playlist?list=abc"}
+
+        with self.assertRaises(RuntimeError):
+            fetch_podcast.run_ytdlp_metadata("/usr/local/bin/yt-dlp", source)
+
+    @patch(
+        "subprocess.run",
+        return_value=subprocess.CompletedProcess(
+            args=["yt-dlp"],
+            returncode=1,
+            stdout="",
+            stderr="metadata failed",
+        ),
+    )
+    def test_run_ytdlp_metadata_raises_on_nonzero_exit(self, _run):
+        source = {"url": "https://www.youtube.com/playlist?list=abc"}
+
+        with self.assertRaises(RuntimeError):
+            fetch_podcast.run_ytdlp_metadata("/usr/local/bin/yt-dlp", source)
+
+    def test_output_cache_is_fresh_rejects_arbitrary_json(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output = Path(tmpdir) / "podcast.json"
+            output.write_text(json.dumps({"ok": True}), encoding="utf-8")
+
+            self.assertFalse(fetch_podcast.output_cache_is_fresh(output))
+
+    def test_output_cache_is_fresh_accepts_valid_podcast_output(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output = Path(tmpdir) / "podcast.json"
+            output.write_text(
+                json.dumps(
+                    {
+                        "source_type": "podcast",
+                        "sources": [],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            self.assertTrue(fetch_podcast.output_cache_is_fresh(output))
+
+    @patch("fetch_podcast.save_podcast_cache")
+    @patch("fetch_podcast.run_fetch", return_value=0)
+    @patch("fetch_podcast.load_podcast_sources", return_value=[])
+    def test_main_no_cache_does_not_save_cache(self, _load_sources, _run_fetch, save_cache):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output = Path(tmpdir) / "podcast.json"
+            argv = [
+                "fetch-podcast.py",
+                "--defaults",
+                str(Path(tmpdir) / "defaults"),
+                "--output",
+                str(output),
+                "--no-cache",
+                "--force",
+            ]
+            with patch.object(sys, "argv", argv):
+                result = fetch_podcast.main()
+
+        self.assertEqual(result, 0)
+        save_cache.assert_not_called()

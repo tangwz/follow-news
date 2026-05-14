@@ -449,11 +449,27 @@ def load_podcast_cache(no_cache: bool = False) -> Dict[str, Any]:
 
 
 def save_podcast_cache(cache: Dict[str, Any]) -> None:
+    cache_path = Path(PODCAST_CACHE_PATH)
+    temp_path: Optional[Path] = None
     try:
-        with open(PODCAST_CACHE_PATH, "w", encoding="utf-8") as handle:
+        with tempfile.NamedTemporaryFile(
+            "w",
+            encoding="utf-8",
+            dir=str(cache_path.parent),
+            prefix="follow-news-podcast-cache-",
+            suffix=".json",
+            delete=False,
+        ) as handle:
+            temp_path = Path(handle.name)
             json.dump(cache, handle, ensure_ascii=False, indent=2)
             handle.write("\n")
+        os.replace(temp_path, cache_path)
     except OSError as exc:
+        if temp_path and temp_path.exists():
+            try:
+                temp_path.unlink()
+            except OSError:
+                pass
         logging.warning("Failed to write podcast cache: %s", exc)
 
 
@@ -608,9 +624,15 @@ def output_cache_is_fresh(output: Path, max_age_seconds: int = 3600) -> bool:
     if not output.exists():
         return False
     try:
-        json.loads(output.read_text(encoding="utf-8"))
+        payload = json.loads(output.read_text(encoding="utf-8"))
         age = time.time() - output.stat().st_mtime
     except (OSError, json.JSONDecodeError):
+        return False
+    if not isinstance(payload, dict):
+        return False
+    if payload.get("source_type") != "podcast":
+        return False
+    if not isinstance(payload.get("sources"), list):
         return False
     return age < max_age_seconds
 
