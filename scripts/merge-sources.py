@@ -21,7 +21,7 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Set
 from difflib import SequenceMatcher
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 # Quality scoring weights
 SCORE_MULTI_SOURCE = 5      # Article appears in multiple sources
@@ -113,11 +113,20 @@ def get_domain(url: str) -> str:
 
 
 def normalize_url(url: str) -> str:
-    """Normalize URL for dedup comparison (strip query, fragment, trailing slash, www.)."""
+    """Normalize URL for dedup comparison."""
     try:
         parsed = urlparse(url)
         domain = parsed.netloc.lower().replace('www.', '')
         path = parsed.path.rstrip('/')
+
+        if domain in {"youtube.com", "m.youtube.com"} and path == "/watch":
+            video_id = parse_qs(parsed.query).get("v", [""])[0]
+            if video_id:
+                return f"{domain}{path}?v={video_id}"
+
+        if domain == "youtu.be" and path:
+            return f"{domain}{path}"
+
         return f"{domain}{path}"
     except Exception:
         return url

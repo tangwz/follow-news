@@ -80,6 +80,16 @@ class TestURLDedup(unittest.TestCase):
         url2 = normalize_url_for_dedup("https://example.com/page")
         self.assertEqual(url1, url2)
 
+    def test_youtube_watch_preserves_video_id(self):
+        url1 = normalize_url_for_dedup("https://www.youtube.com/watch?v=abc123")
+        url2 = normalize_url_for_dedup("https://www.youtube.com/watch?v=def456")
+        self.assertNotEqual(url1, url2)
+
+    def test_youtu_be_preserves_video_id(self):
+        url1 = normalize_url_for_dedup("https://youtu.be/abc123")
+        url2 = normalize_url_for_dedup("https://youtu.be/def456")
+        self.assertNotEqual(url1, url2)
+
 
 class TestDeduplication(unittest.TestCase):
     def test_removes_url_duplicates(self):
@@ -216,17 +226,54 @@ class TestPodcastMerge(unittest.TestCase):
         self.assertEqual(data["sources"][0]["articles"][0]["transcript_status"], "ok")
 
     def test_podcast_transcript_bonus(self):
-        article = {
+        ready_article = {
             "title": "Podcast Episode",
-            "date": datetime.now().astimezone().isoformat(),
+            "date": "2000-01-01T00:00:00+00:00",
             "transcript_status": "ok",
             "transcript": "x" * 500,
         }
+        non_ready_article = {
+            "title": "Podcast Episode",
+            "date": "2000-01-01T00:00:00+00:00",
+            "transcript_status": "missing",
+            "transcript": "",
+        }
         source = {"source_type": "podcast", "priority": False}
 
-        score = merge_mod.calculate_base_score(article, source)
+        ready_score = merge_mod.calculate_base_score(ready_article, source)
+        non_ready_score = merge_mod.calculate_base_score(non_ready_article, source)
 
-        self.assertGreaterEqual(score, merge_mod.SCORE_PODCAST_TRANSCRIPT_READY)
+        self.assertEqual(
+            ready_score - non_ready_score,
+            merge_mod.SCORE_PODCAST_TRANSCRIPT_READY,
+        )
+
+    def test_podcast_fixture_episodes_survive_url_dedup(self):
+        data = load_fixture("podcast")
+        source = data["sources"][0]
+        articles = []
+        for article in source["articles"]:
+            article = article.copy()
+            article["source_type"] = "podcast"
+            article["source_name"] = source["name"]
+            article["source_id"] = source["source_id"]
+            article["quality_score"] = merge_mod.calculate_base_score(
+                article,
+                {"source_type": "podcast", "priority": source.get("priority", False)},
+            )
+            articles.append(article)
+
+        deduped = deduplicate_articles(articles)
+        links = {article["link"] for article in deduped}
+
+        self.assertEqual(len(deduped), 2)
+        self.assertEqual(
+            links,
+            {
+                "https://www.youtube.com/watch?v=abc123",
+                "https://www.youtube.com/watch?v=def456",
+            },
+        )
 
 
 class TestFixtureData(unittest.TestCase):
