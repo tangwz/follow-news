@@ -192,6 +192,37 @@ class TestYoutubeMetadataNormalization(unittest.TestCase):
         self.assertEqual(len(episodes), 1)
         self.assertEqual(episodes[0]["link"], "https://www.youtube.com/watch?v=abc123")
 
+    @patch("fetch_podcast.run_ytdlp_video_metadata")
+    def test_hydrates_flat_youtube_entry_dates_before_normalization(self, run_video_metadata):
+        run_video_metadata.return_value = {
+            "id": "abc123",
+            "title": "Hydrated Episode",
+            "webpage_url": "https://www.youtube.com/watch?v=abc123",
+            "upload_date": "20260504",
+            "duration": 1800,
+        }
+        payload = {
+            "entries": [
+                {
+                    "id": "abc123",
+                    "title": "Flat Episode",
+                    "url": "abc123",
+                },
+            ]
+        }
+
+        hydrated = fetch_podcast.hydrate_youtube_metadata(payload, "/usr/local/bin/yt-dlp")
+        episodes = fetch_podcast.normalize_youtube_metadata(hydrated, self.source, self.cutoff)
+
+        run_video_metadata.assert_called_once_with(
+            "/usr/local/bin/yt-dlp",
+            "https://www.youtube.com/watch?v=abc123",
+        )
+        self.assertEqual(len(episodes), 1)
+        self.assertEqual(episodes[0]["title"], "Hydrated Episode")
+        self.assertEqual(episodes[0]["date"], "2026-05-04T00:00:00+00:00")
+        self.assertEqual(episodes[0]["duration_seconds"], 1800)
+
 
 class TestTranscriptBackend(unittest.TestCase):
     def setUp(self):
@@ -415,6 +446,44 @@ class TestPodcastCliOutput(unittest.TestCase):
 
         with self.assertRaises(RuntimeError):
             fetch_podcast.run_ytdlp_metadata("/usr/local/bin/yt-dlp", source)
+
+    @patch(
+        "subprocess.run",
+        return_value=subprocess.CompletedProcess(
+            args=["yt-dlp"],
+            returncode=0,
+            stdout='{"entries":[]}',
+            stderr="",
+        ),
+    )
+    def test_run_ytdlp_metadata_uses_flat_playlist_discovery(self, run):
+        source = {"url": "https://www.youtube.com/playlist?list=abc"}
+
+        fetch_podcast.run_ytdlp_metadata("/usr/local/bin/yt-dlp", source)
+
+        cmd = run.call_args.args[0]
+        self.assertIn("--flat-playlist", cmd)
+        self.assertIn("--playlist-end", cmd)
+
+    @patch(
+        "subprocess.run",
+        return_value=subprocess.CompletedProcess(
+            args=["yt-dlp"],
+            returncode=0,
+            stdout='{"id":"abc123","upload_date":"20260504"}',
+            stderr="",
+        ),
+    )
+    def test_run_ytdlp_video_metadata_uses_no_playlist_skip_download(self, run):
+        fetch_podcast.run_ytdlp_video_metadata(
+            "/usr/local/bin/yt-dlp",
+            "https://www.youtube.com/watch?v=abc123",
+        )
+
+        cmd = run.call_args.args[0]
+        self.assertIn("--skip-download", cmd)
+        self.assertIn("--no-playlist", cmd)
+        self.assertNotIn("--flat-playlist", cmd)
 
     def test_output_cache_is_fresh_rejects_arbitrary_json(self):
         with tempfile.TemporaryDirectory() as tmpdir:

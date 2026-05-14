@@ -28,6 +28,7 @@ except ImportError:
 
 TIMEOUT = 30
 MAX_EPISODES_PER_SOURCE = 20
+YOUTUBE_METADATA_WORKERS = 4
 PODCAST_CACHE_PATH = "/tmp/follow-news-podcast-cache.json"
 TRANSCRIPT_SUCCESS_TTL_SECONDS = 30 * 86400
 TRANSCRIPT_FAILURE_TTL_SECONDS = 6 * 3600
@@ -214,9 +215,7 @@ def normalize_youtube_metadata(
         video_id = str(entry.get("id") or youtube_video_id(link)).strip()
         if link and not is_http_url(link):
             link = ""
-        published = timestamp_to_datetime(entry.get("timestamp")) or parse_youtube_date(
-            entry.get("upload_date") or entry.get("release_date")
-        )
+        published = youtube_entry_published_at(entry)
         if not link and video_id:
             link = f"https://www.youtube.com/watch?v={video_id}"
         if not title or not link or not video_id or not published or published < cutoff:
@@ -236,6 +235,22 @@ def normalize_youtube_metadata(
         episodes.append(episode)
 
     return episodes[:MAX_EPISODES_PER_SOURCE]
+
+
+def youtube_entry_published_at(entry: Dict[str, Any]) -> Optional[datetime]:
+    return timestamp_to_datetime(entry.get("timestamp")) or parse_youtube_date(
+        entry.get("upload_date") or entry.get("release_date")
+    )
+
+
+def youtube_entry_link(entry: Dict[str, Any]) -> str:
+    link = str(entry.get("webpage_url") or entry.get("url") or "").strip()
+    video_id = str(entry.get("id") or youtube_video_id(link)).strip()
+    if link and is_http_url(link):
+        return link
+    if video_id:
+        return f"https://www.youtube.com/watch?v={video_id}"
+    return ""
 
 
 def resolve_ytdlp_bin() -> Optional[str]:
@@ -533,6 +548,90 @@ def run_ytdlp_metadata(
     return payload
 
 
+def run_ytdlp_video_metadata(
+    ytdlp_bin: str,
+    url: str,
+    timeout: int = 90,
+) -> Dict[str, Any]:
+    import subprocess
+
+    cmd = [
+        ytdlp_bin,
+        "--dump-single-json",
+        "--skip-download",
+        "--no-playlist",
+        url,
+    ]
+    try:
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError("yt-dlp video metadata command timed out") from exc
+    except OSError as exc:
+        raise RuntimeError(str(exc)) from exc
+
+    if result.returncode != 0:
+        message = (result.stderr or result.stdout or "yt-dlp video metadata command failed").strip()
+        raise RuntimeError(message[:300])
+
+    try:
+        payload = json.loads(result.stdout)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError("yt-dlp video metadata output was not valid JSON") from exc
+    if not isinstance(payload, dict):
+        raise RuntimeError("yt-dlp video metadata output was not an object")
+    return payload
+
+
+def hydrate_youtube_metadata(
+    payload: Dict[str, Any],
+    ytdlp_bin: str,
+) -> Dict[str, Any]:
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    raw_entries = payload.get("entries") if isinstance(payload, dict) else None
+    if not isinstance(raw_entries, list):
+        return payload
+
+    hydrated_entries: List[Dict[str, Any]] = []
+    hydrate_jobs: Dict[int, str] = {}
+    for entry in raw_entries[:MAX_EPISODES_PER_SOURCE]:
+        if not isinstance(entry, dict):
+            continue
+        hydrated_entries.append(entry)
+        if youtube_entry_published_at(entry):
+            continue
+
+        link = youtube_entry_link(entry)
+        if not link:
+            continue
+        hydrate_jobs[len(hydrated_entries) - 1] = link
+
+    if not hydrate_jobs:
+        return {**payload, "entries": hydrated_entries}
+
+    max_workers = min(YOUTUBE_METADATA_WORKERS, len(hydrate_jobs))
+    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+        futures = {
+            pool.submit(run_ytdlp_video_metadata, ytdlp_bin, link): (index, link)
+            for index, link in hydrate_jobs.items()
+        }
+        for future in as_completed(futures):
+            index, link = futures[future]
+            try:
+                video_metadata = future.result()
+            except RuntimeError as exc:
+                logging.warning("Failed to hydrate YouTube podcast metadata for %s: %s", link, exc)
+                continue
+            hydrated_entries[index] = {**hydrated_entries[index], **video_metadata}
+
+    return {**payload, "entries": hydrated_entries}
+
+
 def fetch_youtube_source(
     source: Dict[str, Any],
     cutoff: datetime,
@@ -544,6 +643,7 @@ def fetch_youtube_source(
         raise RuntimeError("yt-dlp is not available")
 
     payload = run_ytdlp_metadata(ytdlp_bin, source)
+    payload = hydrate_youtube_metadata(payload, ytdlp_bin)
     episodes = normalize_youtube_metadata(payload, source, cutoff)
     return [
         enrich_episode_transcript(episode, source, cache, no_cache=no_cache)
