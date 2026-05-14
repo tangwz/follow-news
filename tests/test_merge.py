@@ -7,9 +7,11 @@ Run: python3 -m pytest tests/ -v
 
 import json
 import sys
+import tempfile
 import unittest
 from datetime import datetime
 from pathlib import Path
+from unittest.mock import patch
 
 SCRIPTS_DIR = Path(__file__).parent.parent / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
@@ -269,6 +271,47 @@ class TestPodcastMerge(unittest.TestCase):
         self.assertEqual(len(deduped), 2)
         self.assertEqual(
             links,
+            {
+                "https://www.youtube.com/watch?v=abc123",
+                "https://www.youtube.com/watch?v=def456",
+            },
+        )
+
+    def test_main_keeps_all_podcast_fixture_episodes(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_path = Path(temp_dir) / "merged.json"
+            argv = [
+                "merge-sources.py",
+                "--podcast",
+                str(FIXTURES_DIR / "podcast.json"),
+                "--output",
+                str(output_path),
+            ]
+
+            with patch.object(sys, "argv", argv):
+                exit_code = merge_mod.main()
+
+            self.assertEqual(exit_code, 0)
+
+            with open(output_path, "r", encoding="utf-8") as f:
+                output = json.load(f)
+
+        articles = [
+            article
+            for topic in output["topics"].values()
+            for article in topic["articles"]
+        ]
+        podcast_articles = [
+            article
+            for article in articles
+            if article.get("source_type") == "podcast"
+        ]
+        podcast_links = {article["link"] for article in podcast_articles}
+
+        self.assertEqual(output["input_sources"]["podcast_episodes"], 2)
+        self.assertEqual(len(podcast_articles), 2)
+        self.assertEqual(
+            podcast_links,
             {
                 "https://www.youtube.com/watch?v=abc123",
                 "https://www.youtube.com/watch?v=def456",
