@@ -285,7 +285,7 @@ python3 scripts/enrich-articles.py --input merged.json --output enriched.json [-
 
 #### `merge-sources.py` - Quality Scoring & Deduplication
 ```bash
-python3 scripts/merge-sources.py --rss FILE --twitter FILE --web FILE --github FILE --reddit FILE --podcast FILE
+python3 scripts/merge-sources.py --rss FILE --twitter FILE --web FILE --github FILE --trending FILE --reddit FILE --podcast FILE
 ```
 - Quality scoring, title similarity dedup (85%), previous digest penalty
 - Output: topic-grouped articles sorted by score

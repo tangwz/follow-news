@@ -488,6 +488,7 @@ class TestReadmeCounts(unittest.TestCase):
             "| 🎙️ Podcast | custom sources |",
             content,
         )
+        self.assertIn("GitHub Tr.", content)
         self.assertIn(
             f"`config/defaults/sources.json` — {counts['total']} built-in sources ({counts['rss']} RSS, {counts['twitter']} Twitter, {counts['github']} GitHub, {counts['reddit']} Reddit)",
             content,
@@ -516,6 +517,7 @@ class TestReadmeCounts(unittest.TestCase):
             "| 🎙️ Podcast | 自定义源 |",
             content,
         )
+        self.assertIn("GitHub Tr.", content)
         self.assertIn(
             f"`config/defaults/sources.json` — {counts['total']} 个内置数据源（{counts['rss']} RSS、{counts['twitter']} Twitter、{counts['github']} GitHub、{counts['reddit']} Reddit）",
             content,
@@ -538,6 +540,9 @@ class TestReadmeCounts(unittest.TestCase):
                 self.assertIn('"type": "podcast"', content)
                 self.assertIn('"platform": "youtube"', content)
                 self.assertIn('"backend": "yt-dlp"', content)
+
+        skill = docs["SKILL.md"]
+        self.assertIn("--trending FILE", skill)
 
     def test_twitter_backend_docs_include_opencli(self):
         readme_en = README_EN.read_text(encoding="utf-8")

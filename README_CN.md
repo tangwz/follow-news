@@ -41,21 +41,21 @@ clawhub install follow-news
 | 🔍 Web 搜索 | 5 个主题 | `llm`、`ai-agent`、`builder`、`kol`、`frontier-tech` + 时效过滤 |
 | 🐙 GitHub | 23 个仓库 | 关键项目的 Release 跟踪（LangChain、vLLM、DeepSeek、Llama…） |
 | 🗣️ Reddit | 8 个子版块 | r/MachineLearning、r/LocalLLaMA、r/OpenAI、r/ExperiencedDevs… |
-| 🎙️ Podcast | 自定义源 | RSS podcast feeds and YouTube playlists/channels with optional transcripts |
+| 🎙️ Podcast | 自定义源 | RSS 播客订阅源、YouTube 播放列表/频道，以及可选 transcript |
 
 ### 数据管道
 
 ```
        run-pipeline.py (~30秒)
               ↓
-  RSS ─┐
-  Twitter ─┤
-  Web ─────┤── 并行采集 ──→ merge-sources.py
-  GitHub ──┤
-  Reddit ──┤
-  Podcast ─┘
-              ↓
-  质量评分 → 去重 → 主题分组
+  RSS ────────┐
+  Twitter ────┤
+  Web ────────┤── 并行采集 ──→ merge-sources.py
+  GitHub ─────┤                          ↓
+  GitHub Tr. ─┤              enrich-articles.py（可选）
+  Reddit ─────┤                          ↓
+  Podcast ────┘
+              质量评分 → 去重 → 主题分组
               ↓
     Discord / 邮件 / PDF 输出
 ```
@@ -129,8 +129,8 @@ export BRAVE_API_KEY="..."         # 单个密钥
 export WEB_SEARCH_BACKEND="auto"   # auto|brave|tavily
 # GitHub
 export GITHUB_TOKEN="..."          # GitHub API
-# Podcast transcripts
-export YTDLP_BIN="/path/to/yt-dlp"  # optional; defaults to yt-dlp on PATH
+# Podcast transcript
+export YTDLP_BIN="/path/to/yt-dlp"  # 可选；默认使用 PATH 中的 yt-dlp
 # 其他
 export BRAVE_PLAN="free"           # 覆盖速率限制检测：free|pro
 
