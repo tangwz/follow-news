@@ -122,10 +122,12 @@ def normalize_url(url: str) -> str:
         if domain in {"youtube.com", "m.youtube.com"} and path == "/watch":
             video_id = parse_qs(parsed.query).get("v", [""])[0]
             if video_id:
-                return f"{domain}{path}?v={video_id}"
+                return f"youtube:{video_id}"
 
         if domain == "youtu.be" and path:
-            return f"{domain}{path}"
+            video_id = path.lstrip("/")
+            if video_id:
+                return f"youtube:{video_id}"
 
         return f"{domain}{path}"
     except Exception:

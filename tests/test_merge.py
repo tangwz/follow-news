@@ -92,6 +92,20 @@ class TestURLDedup(unittest.TestCase):
         url2 = normalize_url_for_dedup("https://youtu.be/def456")
         self.assertNotEqual(url1, url2)
 
+    def test_youtube_equivalent_video_urls_normalize_equal(self):
+        urls = [
+            "https://www.youtube.com/watch?v=abc123",
+            "https://m.youtube.com/watch?v=abc123",
+            "https://youtu.be/abc123",
+        ]
+        normalized_urls = {normalize_url_for_dedup(url) for url in urls}
+        self.assertEqual(normalized_urls, {"youtube:abc123"})
+
+    def test_youtube_different_video_ids_normalize_not_equal(self):
+        url1 = normalize_url_for_dedup("https://www.youtube.com/watch?v=abc123")
+        url2 = normalize_url_for_dedup("https://youtu.be/def456")
+        self.assertNotEqual(url1, url2)
+
 
 class TestDeduplication(unittest.TestCase):
     def test_removes_url_duplicates(self):
