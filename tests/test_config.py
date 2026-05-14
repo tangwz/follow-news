@@ -16,6 +16,9 @@ DEFAULTS_DIR = Path(__file__).parent.parent / "config" / "defaults"
 README_EN = Path(__file__).parent.parent / "README.md"
 README_ZH = Path(__file__).parent.parent / "README_CN.md"
 SKILL_FILE = Path(__file__).parent.parent / "SKILL.md"
+TEST_PIPELINE = Path(__file__).parent.parent / "scripts" / "test-pipeline.sh"
+
+REQUIRED_TOPICS = {"llm", "ai-agent", "builder", "kol", "frontier-tech"}
 
 
 def read_skill_frontmatter():
@@ -45,6 +48,19 @@ def get_source_counts():
         "reddit": len([s for s in sources if s["type"] == "reddit"]),
         "topics": len(topics),
     }
+
+
+def group_sources_by_topic(sources):
+    grouped = {}
+    for source in sources:
+        for topic in source.get("topics", []):
+            grouped.setdefault(topic, []).append(source)
+    return grouped
+
+
+def get_topic_ids():
+    topics = load_merged_topics(DEFAULTS_DIR)
+    return [topic["id"] for topic in topics]
 
 
 class TestLoadSources(unittest.TestCase):
@@ -122,9 +138,80 @@ class TestLoadTopics(unittest.TestCase):
 
     def test_topic_ids(self):
         topics = load_merged_topics(DEFAULTS_DIR)
-        ids = [t["id"] for t in topics]
-        self.assertIn("llm", ids)
-        self.assertIn("frontier-tech", ids)
+        ids = {t["id"] for t in topics}
+        for expected in REQUIRED_TOPICS:
+            self.assertIn(expected, ids)
+
+    def test_builder_and_kol_topics_have_representative_sources(self):
+        topics = load_merged_topics(DEFAULTS_DIR)
+        topic_ids = {t["id"] for t in topics}
+        self.assertIn("builder", topic_ids)
+        self.assertIn("kol", topic_ids)
+
+        sources = load_merged_sources(DEFAULTS_DIR)
+        topic_sources = group_sources_by_topic(sources)
+
+        for topic in ("builder", "kol"):
+            sources_for_topic = topic_sources.get(topic, [])
+            self.assertGreater(
+                len(sources_for_topic),
+                0,
+                f"No default sources found for topic '{topic}'",
+            )
+
+            enabled_source_ids = {
+                source["id"]
+                for source in sources_for_topic
+                if source.get("enabled", True)
+            }
+            self.assertGreater(
+                len(enabled_source_ids),
+                0,
+                f"No enabled default source for topic '{topic}'",
+            )
+            self.assertIn(
+                "twitter",
+                {source["type"] for source in sources_for_topic},
+                f"Topic '{topic}' should include twitter source coverage",
+            )
+
+    def test_crypto_default_set_is_not_reintroduced(self):
+        topics = load_merged_topics(DEFAULTS_DIR)
+        topic_ids = {t["id"] for t in topics}
+        self.assertNotIn("crypto", topic_ids)
+
+        sources = load_merged_sources(DEFAULTS_DIR)
+        source_topics = {
+            topic for source in sources for topic in source.get("topics", [])
+        }
+        self.assertNotIn("crypto", source_topics)
+
+    def test_builder_kol_topics_have_stable_representative_sources(self):
+        sources = load_merged_sources(DEFAULTS_DIR)
+        topic_sources = group_sources_by_topic(sources)
+
+        for topic in ("builder", "kol"):
+            sources_for_topic = topic_sources.get(topic, [])
+            enabled_for_topic = [
+                source for source in sources_for_topic if source.get("enabled", True)
+            ]
+            self.assertGreater(
+                len(enabled_for_topic),
+                0,
+                f"Expected at least one enabled source for '{topic}'",
+            )
+
+            self.assertGreater(
+                len(
+                    [
+                        source
+                        for source in enabled_for_topic
+                        if source.get("type") == "twitter"
+                    ]
+                ),
+                0,
+                f"Expected enabled twitter representative for '{topic}'",
+            )
 
 
 class TestSourceCounts(unittest.TestCase):
@@ -204,7 +291,7 @@ class TestReadmeCounts(unittest.TestCase):
     def test_twitter_backend_docs_include_opencli(self):
         readme_en = README_EN.read_text(encoding="utf-8")
         readme_zh = README_ZH.read_text(encoding="utf-8")
-        skill = (Path(__file__).parent.parent / "SKILL.md").read_text(encoding="utf-8")
+        skill = SKILL_FILE.read_text(encoding="utf-8")
 
         for content in (readme_en, readme_zh, skill):
             lowered = content.lower()
@@ -218,13 +305,42 @@ class TestReadmeCounts(unittest.TestCase):
     def test_opencli_installation_requirements_are_documented(self):
         readme_en = README_EN.read_text(encoding="utf-8")
         readme_zh = README_ZH.read_text(encoding="utf-8")
-        skill = (Path(__file__).parent.parent / "SKILL.md").read_text(encoding="utf-8")
+        skill = SKILL_FILE.read_text(encoding="utf-8")
 
         for content in (readme_en, readme_zh, skill):
             lowered = content.lower()
             self.assertIn("jackwener/opencli", lowered)
             self.assertIn("install", lowered)
             self.assertIn("opencli doctor", lowered)
+
+    def test_intro_docs_describe_current_default_topics(self):
+        topic_ids = get_topic_ids()
+        docs = {
+            "README.md": README_EN.read_text(encoding="utf-8"),
+            "README_CN.md": README_ZH.read_text(encoding="utf-8"),
+            "SKILL.md": SKILL_FILE.read_text(encoding="utf-8"),
+            "scripts/test-pipeline.sh": TEST_PIPELINE.read_text(encoding="utf-8"),
+        }
+
+        for name, content in docs.items():
+            with self.subTest(doc=name):
+                for topic_id in topic_ids:
+                    self.assertIn(topic_id, content)
+
+        retired_default_examples = (
+            "CoinDesk",
+            "VitalikButerin",
+            "vitalik-twitter",
+            "r/CryptoCurrency",
+            "crypto news",
+            "crypto sources",
+            "Crypto, Frontier Tech",
+            "--topics crypto",
+        )
+        for name, content in docs.items():
+            with self.subTest(doc=name):
+                for example in retired_default_examples:
+                    self.assertNotIn(example, content)
 
 
 class TestSkillFrontmatter(unittest.TestCase):

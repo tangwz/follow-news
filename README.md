@@ -19,9 +19,9 @@ That's it. Your bot handles installation, configuration, scheduling, and deliver
 
 More examples:
 
-> 🗣️ "Set up a weekly AI digest, only LLM and AI Agent topics, deliver to Discord #ai-weekly every Monday"
+> 🗣️ "Set up a weekly AI digest, only `llm` and `ai-agent` topics, deliver to Discord #ai-weekly every Monday"
 
-> 🗣️ "Install follow-news, add my RSS feeds, and send crypto news to Telegram"
+> 🗣️ "Install follow-news, add my RSS feeds, and include the `builder` and `kol` topics"
 
 > 🗣️ "Give me a tech digest right now, skip Twitter sources"
 
@@ -36,11 +36,11 @@ A quality-scored, deduplicated tech digest built from **156 built-in sources** p
 
 | Layer | Sources | What |
 |-------|---------|------|
-| 📡 RSS | 65 feeds | OpenAI, Anthropic, Ben's Bites, HN, 36氪, CoinDesk… |
-| 🐦 Twitter/X | 60 KOLs | @karpathy, @VitalikButerin, @sama, @elonmusk… |
-| 🔍 Web Search | 5 topics | Tavily or Brave Search API with freshness filters, browser fallback when unavailable |
+| 📡 RSS | 65 feeds | OpenAI, Simon Willison, Hugging Face, HN, 36氪… |
+| 🐦 Twitter/X | 60 KOLs | @sama, @karpathy, @paulg, @garrytan, @dotey… |
+| 🔍 Web Search | 5 topics | `llm`, `ai-agent`, `builder`, `kol`, `frontier-tech` with freshness filters |
 | 🐙 GitHub | 23 repos | Releases from key projects (LangChain, vLLM, DeepSeek, Llama…) |
-| 🗣️ Reddit | 8 subs | r/MachineLearning, r/LocalLLaMA, r/CryptoCurrency… |
+| 🗣️ Reddit | 8 subs | r/MachineLearning, r/LocalLLaMA, r/OpenAI, r/ExperiencedDevs… |
 
 ### Pipeline
 
@@ -63,7 +63,7 @@ A quality-scored, deduplicated tech digest built from **156 built-in sources** p
 ## ⚙️ Configuration
 
 - `config/defaults/sources.json` — 156 built-in sources (65 RSS, 60 Twitter, 23 GitHub, 8 Reddit)
-- `config/defaults/topics.json` — 5 topics with search queries & Twitter queries
+- `config/defaults/topics.json` — 5 topics: `llm`, `ai-agent`, `builder`, `kol`, `frontier-tech`
 - User overrides in `workspace/config/` take priority
 
 ## 🎨 Customize Your Sources
@@ -85,7 +85,7 @@ Your overlay file **merges** with defaults:
 {
   "sources": [
     {"id": "my-blog", "type": "rss", "enabled": true, "url": "https://myblog.com/feed", "topics": ["llm"]},
-    {"id": "openai-blog", "enabled": false}
+    {"id": "openai-rss", "enabled": false}
   ]
 }
 ```
