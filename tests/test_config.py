@@ -2,6 +2,7 @@
 """Tests for config_loader.py."""
 
 import json
+import importlib.util
 import sys
 import tempfile
 import unittest
@@ -17,8 +18,16 @@ README_EN = Path(__file__).parent.parent / "README.md"
 README_ZH = Path(__file__).parent.parent / "README_CN.md"
 SKILL_FILE = Path(__file__).parent.parent / "SKILL.md"
 TEST_PIPELINE = Path(__file__).parent.parent / "scripts" / "test-pipeline.sh"
+VALIDATE_CONFIG = Path(__file__).parent.parent / "scripts" / "validate-config.py"
 
 REQUIRED_TOPICS = {"llm", "ai-agent", "builder", "kol", "frontier-tech"}
+
+validate_config_spec = importlib.util.spec_from_file_location(
+    "validate_config", VALIDATE_CONFIG
+)
+validate_config = importlib.util.module_from_spec(validate_config_spec)
+validate_config_spec.loader.exec_module(validate_config)
+validate_source_types = validate_config.validate_source_types
 
 
 def read_skill_frontmatter():
@@ -124,6 +133,63 @@ class TestLoadSources(unittest.TestCase):
         sources = load_merged_sources(DEFAULTS_DIR, None)
         self.assertGreater(len(sources), 100)
 
+    def test_user_overlay_accepts_podcast_source(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            overlay = {
+                "sources": [
+                    {
+                        "id": "training-data-podcast",
+                        "type": "podcast",
+                        "name": "Training Data",
+                        "enabled": True,
+                        "priority": True,
+                        "url": "https://www.youtube.com/playlist?list=PLOhHNjZItNnMm5tdW61JpnyxeYH5NDDx8",
+                        "platform": "youtube",
+                        "topics": ["llm", "ai-agent"],
+                        "transcript": {
+                            "enabled": True,
+                            "backend": "auto",
+                            "languages": ["en", "zh", "zh-Hans"],
+                        },
+                    }
+                ]
+            }
+            overlay_path = Path(tmpdir) / "follow-news-sources.json"
+            with open(overlay_path, "w") as f:
+                json.dump(overlay, f)
+
+            sources = load_merged_sources(DEFAULTS_DIR, Path(tmpdir))
+            podcast = [s for s in sources if s["id"] == "training-data-podcast"]
+
+            self.assertEqual(len(podcast), 1)
+            self.assertEqual(podcast[0]["type"], "podcast")
+            self.assertEqual(podcast[0]["platform"], "youtube")
+
+    def test_source_types_include_podcast_when_user_adds_one(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            overlay = {
+                "sources": [
+                    {
+                        "id": "test-podcast",
+                        "type": "podcast",
+                        "name": "Test Podcast",
+                        "enabled": True,
+                        "priority": False,
+                        "url": "https://example.com/feed.xml",
+                        "platform": "rss",
+                        "topics": ["frontier-tech"],
+                    }
+                ]
+            }
+            overlay_path = Path(tmpdir) / "follow-news-sources.json"
+            with open(overlay_path, "w") as f:
+                json.dump(overlay, f)
+
+            sources = load_merged_sources(DEFAULTS_DIR, Path(tmpdir))
+            types = {s["type"] for s in sources}
+
+            self.assertIn("podcast", types)
+
 
 class TestLoadTopics(unittest.TestCase):
     def test_loads_defaults(self):
@@ -214,6 +280,188 @@ class TestLoadTopics(unittest.TestCase):
             )
 
 
+class TestPodcastConfigValidation(unittest.TestCase):
+    def podcast_source(self, **overrides):
+        source = {
+            "id": "test-podcast",
+            "type": "podcast",
+            "url": "https://example.com/feed.xml",
+            "platform": "rss",
+        }
+        source.update(overrides)
+        return source
+
+    def test_validate_source_types_rejects_invalid_podcast_url(self):
+        sources_data = {
+            "sources": [
+                self.podcast_source(url="not a url"),
+            ]
+        }
+
+        self.assertFalse(validate_source_types(sources_data))
+
+    def test_validate_source_types_accepts_valid_podcast_urls(self):
+        sources_data = {
+            "sources": [
+                self.podcast_source(id="rss-podcast", url="http://example.com/feed.xml"),
+                self.podcast_source(
+                    id="youtube-podcast",
+                    url="https://www.youtube.com/playlist?list=abc",
+                    platform="youtube",
+                ),
+            ]
+        }
+
+        self.assertTrue(validate_source_types(sources_data))
+
+    def test_validate_source_types_rejects_podcast_url_with_whitespace_host(self):
+        sources_data = {
+            "sources": [
+                self.podcast_source(url="https://exa mple.com/feed.xml"),
+            ]
+        }
+
+        self.assertFalse(validate_source_types(sources_data))
+
+    def test_validate_source_types_rejects_podcast_url_with_malformed_ipv6(self):
+        sources_data = {
+            "sources": [
+                self.podcast_source(url="https://[::1/feed.xml"),
+            ]
+        }
+
+        self.assertFalse(validate_source_types(sources_data))
+
+    def test_validate_source_types_rejects_invalid_podcast_platform(self):
+        sources_data = {
+            "sources": [
+                self.podcast_source(platform="vimeo"),
+            ]
+        }
+
+        self.assertFalse(validate_source_types(sources_data))
+
+    def test_validate_source_types_rejects_non_object_transcript(self):
+        sources_data = {
+            "sources": [
+                self.podcast_source(transcript=[]),
+            ]
+        }
+
+        self.assertFalse(validate_source_types(sources_data))
+
+    def test_validate_source_types_rejects_invalid_transcript_backend(self):
+        sources_data = {
+            "sources": [
+                self.podcast_source(transcript={"backend": "manual"}),
+            ]
+        }
+
+        self.assertFalse(validate_source_types(sources_data))
+
+    def test_validate_source_types_rejects_invalid_transcript_enabled(self):
+        sources_data = {
+            "sources": [
+                self.podcast_source(transcript={"enabled": "yes"}),
+            ]
+        }
+
+        self.assertFalse(validate_source_types(sources_data))
+
+    def test_validate_source_types_rejects_invalid_transcript_languages(self):
+        for transcript in (
+            {"languages": "en"},
+            {"languages": ["en", 123]},
+        ):
+            with self.subTest(transcript=transcript):
+                sources_data = {
+                    "sources": [
+                        self.podcast_source(transcript=transcript),
+                    ]
+                }
+
+                self.assertFalse(validate_source_types(sources_data))
+
+    def test_validate_config_accepts_podcast_overlay(self):
+        import subprocess
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            overlay = {
+                "sources": [
+                    {
+                        "id": "training-data-podcast",
+                        "type": "podcast",
+                        "name": "Training Data",
+                        "enabled": True,
+                        "priority": True,
+                        "url": "https://www.youtube.com/playlist?list=PLOhHNjZItNnMm5tdW61JpnyxeYH5NDDx8",
+                        "platform": "youtube",
+                        "topics": ["llm", "ai-agent"],
+                        "transcript": {
+                            "enabled": True,
+                            "backend": "auto",
+                            "languages": ["en", "zh", "zh-Hans"],
+                        },
+                    }
+                ]
+            }
+            overlay_path = Path(tmpdir) / "follow-news-sources.json"
+            with open(overlay_path, "w") as f:
+                json.dump(overlay, f)
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(Path(__file__).parent.parent / "scripts" / "validate-config.py"),
+                    "--defaults",
+                    str(DEFAULTS_DIR),
+                    "--config",
+                    tmpdir,
+                ],
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+
+    def test_validate_config_rejects_podcast_without_url(self):
+        import subprocess
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            overlay = {
+                "sources": [
+                    {
+                        "id": "broken-podcast",
+                        "type": "podcast",
+                        "name": "Broken Podcast",
+                        "enabled": True,
+                        "priority": False,
+                        "platform": "youtube",
+                        "topics": ["llm"],
+                    }
+                ]
+            }
+            overlay_path = Path(tmpdir) / "follow-news-sources.json"
+            with open(overlay_path, "w") as f:
+                json.dump(overlay, f)
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(Path(__file__).parent.parent / "scripts" / "validate-config.py"),
+                    "--defaults",
+                    str(DEFAULTS_DIR),
+                    "--config",
+                    tmpdir,
+                ],
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("url", result.stderr + result.stdout)
+
+
 class TestSourceCounts(unittest.TestCase):
     """Verify source counts match expectations."""
 
@@ -244,7 +492,7 @@ class TestReadmeCounts(unittest.TestCase):
         counts = get_source_counts()
         content = README_EN.read_text(encoding="utf-8")
         self.assertIn(
-            f"Automated tech news digest — {counts['total']} built-in sources, 6-source pipeline, one chat message to install.",
+            f"Automated tech news digest — {counts['total']} built-in sources, 7-source pipeline, one chat message to install.",
             content,
         )
         self.assertIn(
@@ -260,6 +508,11 @@ class TestReadmeCounts(unittest.TestCase):
             content,
         )
         self.assertIn(
+            "| 🎙️ Podcast | custom sources |",
+            content,
+        )
+        self.assertIn("GitHub Tr.", content)
+        self.assertIn(
             f"`config/defaults/sources.json` — {counts['total']} built-in sources ({counts['rss']} RSS, {counts['twitter']} Twitter, {counts['github']} GitHub, {counts['reddit']} Reddit)",
             content,
         )
@@ -268,7 +521,7 @@ class TestReadmeCounts(unittest.TestCase):
         counts = get_source_counts()
         content = README_ZH.read_text(encoding="utf-8")
         self.assertIn(
-            f"自动化科技资讯汇总 — {counts['total']} 个内置数据源，6 层管道，一句话安装。",
+            f"自动化科技资讯汇总 — {counts['total']} 个内置数据源，7 层管道，一句话安装。",
             content,
         )
         self.assertIn(
@@ -284,9 +537,44 @@ class TestReadmeCounts(unittest.TestCase):
             content,
         )
         self.assertIn(
+            "| 🎙️ Podcast | 自定义源 |",
+            content,
+        )
+        self.assertIn("RSS 播客订阅源、YouTube 播放列表/频道，以及可选转录文本", content)
+        self.assertIn("GitHub Tr.", content)
+        self.assertIn(
             f"`config/defaults/sources.json` — {counts['total']} 个内置数据源（{counts['rss']} RSS、{counts['twitter']} Twitter、{counts['github']} GitHub、{counts['reddit']} Reddit）",
             content,
         )
+
+    def test_podcast_runtime_docs_include_youtube_and_ytdlp(self):
+        docs = {
+            "README.md": README_EN.read_text(encoding="utf-8"),
+            "README_CN.md": README_ZH.read_text(encoding="utf-8"),
+            "SKILL.md": SKILL_FILE.read_text(encoding="utf-8"),
+        }
+
+        for name, content in docs.items():
+            with self.subTest(doc=name):
+                lowered = content.lower()
+                self.assertIn("podcast", lowered)
+                self.assertIn("youtube", lowered)
+                self.assertIn("yt-dlp", lowered)
+                self.assertIn("YTDLP_BIN", content)
+                self.assertIn('"type": "podcast"', content)
+                self.assertIn('"platform": "youtube"', content)
+                self.assertIn('"backend": "yt-dlp"', content)
+
+        skill = docs["SKILL.md"]
+        self.assertIn("--trending FILE", skill)
+
+        readme_zh = docs["README_CN.md"]
+        self.assertIn("```bash\n# Twitter/X Backend", readme_zh)
+        self.assertIn('export BRAVE_PLAN="free"           # Override Brave rate limit: free|pro\n```', readme_zh)
+        self.assertIn("YouTube 播客元数据和转录文本抓取需要 `yt-dlp`", readme_zh)
+        self.assertIn("对应 YouTube 播客源会标记为失败", readme_zh)
+        self.assertNotIn("可选 transcript", readme_zh)
+        self.assertNotIn("metadata/transcript enrich", readme_zh)
 
     def test_twitter_backend_docs_include_opencli(self):
         readme_en = README_EN.read_text(encoding="utf-8")
@@ -385,11 +673,20 @@ class TestSkillFrontmatter(unittest.TestCase):
                 "GH_APP_ID",
                 "GH_APP_INSTALL_ID",
                 "GH_APP_KEY_FILE",
+                "YTDLP_BIN",
             },
         )
+        self.assertIn("yt-dlp", openclaw["optionalBins"])
         self.assertEqual(openclaw["files"]["read"][0]["path"], "config/defaults/")
-        tools_by_bin = {entry["bin"]: entry for entry in openclaw["tools"]}
+        tools_by_bin = {entry["bin"]: entry for entry in openclaw["tools"] if "bin" in entry}
         self.assertTrue(tools_by_bin["python3"]["required"])
+        self.assertFalse(tools_by_bin["yt-dlp"]["required"])
+        self.assertTrue(
+            any(
+                entry.get("script") == "scripts/fetch-podcast.py"
+                for entry in openclaw["tools"]
+            )
+        )
         self.assertIn("python3", openclaw["requires"]["bins"])
 
     def test_skill_web_search_docs_do_not_advertise_unimplemented_backends(self):

@@ -1,5 +1,21 @@
 # Changelog
 
+## v3.17.0 — 2026-05-14
+
+### Added
+- Podcast source support for RSS and YouTube playlist feeds, including optional
+  `yt-dlp` metadata hydration and transcript enrichment.
+- Podcast pipeline integration, merge scoring support, configuration validation,
+  editor save validation, and runtime documentation for podcast sources.
+
+### Fixed
+- Keep YouTube podcast discovery accurate for oldest-first playlists, date-only
+  playlist metadata, and tight `--hours` fetch windows.
+- Invalidate podcast output caches when fetch parameters or source configuration
+  contents change.
+- Namespace transcript cache keys by source identity to avoid cross-feed GUID
+  collisions.
+
 ## v3.16.8 — 2026-05-12
 
 ### Fixed

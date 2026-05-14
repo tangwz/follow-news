@@ -1,6 +1,6 @@
 # Follow News
 
-> Automated tech news digest — 156 built-in sources, 6-source pipeline, one chat message to install.
+> Automated tech news digest — 156 built-in sources, 7-source pipeline, one chat message to install.
 
 **English** | [中文](README_CN.md)
 
@@ -41,6 +41,7 @@ A quality-scored, deduplicated tech digest built from **156 built-in sources** p
 | 🔍 Web Search | 5 topics | `llm`, `ai-agent`, `builder`, `kol`, `frontier-tech` with freshness filters |
 | 🐙 GitHub | 23 repos | Releases from key projects (LangChain, vLLM, DeepSeek, Llama…) |
 | 🗣️ Reddit | 8 subs | r/MachineLearning, r/LocalLLaMA, r/OpenAI, r/ExperiencedDevs… |
+| 🎙️ Podcast | custom sources | RSS podcast feeds and YouTube playlists/channels with optional transcripts |
 
 ### Pipeline
 
@@ -52,7 +53,8 @@ A quality-scored, deduplicated tech digest built from **156 built-in sources** p
   Web ────────┤── parallel fetch ──→ merge-sources.py
   GitHub ─────┤                          ↓
   GitHub Tr. ─┤              enrich-articles.py (opt-in)
-  Reddit ─────┘                          ↓
+  Reddit ─────┤                          ↓
+  Podcast ────┘
               Quality Scoring → Dedup → Topic Grouping
                              ↓
                Discord / Email / PDF output
@@ -68,7 +70,7 @@ A quality-scored, deduplicated tech digest built from **156 built-in sources** p
 
 ## 🎨 Customize Your Sources
 
-Works out of the box with 156 built-in sources (65 RSS, 60 Twitter, 23 GitHub, 8 Reddit) — but fully customizable. Copy the defaults to your workspace config and override:
+Works out of the box with 156 built-in sources (65 RSS, 60 Twitter, 23 GitHub, 8 Reddit) and supports custom podcast sources — but fully customizable. Copy the defaults to your workspace config and override:
 
 ```bash
 # Copy and customize
@@ -85,12 +87,29 @@ Your overlay file **merges** with defaults:
 {
   "sources": [
     {"id": "my-blog", "type": "rss", "enabled": true, "url": "https://myblog.com/feed", "topics": ["llm"]},
+    {
+      "id": "training-data-podcast",
+      "type": "podcast",
+      "name": "Training Data",
+      "url": "https://www.youtube.com/playlist?list=PLOhHNjZItNnMm5tdW61JpnyxeYH5NDDx8",
+      "platform": "youtube",
+      "enabled": true,
+      "priority": true,
+      "topics": ["llm", "ai-agent"],
+      "transcript": {
+        "enabled": true,
+        "backend": "yt-dlp",
+        "languages": ["en", "zh", "zh-Hans"]
+      }
+    },
     {"id": "openai-rss", "enabled": false}
   ]
 }
 ```
 
 No need to copy the entire file — just include what you want to change.
+
+Podcast sources use `type: "podcast"`. RSS podcast feeds work without extra tools. YouTube podcast sources use `platform: "youtube"` and can fetch metadata and transcripts through the optional `yt-dlp` runtime.
 
 ## 🔧 Environment Variables
 
@@ -117,6 +136,8 @@ export BRAVE_API_KEY="..."         # Single Brave key
 export WEB_SEARCH_BACKEND="auto"   # auto|brave|tavily|browser
 # GitHub
 export GITHUB_TOKEN="..."          # GitHub API
+# Podcast transcripts
+export YTDLP_BIN="/path/to/yt-dlp"  # optional; defaults to yt-dlp on PATH
 # Other
 export BRAVE_PLAN="free"           # Override Brave rate limit: free|pro
 ```
@@ -126,6 +147,8 @@ OpenCLI is preferred because it can reuse an authenticated Chrome/Chromium sessi
 To use the OpenCLI backend, install the OpenCLI executable yourself and make it available on `PATH`, or set `OPENCLI_BIN` to its absolute path. In OpenClaw, also install the `jackwener/opencli` Skill so the agent can run `opencli doctor`, check the browser bridge, and guide X login-state troubleshooting.
 
 OpenCLI browser bridge stability depends on the local browser extension connection. The fetcher defaults to 10 concurrent OpenCLI workers (`OPENCLI_MAX_WORKERS=10`) and has a hard cap at 10. It also closes X/Twitter tabs created during the OpenCLI fetch (`OPENCLI_CLOSE_TABS_AFTER_RUN=1` by default) and, on macOS, closes Chrome automation windows that OpenCLI opened during the run (`OPENCLI_CLOSE_CHROME_WINDOWS_AFTER_RUN=1` by default) while leaving pre-existing windows alone.
+
+RSS podcast feeds do not need extra tools. YouTube podcast metadata and transcript fetching require `yt-dlp`; install it on `PATH`, or set `YTDLP_BIN` to the executable path. If `yt-dlp` is missing, that YouTube podcast source is marked failed without blocking the rest of the pipeline.
 
 ## 📦 Dependencies
 
@@ -145,10 +168,11 @@ pip install feedparser>=6.0.0 jsonschema>=4.0.0
 ### Optional
 
 ```bash
-pip install weasyprint
+pip install weasyprint yt-dlp
 ```
 
 - **weasyprint** — Enables PDF report generation
+- **yt-dlp** — Enables YouTube podcast metadata and transcript fetching; `YTDLP_BIN` can point to a standalone binary
 
 ## 📂 Repository
 

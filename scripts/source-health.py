@@ -116,6 +116,7 @@ def main():
     parser.add_argument("--github", type=Path, help="GitHub output JSON")
     parser.add_argument("--reddit", type=Path, help="Reddit output JSON")
     parser.add_argument("--web", type=Path, help="Web search output JSON")
+    parser.add_argument("--podcast", type=Path, help="Podcast output JSON")
     parser.add_argument("--output", type=Path, help="Optional JSON summary output path")
     parser.add_argument("--verbose", "-v", action="store_true")
     args = parser.parse_args()
@@ -132,8 +133,8 @@ def main():
             update_health(health, sources, now)
             processed_inputs.append({"name": label, "path": str(path), "count": len(sources)})
 
-    # Reddit and Web use flexible loading (subreddits/topics keys)
-    for label, path in [("reddit", args.reddit), ("web", args.web)]:
+    # Reddit, Web, and Podcast use flexible loading for non-standard source keys.
+    for label, path in [("reddit", args.reddit), ("web", args.web), ("podcast", args.podcast)]:
         sources = load_source_file_flexible(path)
         if sources:
             update_health(health, sources, now)

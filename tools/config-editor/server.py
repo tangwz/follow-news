@@ -39,7 +39,7 @@ ALLOWED_FILES = {
 class ConfigEditorHandler(SimpleHTTPRequestHandler):
     _json_prefix = re.compile(r"^/api/")
     _LOCAL_ORIGINS = {"127.0.0.1", "localhost", "::1"}
-    _ALLOWED_SOURCE_TYPES = {"rss", "twitter", "web", "github", "reddit"}
+    _ALLOWED_SOURCE_TYPES = {"rss", "twitter", "web", "github", "reddit", "podcast"}
     _WILDCARD_HOSTS = {"0.0.0.0", "::", "::0"}
 
     def _send_json(self, payload: Dict[str, Any], status: int = 200) -> None:
@@ -212,6 +212,26 @@ class ConfigEditorHandler(SimpleHTTPRequestHandler):
             return "twitter"
         return source_type
 
+    @staticmethod
+    def _is_http_url_with_hostname(value: Any) -> bool:
+        if not isinstance(value, str):
+            return False
+        if any(char.isspace() or ord(char) < 32 for char in value):
+            return False
+
+        try:
+            parsed = urlparse(value)
+            hostname = parsed.hostname
+            parsed.port
+        except ValueError:
+            return False
+
+        if not hostname:
+            return False
+        if any(char.isspace() or ord(char) < 32 for char in hostname):
+            return False
+        return parsed.scheme in {"http", "https"}
+
     def _normalize_sources_payload(self, sources: Any) -> int:
         if not isinstance(sources, list):
             return 0
@@ -280,6 +300,36 @@ class ConfigEditorHandler(SimpleHTTPRequestHandler):
             elif source_type == "reddit":
                 if not isinstance(source.get("subreddit"), str) or not source["subreddit"].strip():
                     raise ValueError(f"Source '{source_id}' missing required field 'subreddit'")
+            elif source_type == "podcast":
+                url = source.get("url")
+                if not url:
+                    raise ValueError(f"Source '{source_id}' missing required field 'url'")
+                if not self._is_http_url_with_hostname(url):
+                    raise ValueError(f"Source '{source_id}' has invalid field 'url'")
+
+                platform = source.get("platform", "auto")
+                if platform not in {"auto", "rss", "youtube"}:
+                    raise ValueError(f"Source '{source_id}' has invalid field 'platform'")
+
+                if "transcript" in source:
+                    transcript = source["transcript"]
+                    if not isinstance(transcript, dict):
+                        raise ValueError(f"Source '{source_id}' has invalid field 'transcript'")
+
+                    enabled = transcript.get("enabled", False)
+                    if "enabled" in transcript and not isinstance(enabled, bool):
+                        raise ValueError(f"Source '{source_id}' has invalid field 'transcript.enabled'")
+
+                    backend = transcript.get("backend", "auto")
+                    if backend not in {"auto", "yt-dlp"}:
+                        raise ValueError(f"Source '{source_id}' has invalid field 'transcript.backend'")
+
+                    languages = transcript.get("languages", [])
+                    if "languages" in transcript and (
+                        not isinstance(languages, list)
+                        or not all(isinstance(language, str) for language in languages)
+                    ):
+                        raise ValueError(f"Source '{source_id}' has invalid field 'transcript.languages'")
 
     def _validate_topics_payload(self, topics: Any) -> None:
         if not isinstance(topics, list):

@@ -1,6 +1,6 @@
 # Follow News
 
-> 自动化科技资讯汇总 — 156 个内置数据源，6 层管道，一句话安装。
+> 自动化科技资讯汇总 — 156 个内置数据源，7 层管道，一句话安装。
 
 [English](README.md) | **中文**
 
@@ -41,19 +41,21 @@ clawhub install follow-news
 | 🔍 Web 搜索 | 5 个主题 | `llm`、`ai-agent`、`builder`、`kol`、`frontier-tech` + 时效过滤 |
 | 🐙 GitHub | 23 个仓库 | 关键项目的 Release 跟踪（LangChain、vLLM、DeepSeek、Llama…） |
 | 🗣️ Reddit | 8 个子版块 | r/MachineLearning、r/LocalLLaMA、r/OpenAI、r/ExperiencedDevs… |
+| 🎙️ Podcast | 自定义源 | RSS 播客订阅源、YouTube 播放列表/频道，以及可选转录文本 |
 
 ### 数据管道
 
 ```
        run-pipeline.py (~30秒)
               ↓
-  RSS ─┐
-  Twitter ─┤
-  Web ─────┤── 并行采集 ──→ merge-sources.py
-  GitHub ──┤
-  Reddit ──┘
-              ↓
-  质量评分 → 去重 → 主题分组
+  RSS ────────┐
+  Twitter ────┤
+  Web ────────┤── 并行采集 ──→ merge-sources.py
+  GitHub ─────┤                          ↓
+  GitHub Tr. ─┤              enrich-articles.py（可选）
+  Reddit ─────┤                          ↓
+  Podcast ────┘
+              质量评分 → 去重 → 主题分组
               ↓
     Discord / 邮件 / PDF 输出
 ```
@@ -68,7 +70,7 @@ clawhub install follow-news
 
 ## 🎨 自定义数据源
 
-开箱即用，内置 156 个数据源——但完全可自定义。将默认配置复制到 workspace 并覆盖：
+开箱即用，内置 156 个数据源，并支持自定义 podcast 源——但完全可自定义。将默认配置复制到 workspace 并覆盖：
 
 ```bash
 # 复制并自定义
@@ -85,6 +87,21 @@ cp config/defaults/topics.json workspace/config/follow-news-topics.json
 {
   "sources": [
     {"id": "my-blog", "type": "rss", "enabled": true, "url": "https://myblog.com/feed", "topics": ["llm"]},
+    {
+      "id": "training-data-podcast",
+      "type": "podcast",
+      "name": "Training Data",
+      "url": "https://www.youtube.com/playlist?list=PLOhHNjZItNnMm5tdW61JpnyxeYH5NDDx8",
+      "platform": "youtube",
+      "enabled": true,
+      "priority": true,
+      "topics": ["llm", "ai-agent"],
+      "transcript": {
+        "enabled": true,
+        "backend": "yt-dlp",
+        "languages": ["en", "zh", "zh-Hans"]
+      }
+    },
     {"id": "openai-rss", "enabled": false}
   ]
 }
@@ -92,32 +109,40 @@ cp config/defaults/topics.json workspace/config/follow-news-topics.json
 
 不需要复制整个文件——只写你要改的部分。
 
+Podcast 源使用 `type: "podcast"`。RSS 播客订阅源不需要额外工具；YouTube 播客源使用 `platform: "youtube"`，并可通过可选的 `yt-dlp` 运行时抓取元数据和转录文本。
+
 ## 🔧 环境变量
 
-# Twitter/X 后端（自动优先级：opencli > getxapi > twitterapiio > official）
+```bash
+# Twitter/X Backend (auto priority: opencli > getxapi > twitterapiio > official)
 export TWITTER_API_BACKEND="auto"  # auto|opencli|getxapi|twitterapiio|official
-export OPENCLI_BIN="/path/to/opencli"  # 可选；默认使用 PATH 上的 opencli
-export OPENCLI_MAX_WORKERS="10"  # 可选；提高并发可加快抓取
-export OPENCLI_CLOSE_TABS_AFTER_RUN="1"  # 可选；抓取后关闭 OpenCLI 新建的 X/Twitter 标签页
-export OPENCLI_CLOSE_CHROME_WINDOWS_AFTER_RUN="1"  # 可选；关闭 OpenCLI 本次打开的 Chrome 自动化窗口
+export OPENCLI_BIN="/path/to/opencli"  # optional; defaults to opencli on PATH
+export OPENCLI_MAX_WORKERS="10"  # optional; increase parallel OpenCLI workers
+export OPENCLI_CLOSE_TABS_AFTER_RUN="1"  # optional; close OpenCLI-created X/Twitter tabs after fetch
+export OPENCLI_CLOSE_CHROME_WINDOWS_AFTER_RUN="1"  # optional; close Chrome automation windows opened by OpenCLI
 export GETX_API_KEY="..."        # GetXAPI fallback
 export TWITTERAPI_IO_KEY="..."   # twitterapi.io fallback
-export X_BEARER_TOKEN="..."      # Twitter/X 官方 API v2 fallback
-# 网页搜索
+export X_BEARER_TOKEN="..."      # Official X API v2 fallback
+# Web Search
 export TAVILY_API_KEY="tvly-xxx"   # Tavily Search API
-export BRAVE_API_KEYS="k1,k2,k3"   # Brave Search API 密钥（逗号分隔用于轮换）
-export BRAVE_API_KEY="..."         # 单个密钥
+export BRAVE_API_KEYS="k1,k2,k3"   # Brave Search API keys, comma-separated for rotation
+export BRAVE_API_KEY="..."         # Single Brave key
 export WEB_SEARCH_BACKEND="auto"   # auto|brave|tavily
 # GitHub
 export GITHUB_TOKEN="..."          # GitHub API
-# 其他
-export BRAVE_PLAN="free"           # 覆盖速率限制检测：free|pro
+# Podcast Transcript
+export YTDLP_BIN="/path/to/yt-dlp"  # optional; defaults to yt-dlp on PATH
+# Other
+export BRAVE_PLAN="free"           # Override Brave rate limit: free|pro
+```
 
-OpenCLI 是默认优先后端，因为它可以复用已经登录的 Chrome/Chromium 会话，不再强制要求 Twitter API 凭据。CI、无浏览器环境，或已经配置 API key 的用户仍可通过 API 后端 fallback。
+OpenCLI 是默认优先后端，因为它可以复用已经登录的 Chrome/Chromium 会话，不再强制要求 Twitter API 凭据。CI、无浏览器环境，或已经配置 API 密钥的用户仍可通过 API 后备后端运行。
 
 如需使用 OpenCLI 后端，用户需要自行安装 OpenCLI 可执行文件，并确保它在 `PATH` 上，或通过 `OPENCLI_BIN` 指向其绝对路径。在 OpenClaw 中，还需要安装 `jackwener/opencli` Skill，这样 agent 才能运行 `opencli doctor`、检查浏览器桥接，并协助排查 X 登录态问题。
 
 OpenCLI 的稳定性取决于本机浏览器扩展桥接状态。抓取器默认使用 10 并发 OpenCLI 请求（`OPENCLI_MAX_WORKERS=10`，上限 10），同时默认会关闭本次 OpenCLI 抓取中新建的 X/Twitter 标签页（`OPENCLI_CLOSE_TABS_AFTER_RUN=1`），并在 macOS 上关闭 OpenCLI 本次打开的 Chrome 自动化窗口（`OPENCLI_CLOSE_CHROME_WINDOWS_AFTER_RUN=1`），不会关闭执行前已经存在的窗口。
+
+RSS 播客订阅源不需要额外工具。YouTube 播客元数据和转录文本抓取需要 `yt-dlp`；请将它安装到 `PATH`，或通过 `YTDLP_BIN` 指向可执行文件。缺少 `yt-dlp` 时，对应 YouTube 播客源会标记为失败，但不会阻塞其他数据源。
 
 ## 📦 依赖
 
@@ -137,10 +162,11 @@ pip install feedparser>=6.0.0 jsonschema>=4.0.0
 ### 可选依赖
 
 ```bash
-pip install weasyprint
+pip install weasyprint yt-dlp
 ```
 
 - **weasyprint** — 启用 PDF 报告生成
+- **yt-dlp** — 启用 YouTube 播客元数据和转录文本抓取；`YTDLP_BIN` 可指向独立可执行文件
 
 ## 🧪 测试
 

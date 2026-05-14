@@ -48,11 +48,11 @@ USAGE:
 
 OPTIONS:
   --only TYPES      Only run these source types (comma-separated)
-                    Values: rss, twitter, github, reddit, web
+                    Values: rss, twitter, github, trending, reddit, web, podcast
                     Example: --only twitter,rss
 
   --skip TYPES      Skip these source types (comma-separated)
-                    Values: rss, twitter, github, reddit, web
+                    Values: rss, twitter, github, trending, reddit, web, podcast
                     Example: --skip web,reddit
 
   --topics TOPICS   Only include sources matching these topics (comma-separated)
@@ -222,6 +222,15 @@ else
     SKIPPED=$((SKIPPED + 1))
 fi
 
+# GitHub Trending
+if should_run "trending"; then
+    run_step "fetch-github-trending" python3 "$SCRIPT_DIR/fetch-github.py" --trending --defaults "$DEFAULTS" --hours "$HOURS" --output "$OUTDIR/trending.json" --force "${EXTRA_ARGS[@]}"
+    validate_json "$OUTDIR/trending.json" "trending"
+else
+    echo "⏭  fetch-github-trending (skipped)"
+    SKIPPED=$((SKIPPED + 1))
+fi
+
 # Twitter
 if should_run "twitter"; then
     TWITTER_ARGS=("--defaults" "$DEFAULTS" "--hours" "$HOURS" "--output" "$OUTDIR/twitter.json" "--force" "${EXTRA_ARGS[@]}")
@@ -267,13 +276,24 @@ else
     SKIPPED=$((SKIPPED + 1))
 fi
 
+# Podcast
+if should_run "podcast"; then
+    run_step "fetch-podcast" python3 "$SCRIPT_DIR/fetch-podcast.py" --defaults "$DEFAULTS" --hours "$HOURS" --output "$OUTDIR/podcast.json" --force "${EXTRA_ARGS[@]}"
+    validate_json "$OUTDIR/podcast.json" "podcast"
+else
+    echo "⏭  fetch-podcast (skipped)"
+    SKIPPED=$((SKIPPED + 1))
+fi
+
 # ── Merge ──
 MERGE_ARGS=("--output" "$OUTDIR/merged.json")
 [ -f "$OUTDIR/rss.json" ]     && MERGE_ARGS+=("--rss" "$OUTDIR/rss.json")
 [ -f "$OUTDIR/twitter.json" ] && MERGE_ARGS+=("--twitter" "$OUTDIR/twitter.json")
 [ -f "$OUTDIR/web.json" ]     && MERGE_ARGS+=("--web" "$OUTDIR/web.json")
 [ -f "$OUTDIR/github.json" ]  && MERGE_ARGS+=("--github" "$OUTDIR/github.json")
+[ -f "$OUTDIR/trending.json" ] && MERGE_ARGS+=("--trending" "$OUTDIR/trending.json")
 [ -f "$OUTDIR/reddit.json" ]  && MERGE_ARGS+=("--reddit" "$OUTDIR/reddit.json")
+[ -f "$OUTDIR/podcast.json" ] && MERGE_ARGS+=("--podcast" "$OUTDIR/podcast.json")
 
 if [ ${#MERGE_ARGS[@]} -gt 2 ]; then
     run_step "merge-sources" python3 "$SCRIPT_DIR/merge-sources.py" "${MERGE_ARGS[@]}"

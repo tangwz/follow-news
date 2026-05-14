@@ -7,8 +7,11 @@ Run: python3 -m pytest tests/ -v
 
 import json
 import sys
+import tempfile
 import unittest
+from datetime import datetime
 from pathlib import Path
+from unittest.mock import patch
 
 SCRIPTS_DIR = Path(__file__).parent.parent / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
@@ -78,6 +81,30 @@ class TestURLDedup(unittest.TestCase):
         url1 = normalize_url_for_dedup("https://example.com/page/")
         url2 = normalize_url_for_dedup("https://example.com/page")
         self.assertEqual(url1, url2)
+
+    def test_youtube_watch_preserves_video_id(self):
+        url1 = normalize_url_for_dedup("https://www.youtube.com/watch?v=abc123")
+        url2 = normalize_url_for_dedup("https://www.youtube.com/watch?v=def456")
+        self.assertNotEqual(url1, url2)
+
+    def test_youtu_be_preserves_video_id(self):
+        url1 = normalize_url_for_dedup("https://youtu.be/abc123")
+        url2 = normalize_url_for_dedup("https://youtu.be/def456")
+        self.assertNotEqual(url1, url2)
+
+    def test_youtube_equivalent_video_urls_normalize_equal(self):
+        urls = [
+            "https://www.youtube.com/watch?v=abc123",
+            "https://m.youtube.com/watch?v=abc123",
+            "https://youtu.be/abc123",
+        ]
+        normalized_urls = {normalize_url_for_dedup(url) for url in urls}
+        self.assertEqual(normalized_urls, {"youtube:abc123"})
+
+    def test_youtube_different_video_ids_normalize_not_equal(self):
+        url1 = normalize_url_for_dedup("https://www.youtube.com/watch?v=abc123")
+        url2 = normalize_url_for_dedup("https://youtu.be/def456")
+        self.assertNotEqual(url1, url2)
 
 
 class TestDeduplication(unittest.TestCase):
@@ -205,6 +232,105 @@ class TestGroupByTopics(unittest.TestCase):
         self.assertIn("ai-agent", groups, "ai-agent should inherit priority from ai_agent")
         self.assertEqual(len(groups["ai-agent"]), 1)
         self.assertEqual(groups["ai-agent"][0]["primary_topic"], "ai-agent")
+
+
+class TestPodcastMerge(unittest.TestCase):
+    def test_podcast_fixture_shape(self):
+        data = load_fixture("podcast")
+        self.assertEqual(data["source_type"], "podcast")
+        self.assertEqual(data["total_articles"], 2)
+        self.assertEqual(data["sources"][0]["articles"][0]["transcript_status"], "ok")
+
+    def test_podcast_transcript_bonus(self):
+        ready_article = {
+            "title": "Podcast Episode",
+            "date": "2000-01-01T00:00:00+00:00",
+            "transcript_status": "ok",
+            "transcript": "x" * 500,
+        }
+        non_ready_article = {
+            "title": "Podcast Episode",
+            "date": "2000-01-01T00:00:00+00:00",
+            "transcript_status": "missing",
+            "transcript": "",
+        }
+        source = {"source_type": "podcast", "priority": False}
+
+        ready_score = merge_mod.calculate_base_score(ready_article, source)
+        non_ready_score = merge_mod.calculate_base_score(non_ready_article, source)
+
+        self.assertEqual(
+            ready_score - non_ready_score,
+            merge_mod.SCORE_PODCAST_TRANSCRIPT_READY,
+        )
+
+    def test_podcast_fixture_episodes_survive_url_dedup(self):
+        data = load_fixture("podcast")
+        source = data["sources"][0]
+        articles = []
+        for article in source["articles"]:
+            article = article.copy()
+            article["source_type"] = "podcast"
+            article["source_name"] = source["name"]
+            article["source_id"] = source["source_id"]
+            article["quality_score"] = merge_mod.calculate_base_score(
+                article,
+                {"source_type": "podcast", "priority": source.get("priority", False)},
+            )
+            articles.append(article)
+
+        deduped = deduplicate_articles(articles)
+        links = {article["link"] for article in deduped}
+
+        self.assertEqual(len(deduped), 2)
+        self.assertEqual(
+            links,
+            {
+                "https://www.youtube.com/watch?v=abc123",
+                "https://www.youtube.com/watch?v=def456",
+            },
+        )
+
+    def test_main_keeps_all_podcast_fixture_episodes(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_path = Path(temp_dir) / "merged.json"
+            argv = [
+                "merge-sources.py",
+                "--podcast",
+                str(FIXTURES_DIR / "podcast.json"),
+                "--output",
+                str(output_path),
+            ]
+
+            with patch.object(sys, "argv", argv):
+                exit_code = merge_mod.main()
+
+            self.assertEqual(exit_code, 0)
+
+            with open(output_path, "r", encoding="utf-8") as f:
+                output = json.load(f)
+
+        articles = [
+            article
+            for topic in output["topics"].values()
+            for article in topic["articles"]
+        ]
+        podcast_articles = [
+            article
+            for article in articles
+            if article.get("source_type") == "podcast"
+        ]
+        podcast_links = {article["link"] for article in podcast_articles}
+
+        self.assertEqual(output["input_sources"]["podcast_episodes"], 2)
+        self.assertEqual(len(podcast_articles), 2)
+        self.assertEqual(
+            podcast_links,
+            {
+                "https://www.youtube.com/watch?v=abc123",
+                "https://www.youtube.com/watch?v=def456",
+            },
+        )
 
 
 class TestFixtureData(unittest.TestCase):

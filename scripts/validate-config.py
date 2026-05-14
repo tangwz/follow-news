@@ -16,6 +16,7 @@ import sys
 import os
 from pathlib import Path
 from typing import Dict, Any, Set
+from urllib.parse import urlparse
 
 try:
     import jsonschema
@@ -137,6 +138,27 @@ def validate_sources_consistency(sources_data: Dict[str, Any],
         return True
 
 
+def is_http_url_with_hostname(value: Any) -> bool:
+    """Return whether value is an HTTP(S) URL with a hostname."""
+    if not isinstance(value, str):
+        return False
+    if any(char.isspace() or ord(char) < 32 for char in value):
+        return False
+
+    try:
+        parsed = urlparse(value)
+        hostname = parsed.hostname
+        parsed.port
+    except ValueError:
+        return False
+
+    if not hostname:
+        return False
+    if any(char.isspace() or ord(char) < 32 for char in hostname):
+        return False
+    return parsed.scheme in {"http", "https"}
+
+
 def validate_source_types(sources_data: Dict[str, Any]) -> bool:
     """Validate source-type specific requirements."""
     errors = []
@@ -157,6 +179,42 @@ def validate_source_types(sources_data: Dict[str, Any]) -> bool:
         elif source_type == "reddit":
             if not source.get("subreddit"):
                 errors.append(f"Reddit source '{source_id}' missing required 'subreddit' field")
+        elif source_type == "podcast":
+            url = source.get("url")
+            if not url:
+                errors.append(f"Podcast source '{source_id}' missing required 'url' field")
+            elif not is_http_url_with_hostname(url):
+                errors.append(f"Podcast source '{source_id}' has invalid url: {url}")
+            platform = source.get("platform", "auto")
+            if platform not in {"auto", "rss", "youtube"}:
+                errors.append(
+                    f"Podcast source '{source_id}' has invalid platform: {platform}"
+                )
+            if "transcript" in source:
+                transcript = source["transcript"]
+                if not isinstance(transcript, dict):
+                    errors.append(
+                        f"Podcast source '{source_id}' has invalid transcript config"
+                    )
+                else:
+                    enabled = transcript.get("enabled", False)
+                    if "enabled" in transcript and not isinstance(enabled, bool):
+                        errors.append(
+                            f"Podcast source '{source_id}' has invalid transcript enabled flag"
+                        )
+                    backend = transcript.get("backend", "auto")
+                    if backend not in {"auto", "yt-dlp"}:
+                        errors.append(
+                            f"Podcast source '{source_id}' has invalid transcript backend: {backend}"
+                        )
+                    languages = transcript.get("languages", [])
+                    if "languages" in transcript and (
+                        not isinstance(languages, list)
+                        or not all(isinstance(language, str) for language in languages)
+                    ):
+                        errors.append(
+                            f"Podcast source '{source_id}' has invalid transcript languages"
+                        )
         elif source_type == "web":
             # Web sources are handled by topics, no specific validation needed
             pass
