@@ -429,3 +429,230 @@ def load_podcast_sources(defaults_dir: Path, config_dir: Optional[Path] = None) 
     ]
     logging.info("Loaded %d enabled podcast sources", len(sources))
     return sources
+
+
+def load_podcast_cache(no_cache: bool = False) -> Dict[str, Any]:
+    if no_cache:
+        return {"transcripts": {}}
+
+    try:
+        with open(PODCAST_CACHE_PATH, "r", encoding="utf-8") as handle:
+            cache = json.load(handle)
+    except (OSError, json.JSONDecodeError):
+        return {"transcripts": {}}
+
+    if not isinstance(cache, dict):
+        return {"transcripts": {}}
+    if not isinstance(cache.get("transcripts"), dict):
+        cache["transcripts"] = {}
+    return cache
+
+
+def save_podcast_cache(cache: Dict[str, Any]) -> None:
+    try:
+        with open(PODCAST_CACHE_PATH, "w", encoding="utf-8") as handle:
+            json.dump(cache, handle, ensure_ascii=False, indent=2)
+            handle.write("\n")
+    except OSError as exc:
+        logging.warning("Failed to write podcast cache: %s", exc)
+
+
+def fetch_rss_source(
+    source: Dict[str, Any],
+    cutoff: datetime,
+    cache: Dict[str, Any],
+    no_cache: bool,
+) -> List[Dict[str, Any]]:
+    request = Request(
+        source["url"],
+        headers={"User-Agent": "FollowNews/2.0"},
+    )
+    with urlopen(request, timeout=TIMEOUT) as response:
+        content = response.read().decode("utf-8", errors="replace")
+
+    episodes = parse_rss_episodes(content, source, cutoff)
+    return [
+        enrich_episode_transcript(episode, source, cache, no_cache=no_cache)
+        for episode in episodes
+    ]
+
+
+def run_ytdlp_metadata(
+    ytdlp_bin: str,
+    source: Dict[str, Any],
+    timeout: int = 90,
+) -> Dict[str, Any]:
+    import subprocess
+
+    cmd = [
+        ytdlp_bin,
+        "--dump-single-json",
+        "--flat-playlist",
+        "--playlist-end",
+        str(MAX_EPISODES_PER_SOURCE),
+        source["url"],
+    ]
+    try:
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError("yt-dlp metadata command timed out") from exc
+    except OSError as exc:
+        raise RuntimeError(str(exc)) from exc
+
+    if result.returncode != 0:
+        message = (result.stderr or result.stdout or "yt-dlp metadata command failed").strip()
+        raise RuntimeError(message[:300])
+
+    try:
+        payload = json.loads(result.stdout)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError("yt-dlp metadata output was not valid JSON") from exc
+    if not isinstance(payload, dict):
+        raise RuntimeError("yt-dlp metadata output was not an object")
+    return payload
+
+
+def fetch_youtube_source(
+    source: Dict[str, Any],
+    cutoff: datetime,
+    cache: Dict[str, Any],
+    no_cache: bool,
+) -> List[Dict[str, Any]]:
+    ytdlp_bin = resolve_ytdlp_bin()
+    if not ytdlp_bin:
+        raise RuntimeError("yt-dlp is not available")
+
+    payload = run_ytdlp_metadata(ytdlp_bin, source)
+    episodes = normalize_youtube_metadata(payload, source, cutoff)
+    return [
+        enrich_episode_transcript(episode, source, cache, no_cache=no_cache)
+        for episode in episodes
+    ]
+
+
+def fetch_source(
+    source: Dict[str, Any],
+    cutoff: datetime,
+    cache: Dict[str, Any],
+    no_cache: bool = False,
+) -> Dict[str, Any]:
+    platform = source.get("platform")
+    if not platform or platform == "auto":
+        platform = infer_platform(source.get("url", ""))
+
+    result = {
+        "source_id": source.get("id", ""),
+        "source_type": "podcast",
+        "name": source.get("name", ""),
+        "url": source.get("url", ""),
+        "priority": bool(source.get("priority", False)),
+        "topics": list(source.get("topics", [])),
+        "platform": platform,
+        "status": "ok",
+        "attempts": 1,
+        "count": 0,
+        "articles": [],
+    }
+
+    try:
+        if platform == "youtube":
+            articles = fetch_youtube_source(source, cutoff, cache, no_cache)
+        elif platform == "rss":
+            articles = fetch_rss_source(source, cutoff, cache, no_cache)
+        else:
+            raise RuntimeError(f"Unsupported podcast platform: {platform}")
+    except Exception as exc:
+        result["status"] = "error"
+        result["error"] = str(exc)[:300]
+        return result
+
+    result["articles"] = articles
+    result["count"] = len(articles)
+    return result
+
+
+def run_fetch(
+    sources: List[Dict[str, Any]],
+    hours: int,
+    output: Path,
+    cache: Dict[str, Any],
+    no_cache: bool = False,
+) -> int:
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+    source_results = [
+        fetch_source(source, cutoff, cache, no_cache=no_cache)
+        for source in sources
+    ]
+    payload = {
+        "generated": datetime.now(timezone.utc).isoformat(),
+        "source_type": "podcast",
+        "total_sources": len(source_results),
+        "total_articles": sum(int(result.get("count", 0)) for result in source_results),
+        "sources": source_results,
+    }
+
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    return 0
+
+
+def output_cache_is_fresh(output: Path, max_age_seconds: int = 3600) -> bool:
+    if not output.exists():
+        return False
+    try:
+        json.loads(output.read_text(encoding="utf-8"))
+        age = time.time() - output.stat().st_mtime
+    except (OSError, json.JSONDecodeError):
+        return False
+    return age < max_age_seconds
+
+
+def create_default_output_path() -> Path:
+    fd, path = tempfile.mkstemp(prefix="follow-news-podcast-", suffix=".json")
+    os.close(fd)
+    return Path(path)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Fetch podcast episode metadata")
+    parser.add_argument("--defaults", type=Path, default=Path("config/defaults"))
+    parser.add_argument("--config", type=Path, default=None)
+    parser.add_argument("--hours", type=int, default=336)
+    parser.add_argument("--output", "-o", type=Path, default=None)
+    parser.add_argument("--verbose", "-v", action="store_true")
+    parser.add_argument("--no-cache", action="store_true")
+    parser.add_argument("--force", action="store_true")
+    args = parser.parse_args()
+
+    setup_logging(args.verbose)
+
+    output = args.output or create_default_output_path()
+    if not args.force and output_cache_is_fresh(output):
+        logging.info("Using fresh podcast output: %s", output)
+        return 0
+
+    sources = load_podcast_sources(args.defaults, args.config)
+    cache = load_podcast_cache(no_cache=args.no_cache)
+    result = run_fetch(
+        sources,
+        args.hours,
+        output,
+        cache,
+        no_cache=args.no_cache,
+    )
+    if not args.no_cache:
+        save_podcast_cache(cache)
+    logging.info("Wrote podcast output: %s", output)
+    return result
+
+
+if __name__ == "__main__":
+    sys.exit(main())

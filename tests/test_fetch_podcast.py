@@ -286,3 +286,51 @@ Next line.
         }
 
         self.assertEqual(fetch_podcast.transcript_languages(source), ["en", "zh", "zh-Hans"])
+
+
+class TestPodcastCliOutput(unittest.TestCase):
+    @patch("fetch_podcast.fetch_source")
+    def test_run_fetch_writes_expected_output_shape(self, fetch_source):
+        source = {
+            "id": "test-podcast",
+            "type": "podcast",
+            "name": "Test Podcast",
+            "enabled": True,
+            "priority": True,
+            "url": "https://example.com/feed.xml",
+            "topics": ["llm"],
+        }
+        fetch_source.return_value = {
+            "source_id": "test-podcast",
+            "source_type": "podcast",
+            "name": "Test Podcast",
+            "url": "https://example.com/feed.xml",
+            "priority": True,
+            "topics": ["llm"],
+            "status": "ok",
+            "attempts": 1,
+            "count": 1,
+            "articles": [
+                {
+                    "title": "Episode",
+                    "link": "https://example.com/episode",
+                    "date": "2026-05-04T20:05:00+00:00",
+                    "guid": "episode",
+                    "topics": ["llm"],
+                    "show_name": "Test Podcast",
+                    "platform": "rss",
+                    "transcript_status": "disabled",
+                }
+            ],
+        }
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output = Path(tmpdir) / "podcast.json"
+            cache = {"transcripts": {}}
+            result = fetch_podcast.run_fetch([source], 48, output, cache, no_cache=True)
+
+            data = json.loads(output.read_text(encoding="utf-8"))
+
+        self.assertEqual(result, 0)
+        self.assertEqual(data["source_type"], "podcast")
+        self.assertEqual(data["total_articles"], 1)
+        self.assertEqual(data["sources"][0]["source_id"], "test-podcast")
