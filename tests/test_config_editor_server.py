@@ -200,6 +200,74 @@ class ConfigEditorServerTest(unittest.TestCase):
                     server.server_close()
                     server_thread.join(timeout=1.0)
 
+    def test_post_accepts_podcast_source_without_optional_fields_on_save(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            sources_path = Path(tmpdir) / "sources.json"
+            topics_path = Path(tmpdir) / "topics.json"
+
+            payload_source = {
+                "sources": [
+                    {
+                        "id": "minimal-podcast",
+                        "type": "podcast",
+                        "name": "Minimal Podcast",
+                        "enabled": True,
+                        "priority": False,
+                        "topics": ["podcast"],
+                        "url": "https://example.com/podcast.xml",
+                    }
+                ]
+            }
+            sources_path.write_text(json.dumps(payload_source, ensure_ascii=False, indent=2), encoding="utf-8")
+            topics_path.write_text("[]", encoding="utf-8")
+
+            allowed_files = {
+                "sources": {
+                    "path": sources_path,
+                    "label_zh": "测试源",
+                    "label_en": "Test sources",
+                },
+                "topics": {
+                    "path": topics_path,
+                    "label_zh": "测试话题",
+                    "label_en": "Test topics",
+                },
+            }
+
+            port = _get_free_port()
+
+            with patch.dict(server_module.ALLOWED_FILES, allowed_files):
+                server = server_module.HTTPServer(("127.0.0.1", port), server_module.ConfigEditorHandler)
+                server_thread = threading.Thread(target=server.serve_forever, daemon=True)
+                server_thread.start()
+                try:
+                    time.sleep(0.05)
+                    request_payload = {
+                        "key": "sources",
+                        "content": payload_source,
+                    }
+                    request = Request(
+                        f"http://127.0.0.1:{port}/api/file",
+                        data=json.dumps(request_payload, ensure_ascii=False).encode("utf-8"),
+                        method="POST",
+                        headers={
+                            "Content-Type": "application/json",
+                            "Origin": f"http://127.0.0.1:{port}",
+                        },
+                    )
+                    with urlopen(request, timeout=2.0) as response:
+                        body = response.read().decode("utf-8")
+                    data = json.loads(body)
+                    self.assertEqual(data, {"ok": True, "key": "sources", "message": "saved"})
+
+                    saved = json.loads(sources_path.read_text(encoding="utf-8"))
+                    self.assertEqual(saved["sources"][0]["type"], "podcast")
+                    self.assertIn("id", saved["sources"][0])
+                finally:
+                    server.shutdown()
+                    server.server_close()
+                    server_thread.join(timeout=1.0)
+
     def test_post_rejects_invalid_podcast_source_fields_on_save(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             sources_path = Path(tmpdir) / "sources.json"

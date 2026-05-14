@@ -1,5 +1,7 @@
 (() => {
   const PAGE_SIZE = 20;
+  const PODCAST_PLATFORMS = ["auto", "rss", "youtube"];
+  const PODCAST_TRANSCRIPT_BACKENDS = ["auto", "yt-dlp"];
 
   const TEXT = {
     zh: {
@@ -43,6 +45,10 @@
         thEnabled: "启用",
         thPriority: "优先",
         thTopics: "topics",
+        thPlatform: "platform",
+        thTranscriptEnabled: "transcript.enabled",
+        thTranscriptBackend: "transcript.backend",
+        thTranscriptLanguages: "transcript.languages",
         typeAll: "全部类型",
       },
       topics: {
@@ -101,6 +107,10 @@
         thEnabled: "Enabled",
         thPriority: "Priority",
         thTopics: "topics",
+        thPlatform: "platform",
+        thTranscriptEnabled: "transcript.enabled",
+        thTranscriptBackend: "transcript.backend",
+        thTranscriptLanguages: "transcript.languages",
         typeAll: "All types",
       },
       topics: {
@@ -218,8 +228,8 @@
   }
 
   function normalizeSource(raw = {}) {
-    const sourceType = raw.type || "rss";
-    return {
+    const sourceType = String(raw.type || "rss").toLowerCase() || "rss";
+    const source = {
       ...raw,
       id: raw.id || "",
       type: sourceType,
@@ -232,6 +242,34 @@
       priority: toBool(raw.priority),
       topics: Array.isArray(raw.topics) ? raw.topics.map((item) => String(item)) : [],
     };
+    if (source.type === "podcast") {
+      source.platform = typeof raw.platform === "string" && raw.platform.trim() ? raw.platform.trim() : "auto";
+      source.transcript = normalizePodcastTranscript(raw.transcript);
+    }
+    return source;
+  }
+
+  function normalizePodcastTranscript(raw = {}) {
+    if (!raw || typeof raw !== "object") {
+      return {
+        enabled: false,
+        backend: "auto",
+        languages: [],
+      };
+    }
+
+    return {
+      ...raw,
+      enabled: toBool(raw.enabled),
+      backend: typeof raw.backend === "string" && raw.backend.trim() ? raw.backend.trim() : "auto",
+      languages: Array.isArray(raw.languages) ? raw.languages.map((item) => String(item)) : [],
+    };
+  }
+
+  function ensurePodcastDefaults(row) {
+    if (!row || String(row.type || "").toLowerCase() !== "podcast") return;
+    if (typeof row.platform !== "string" || !row.platform.trim()) row.platform = "auto";
+    row.transcript = normalizePodcastTranscript(row.transcript);
   }
 
   function getSourcePrimaryFieldKey(type = "rss") {
@@ -377,7 +415,7 @@
     if (visible.length === 0) {
       const tr = document.createElement("tr");
       const td = document.createElement("td");
-      td.colSpan = 8;
+      td.colSpan = 12;
       td.textContent = t("searchHint");
       tr.appendChild(td);
       el.sourceTableBody.appendChild(tr);
@@ -387,6 +425,11 @@
 
     for (const item of visible) {
       const { row, index } = item;
+      const isPodcast = String(row.type || "").toLowerCase() === "podcast";
+      const isCurrentPodcast = () => String(row.type || "").toLowerCase() === "podcast";
+      if (isPodcast) {
+        ensurePodcastDefaults(row);
+      }
       const tr = document.createElement("tr");
 
       const idInput = document.createElement("input");
@@ -404,6 +447,9 @@
         row.type = e.target.value;
       });
       typeInput.addEventListener("change", () => {
+        if (isCurrentPodcast()) {
+          ensurePodcastDefaults(row);
+        }
         syncSourceTypeFilterOptions();
         ensureSourceFiltered();
         renderSourcesMode();
@@ -455,6 +501,59 @@
       const tdTopics = document.createElement("td");
       tdTopics.appendChild(topicsInput);
 
+      const tdPlatform = document.createElement("td");
+      const platformInput = document.createElement("select");
+      for (const value of PODCAST_PLATFORMS) {
+        const option = document.createElement("option");
+        option.value = value;
+        option.textContent = value;
+        platformInput.appendChild(option);
+      }
+      platformInput.value = isPodcast ? row.platform || "auto" : "auto";
+      platformInput.disabled = !isCurrentPodcast();
+      platformInput.addEventListener("change", (e) => {
+        if (!isCurrentPodcast()) return;
+        row.platform = e.target.value;
+      });
+      tdPlatform.appendChild(platformInput);
+
+      const tdTranscriptEnabled = document.createElement("td");
+      const transcriptEnabledInput = document.createElement("input");
+      transcriptEnabledInput.type = "checkbox";
+      transcriptEnabledInput.checked = !!row.transcript?.enabled;
+      transcriptEnabledInput.disabled = !isCurrentPodcast();
+      transcriptEnabledInput.addEventListener("change", (e) => {
+        if (!isCurrentPodcast()) return;
+        row.transcript.enabled = !!e.target.checked;
+      });
+      tdTranscriptEnabled.appendChild(transcriptEnabledInput);
+
+      const tdTranscriptBackend = document.createElement("td");
+      const transcriptBackendInput = document.createElement("select");
+      for (const value of PODCAST_TRANSCRIPT_BACKENDS) {
+        const option = document.createElement("option");
+        option.value = value;
+        option.textContent = value;
+        transcriptBackendInput.appendChild(option);
+      }
+      transcriptBackendInput.value = isPodcast ? row.transcript?.backend || "auto" : "auto";
+      transcriptBackendInput.disabled = !isCurrentPodcast();
+      transcriptBackendInput.addEventListener("change", (e) => {
+        if (!isCurrentPodcast()) return;
+        row.transcript.backend = e.target.value;
+      });
+      tdTranscriptBackend.appendChild(transcriptBackendInput);
+
+      const tdTranscriptLanguages = document.createElement("td");
+      const transcriptLanguagesInput = document.createElement("input");
+      transcriptLanguagesInput.value = isPodcast ? joinCommaList(row.transcript?.languages) : "";
+      transcriptLanguagesInput.addEventListener("input", (e) => {
+        if (!isCurrentPodcast()) return;
+        row.transcript.languages = parseCommaList(e.target.value);
+      });
+      transcriptLanguagesInput.disabled = !isCurrentPodcast();
+      tdTranscriptLanguages.appendChild(transcriptLanguagesInput);
+
       const delBtn = document.createElement("button");
       delBtn.type = "button";
       delBtn.className = "secondary icon-btn";
@@ -480,6 +579,10 @@
       tr.appendChild(tdEnabled);
       tr.appendChild(tdPriority);
       tr.appendChild(tdTopics);
+      tr.appendChild(tdPlatform);
+      tr.appendChild(tdTranscriptEnabled);
+      tr.appendChild(tdTranscriptBackend);
+      tr.appendChild(tdTranscriptLanguages);
       tr.appendChild(tdDelete);
       el.sourceTableBody.appendChild(tr);
     }
