@@ -133,7 +133,7 @@ def main():
             update_health(health, sources, now)
             processed_inputs.append({"name": label, "path": str(path), "count": len(sources)})
 
-    # Reddit, Web, and Podcast use flexible loading (subreddits/topics keys)
+    # Reddit, Web, and Podcast use flexible loading for non-standard source keys.
     for label, path in [("reddit", args.reddit), ("web", args.web), ("podcast", args.podcast)]:
         sources = load_source_file_flexible(path)
         if sources:

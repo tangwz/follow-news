@@ -147,8 +147,8 @@ def main() -> int:
     
     # --only takes precedence: skip everything not in the list
     if only_steps:
-        all_step_keys = {"rss", "twitter", "github", "github trending", "reddit", "web", "podcast"}
-        skip_steps = all_step_keys - {k for k in all_step_keys if any(o in k for o in only_steps)}
+        all_step_keys = {"rss", "twitter", "github", "trending", "reddit", "web", "podcast"}
+        skip_steps = all_step_keys - only_steps
         logger.info(f"🎯 --only {args.only} → running: {all_step_keys - skip_steps}")
 
     # Intermediate output paths
@@ -176,10 +176,11 @@ def main() -> int:
 
     # Define the parallel fetch steps
     steps = [
-        ("RSS", "fetch-rss.py", common + verbose_flag, tmp_rss),
-        ("Twitter", "fetch-twitter.py", common + verbose_flag + (["--backend", args.twitter_backend] if args.twitter_backend else []), tmp_twitter),
-        ("GitHub", "fetch-github.py", common + verbose_flag, tmp_github),
+        ("rss", "RSS", "fetch-rss.py", common + verbose_flag, tmp_rss),
+        ("twitter", "Twitter", "fetch-twitter.py", common + verbose_flag + (["--backend", args.twitter_backend] if args.twitter_backend else []), tmp_twitter),
+        ("github", "GitHub", "fetch-github.py", common + verbose_flag, tmp_github),
         (
+            "trending",
             "GitHub Trending",
             "fetch-github.py",
             ["--trending", "--defaults", str(args.defaults), "--hours", str(args.hours)]
@@ -187,20 +188,19 @@ def main() -> int:
             + verbose_flag,
             tmp_trending,
         ),
-        ("Reddit", "fetch-reddit.py", common + verbose_flag, tmp_reddit),
-        ("Web", "fetch-web.py",
+        ("reddit", "Reddit", "fetch-reddit.py", common + verbose_flag, tmp_reddit),
+        ("web", "Web", "fetch-web.py",
          ["--defaults", str(args.defaults)]
          + (["--config", str(args.config)] if args.config else [])
          + ["--freshness", args.freshness]
          + verbose_flag,
          tmp_web),
-        ("Podcast", "fetch-podcast.py", common + verbose_flag, tmp_podcast),
+        ("podcast", "Podcast", "fetch-podcast.py", common + verbose_flag, tmp_podcast),
     ]
 
     # Filter steps by --skip and --reuse-dir
     active_steps = []
-    for name, script, step_args, out_path in steps:
-        step_key = name.lower()
+    for step_key, name, script, step_args, out_path in steps:
         if step_key in skip_steps:
             logger.info(f"  ⏭️  {name}: skipped (--skip)")
             continue
