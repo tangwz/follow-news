@@ -31,6 +31,8 @@ SCORE_ENGAGEMENT_VIRAL = 5   # Viral tweet (1000+ likes or 500+ RTs)
 SCORE_ENGAGEMENT_HIGH = 3    # High engagement (500+ likes or 200+ RTs)
 SCORE_ENGAGEMENT_MED = 2     # Medium engagement (100+ likes or 50+ RTs)
 SCORE_ENGAGEMENT_LOW = 1     # Some engagement (50+ likes or 20+ RTs)
+SCORE_PODCAST_TRANSCRIPT_READY = 2
+MIN_TRANSCRIPT_READY_CHARS = 200
 PENALTY_DUPLICATE = -10     # Duplicate/very similar title
 PENALTY_OLD_REPORT = -5     # Already in previous digest
 
@@ -156,6 +158,15 @@ def calculate_base_score(article: Dict[str, Any], source: Dict[str, Any]) -> flo
     # RSS from priority sources get extra weight (official blogs, research papers)
     if source.get("source_type") == "rss" and source.get("priority", False):
         score += 2  # Extra priority RSS bonus
+
+    if source.get("source_type") == "podcast":
+        transcript = article.get("transcript", "")
+        if (
+            article.get("transcript_status") == "ok"
+            and isinstance(transcript, str)
+            and len(transcript) >= MIN_TRANSCRIPT_READY_CHARS
+        ):
+            score += SCORE_PODCAST_TRANSCRIPT_READY
 
     return score
 
@@ -538,6 +549,12 @@ Examples:
         type=Path,
         help="Reddit posts results JSON file"
     )
+
+    parser.add_argument(
+        "--podcast",
+        type=Path,
+        help="Podcast episode results JSON file"
+    )
     
     parser.add_argument(
         "--output", "-o",
@@ -587,12 +604,14 @@ Examples:
         github_data = load_source_data(args.github)
         trending_data = load_source_data(args.trending) if hasattr(args, "trending") else None
         reddit_data = load_source_data(args.reddit)
+        podcast_data = load_source_data(args.podcast)
         
         logger.info(f"Loaded sources - RSS: {rss_data.get('total_articles', 0)}, "
                    f"Twitter: {twitter_data.get('total_articles', 0)}, "
                    f"Web: {web_data.get('total_articles', 0)}, "
                    f"GitHub: {github_data.get('total_articles', 0)} releases + {trending_data.get('total', 0) if trending_data else 0} trending, "
-                   f"Reddit: {reddit_data.get('total_posts', 0)}")
+                   f"Reddit: {reddit_data.get('total_posts', 0)}, "
+                   f"Podcast: {podcast_data.get('total_articles', 0)}")
         
         # Collect all articles with source context
         all_articles = []
@@ -659,7 +678,19 @@ Examples:
                 elif score > 100:
                     article["quality_score"] += 1
                 all_articles.append(article)
-        
+
+        # Process Podcast articles
+        for source in podcast_data.get("sources", []):
+            for article in source.get("articles", []):
+                article["source_type"] = "podcast"
+                article["source_name"] = source.get("name", "")
+                article["source_id"] = source.get("source_id", "")
+                podcast_source = {
+                    "source_type": "podcast",
+                    "priority": source.get("priority", False),
+                }
+                article["quality_score"] = calculate_base_score(article, podcast_source)
+                all_articles.append(article)
 
         # Load GitHub trending repos
         if trending_data:
@@ -743,6 +774,7 @@ Examples:
                 "github_articles": github_data.get("total_articles", 0),
                 "github_trending": trending_data.get("total", 0) if trending_data else 0,
                 "reddit_posts": reddit_data.get("total_posts", 0),
+                "podcast_episodes": podcast_data.get("total_articles", 0),
                 "total_input": total_collected
             },
             "processing": {

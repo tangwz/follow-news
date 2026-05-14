@@ -8,6 +8,7 @@ Run: python3 -m pytest tests/ -v
 import json
 import sys
 import unittest
+from datetime import datetime
 from pathlib import Path
 
 SCRIPTS_DIR = Path(__file__).parent.parent / "scripts"
@@ -205,6 +206,27 @@ class TestGroupByTopics(unittest.TestCase):
         self.assertIn("ai-agent", groups, "ai-agent should inherit priority from ai_agent")
         self.assertEqual(len(groups["ai-agent"]), 1)
         self.assertEqual(groups["ai-agent"][0]["primary_topic"], "ai-agent")
+
+
+class TestPodcastMerge(unittest.TestCase):
+    def test_podcast_fixture_shape(self):
+        data = load_fixture("podcast")
+        self.assertEqual(data["source_type"], "podcast")
+        self.assertEqual(data["total_articles"], 2)
+        self.assertEqual(data["sources"][0]["articles"][0]["transcript_status"], "ok")
+
+    def test_podcast_transcript_bonus(self):
+        article = {
+            "title": "Podcast Episode",
+            "date": datetime.now().astimezone().isoformat(),
+            "transcript_status": "ok",
+            "transcript": "x" * 500,
+        }
+        source = {"source_type": "podcast", "priority": False}
+
+        score = merge_mod.calculate_base_score(article, source)
+
+        self.assertGreaterEqual(score, merge_mod.SCORE_PODCAST_TRANSCRIPT_READY)
 
 
 class TestFixtureData(unittest.TestCase):
