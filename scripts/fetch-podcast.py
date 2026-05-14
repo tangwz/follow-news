@@ -170,6 +170,10 @@ def youtube_video_id(url: str) -> str:
     return ""
 
 
+def is_http_url(value: str) -> bool:
+    return urlparse(value).scheme in {"http", "https"}
+
+
 def timestamp_to_datetime(value: Any) -> Optional[datetime]:
     if value is None:
         return None
@@ -208,6 +212,8 @@ def normalize_youtube_metadata(
         title = str(entry.get("title") or "").strip()
         link = str(entry.get("webpage_url") or entry.get("url") or "").strip()
         video_id = str(entry.get("id") or youtube_video_id(link)).strip()
+        if link and not is_http_url(link):
+            link = ""
         published = timestamp_to_datetime(entry.get("timestamp")) or parse_youtube_date(
             entry.get("upload_date") or entry.get("release_date")
         )
@@ -250,7 +256,9 @@ def transcript_languages(source: Dict[str, Any]) -> List[str]:
     config = transcript_config(source)
     languages = config.get("languages")
     if isinstance(languages, list) and languages:
-        return [str(language) for language in languages if str(language).strip()]
+        normalized = [str(language).strip() for language in languages if str(language).strip()]
+        if normalized:
+            return normalized
     return ["en", "zh", "zh-Hans"]
 
 
@@ -287,6 +295,8 @@ def run_ytdlp_transcript(
             )
         except subprocess.TimeoutExpired:
             return {"status": "timeout", "error": "yt-dlp transcript command timed out"}
+        except OSError as exc:
+            return {"status": "error", "error": str(exc)[:200]}
 
         if result.returncode != 0:
             message = (result.stderr or result.stdout or "yt-dlp transcript command failed").strip()
@@ -310,9 +320,19 @@ def run_ytdlp_transcript(
 def parse_vtt_transcript(content: str) -> str:
     lines: List[str] = []
     current_time = ""
+    last_text = ""
+    in_note = False
     for raw_line in content.splitlines():
         line = raw_line.strip()
-        if not line or line == "WEBVTT" or line.startswith(("NOTE", "Kind:", "Language:")):
+        if not line:
+            in_note = False
+            continue
+        if in_note:
+            continue
+        if line.startswith("NOTE"):
+            in_note = True
+            continue
+        if line == "WEBVTT" or line.startswith(("Kind:", "Language:")):
             continue
         if "-->" in line:
             current_time = line.split("-->", 1)[0].strip()
@@ -321,10 +341,13 @@ def parse_vtt_transcript(content: str) -> str:
             continue
         text = re.sub(r"<[^>]+>", "", line).strip()
         if text:
+            if text == last_text:
+                continue
             if current_time:
                 lines.append(f"{current_time} {text}")
             else:
                 lines.append(text)
+            last_text = text
     return "\n".join(lines)
 
 

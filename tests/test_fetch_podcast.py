@@ -174,6 +174,23 @@ class TestYoutubeMetadataNormalization(unittest.TestCase):
         self.assertEqual(episodes[0]["duration_seconds"], 3600)
         self.assertEqual(episodes[0]["transcript_status"], "missing")
 
+    def test_reconstructs_link_for_flat_youtube_entry(self):
+        payload = {
+            "entries": [
+                {
+                    "id": "abc123",
+                    "title": "Flat Entry",
+                    "url": "abc123",
+                    "timestamp": 1777925100,
+                },
+            ]
+        }
+
+        episodes = fetch_podcast.normalize_youtube_metadata(payload, self.source, self.cutoff)
+
+        self.assertEqual(len(episodes), 1)
+        self.assertEqual(episodes[0]["link"], "https://www.youtube.com/watch?v=abc123")
+
 
 class TestTranscriptBackend(unittest.TestCase):
     def setUp(self):
@@ -224,3 +241,48 @@ class TestTranscriptBackend(unittest.TestCase):
         key = fetch_podcast.transcript_cache_key(self.episode)
 
         self.assertEqual(key, "youtube:abc123")
+
+    @patch("subprocess.run", side_effect=OSError("missing binary"))
+    def test_ytdlp_os_error_returns_error_status(self, _run):
+        result = fetch_podcast.run_ytdlp_transcript(
+            "/missing/yt-dlp",
+            self.episode,
+            ["en"],
+        )
+
+        self.assertEqual(result["status"], "error")
+        self.assertIn("missing binary", result["error"])
+
+    def test_parse_vtt_skips_note_blocks_and_deduplicates_adjacent_text(self):
+        content = """WEBVTT
+
+NOTE
+This note should not leak.
+Another note line.
+
+00:00:00.000 --> 00:00:05.000
+<c>Hello world.</c>
+
+00:00:05.000 --> 00:00:10.000
+Hello world.
+
+00:00:10.000 --> 00:00:15.000
+Next line.
+"""
+
+        transcript = fetch_podcast.parse_vtt_transcript(content)
+
+        self.assertNotIn("note should not leak", transcript)
+        self.assertEqual(transcript.count("Hello world."), 1)
+        self.assertIn("Next line.", transcript)
+
+    def test_transcript_languages_falls_back_for_blank_config(self):
+        source = {
+            "transcript": {
+                "enabled": True,
+                "backend": "auto",
+                "languages": ["", "  "],
+            },
+        }
+
+        self.assertEqual(fetch_podcast.transcript_languages(source), ["en", "zh", "zh-Hans"])
