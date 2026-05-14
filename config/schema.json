@@ -13,7 +13,7 @@
         },
         "type": {
           "type": "string",
-          "enum": ["rss", "twitter", "web", "github", "reddit"],
+          "enum": ["rss", "twitter", "web", "github", "reddit", "podcast"],
           "description": "Source type"
         },
         "name": {
@@ -57,6 +57,34 @@
           "type": "string",
           "pattern": "^[a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+$",
           "description": "GitHub repository in owner/repo format (required for type=github)"
+        },
+        "platform": {
+          "type": "string",
+          "enum": ["auto", "rss", "youtube"],
+          "description": "Podcast platform. Use auto to infer from URL."
+        },
+        "transcript": {
+          "type": "object",
+          "description": "Optional podcast transcript fetching configuration",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Whether transcript fetching is enabled for this podcast source"
+            },
+            "backend": {
+              "type": "string",
+              "enum": ["auto", "yt-dlp"],
+              "description": "Transcript backend selection"
+            },
+            "languages": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Subtitle language preference order"
+            }
+          },
+          "additionalProperties": false
         }
       },
       "allOf": [
@@ -82,6 +110,14 @@
           },
           "then": {
             "required": ["repo"]
+          }
+        },
+        {
+          "if": {
+            "properties": { "type": { "const": "podcast" } }
+          },
+          "then": {
+            "required": ["url"]
           }
         }
       ]

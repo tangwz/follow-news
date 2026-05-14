@@ -124,6 +124,63 @@ class TestLoadSources(unittest.TestCase):
         sources = load_merged_sources(DEFAULTS_DIR, None)
         self.assertGreater(len(sources), 100)
 
+    def test_user_overlay_accepts_podcast_source(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            overlay = {
+                "sources": [
+                    {
+                        "id": "training-data-podcast",
+                        "type": "podcast",
+                        "name": "Training Data",
+                        "enabled": True,
+                        "priority": True,
+                        "url": "https://www.youtube.com/playlist?list=PLOhHNjZItNnMm5tdW61JpnyxeYH5NDDx8",
+                        "platform": "youtube",
+                        "topics": ["llm", "ai-agent"],
+                        "transcript": {
+                            "enabled": True,
+                            "backend": "auto",
+                            "languages": ["en", "zh", "zh-Hans"],
+                        },
+                    }
+                ]
+            }
+            overlay_path = Path(tmpdir) / "follow-news-sources.json"
+            with open(overlay_path, "w") as f:
+                json.dump(overlay, f)
+
+            sources = load_merged_sources(DEFAULTS_DIR, Path(tmpdir))
+            podcast = [s for s in sources if s["id"] == "training-data-podcast"]
+
+            self.assertEqual(len(podcast), 1)
+            self.assertEqual(podcast[0]["type"], "podcast")
+            self.assertEqual(podcast[0]["platform"], "youtube")
+
+    def test_source_types_include_podcast_when_user_adds_one(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            overlay = {
+                "sources": [
+                    {
+                        "id": "test-podcast",
+                        "type": "podcast",
+                        "name": "Test Podcast",
+                        "enabled": True,
+                        "priority": False,
+                        "url": "https://example.com/feed.xml",
+                        "platform": "rss",
+                        "topics": ["frontier-tech"],
+                    }
+                ]
+            }
+            overlay_path = Path(tmpdir) / "follow-news-sources.json"
+            with open(overlay_path, "w") as f:
+                json.dump(overlay, f)
+
+            sources = load_merged_sources(DEFAULTS_DIR, Path(tmpdir))
+            types = {s["type"] for s in sources}
+
+            self.assertIn("podcast", types)
+
 
 class TestLoadTopics(unittest.TestCase):
     def test_loads_defaults(self):
@@ -212,6 +269,87 @@ class TestLoadTopics(unittest.TestCase):
                 0,
                 f"Expected enabled twitter representative for '{topic}'",
             )
+
+
+class TestPodcastConfigValidation(unittest.TestCase):
+    def test_validate_config_accepts_podcast_overlay(self):
+        import subprocess
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            overlay = {
+                "sources": [
+                    {
+                        "id": "training-data-podcast",
+                        "type": "podcast",
+                        "name": "Training Data",
+                        "enabled": True,
+                        "priority": True,
+                        "url": "https://www.youtube.com/playlist?list=PLOhHNjZItNnMm5tdW61JpnyxeYH5NDDx8",
+                        "platform": "youtube",
+                        "topics": ["llm", "ai-agent"],
+                        "transcript": {
+                            "enabled": True,
+                            "backend": "auto",
+                            "languages": ["en", "zh", "zh-Hans"],
+                        },
+                    }
+                ]
+            }
+            overlay_path = Path(tmpdir) / "follow-news-sources.json"
+            with open(overlay_path, "w") as f:
+                json.dump(overlay, f)
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(Path(__file__).parent.parent / "scripts" / "validate-config.py"),
+                    "--defaults",
+                    str(DEFAULTS_DIR),
+                    "--config",
+                    tmpdir,
+                ],
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+
+    def test_validate_config_rejects_podcast_without_url(self):
+        import subprocess
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            overlay = {
+                "sources": [
+                    {
+                        "id": "broken-podcast",
+                        "type": "podcast",
+                        "name": "Broken Podcast",
+                        "enabled": True,
+                        "priority": False,
+                        "platform": "youtube",
+                        "topics": ["llm"],
+                    }
+                ]
+            }
+            overlay_path = Path(tmpdir) / "follow-news-sources.json"
+            with open(overlay_path, "w") as f:
+                json.dump(overlay, f)
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(Path(__file__).parent.parent / "scripts" / "validate-config.py"),
+                    "--defaults",
+                    str(DEFAULTS_DIR),
+                    "--config",
+                    tmpdir,
+                ],
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("url", result.stderr + result.stdout)
 
 
 class TestSourceCounts(unittest.TestCase):
