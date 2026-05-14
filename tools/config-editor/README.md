@@ -25,6 +25,11 @@ python3 server.py
   - 表格模式：快速修改常用字段（sources: id、name、type、url、enabled、priority、topics；topics: id、emoji、label、display.max_items、display.style、search.queries）
   - JSON 模式：直接编辑完整 JSON 文本（会做 JSON 合法性校验）
   - 搜索 + 分页（sources 更友好）
+- 表格模式额外支持 `type: "podcast"` 的字段：
+  - `platform`（可选）：`auto` / `rss` / `youtube`
+  - `transcript.enabled`（可选）：布尔值
+  - `transcript.backend`（可选）：`auto` / `yt-dlp`
+  - `transcript.languages`（可选）：字符串数组
 
 ## 注意
 

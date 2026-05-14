@@ -40,6 +40,8 @@ class ConfigEditorHandler(SimpleHTTPRequestHandler):
     _json_prefix = re.compile(r"^/api/")
     _LOCAL_ORIGINS = {"127.0.0.1", "localhost", "::1"}
     _ALLOWED_SOURCE_TYPES = {"rss", "twitter", "web", "github", "reddit", "podcast"}
+    _ALLOWED_PODCAST_PLATFORMS = {"auto", "rss", "youtube"}
+    _ALLOWED_TRANSCRIPT_BACKENDS = {"auto", "yt-dlp"}
     _WILDCARD_HOSTS = {"0.0.0.0", "::", "::0"}
 
     def _send_json(self, payload: Dict[str, Any], status: int = 200) -> None:
@@ -308,7 +310,7 @@ class ConfigEditorHandler(SimpleHTTPRequestHandler):
                     raise ValueError(f"Source '{source_id}' has invalid field 'url'")
 
                 platform = source.get("platform", "auto")
-                if platform not in {"auto", "rss", "youtube"}:
+                if platform not in self._ALLOWED_PODCAST_PLATFORMS:
                     raise ValueError(f"Source '{source_id}' has invalid field 'platform'")
 
                 if "transcript" in source:
@@ -321,7 +323,7 @@ class ConfigEditorHandler(SimpleHTTPRequestHandler):
                         raise ValueError(f"Source '{source_id}' has invalid field 'transcript.enabled'")
 
                     backend = transcript.get("backend", "auto")
-                    if backend not in {"auto", "yt-dlp"}:
+                    if backend not in self._ALLOWED_TRANSCRIPT_BACKENDS:
                         raise ValueError(f"Source '{source_id}' has invalid field 'transcript.backend'")
 
                     languages = transcript.get("languages", [])
