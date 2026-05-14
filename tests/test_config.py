@@ -359,6 +359,29 @@ class TestPodcastConfigValidation(unittest.TestCase):
 
         self.assertFalse(validate_source_types(sources_data))
 
+    def test_validate_source_types_rejects_invalid_transcript_enabled(self):
+        sources_data = {
+            "sources": [
+                self.podcast_source(transcript={"enabled": "yes"}),
+            ]
+        }
+
+        self.assertFalse(validate_source_types(sources_data))
+
+    def test_validate_source_types_rejects_invalid_transcript_languages(self):
+        for transcript in (
+            {"languages": "en"},
+            {"languages": ["en", 123]},
+        ):
+            with self.subTest(transcript=transcript):
+                sources_data = {
+                    "sources": [
+                        self.podcast_source(transcript=transcript),
+                    ]
+                }
+
+                self.assertFalse(validate_source_types(sources_data))
+
     def test_validate_config_accepts_podcast_overlay(self):
         import subprocess
 
@@ -548,7 +571,8 @@ class TestReadmeCounts(unittest.TestCase):
         readme_zh = docs["README_CN.md"]
         self.assertIn("```bash\n# Twitter/X Backend", readme_zh)
         self.assertIn('export BRAVE_PLAN="free"           # Override Brave rate limit: free|pro\n```', readme_zh)
-        self.assertIn("播客元数据和转录文本增强", readme_zh)
+        self.assertIn("YouTube 播客元数据和转录文本抓取需要 `yt-dlp`", readme_zh)
+        self.assertIn("对应 YouTube 播客源会标记为失败", readme_zh)
         self.assertNotIn("可选 transcript", readme_zh)
         self.assertNotIn("metadata/transcript enrich", readme_zh)
 

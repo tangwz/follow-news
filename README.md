@@ -148,7 +148,7 @@ To use the OpenCLI backend, install the OpenCLI executable yourself and make it 
 
 OpenCLI browser bridge stability depends on the local browser extension connection. The fetcher defaults to 10 concurrent OpenCLI workers (`OPENCLI_MAX_WORKERS=10`) and has a hard cap at 10. It also closes X/Twitter tabs created during the OpenCLI fetch (`OPENCLI_CLOSE_TABS_AFTER_RUN=1` by default) and, on macOS, closes Chrome automation windows that OpenCLI opened during the run (`OPENCLI_CLOSE_CHROME_WINDOWS_AFTER_RUN=1` by default) while leaving pre-existing windows alone.
 
-YouTube podcast transcript fetching is optional. Install `yt-dlp` and expose it on `PATH`, or set `YTDLP_BIN` to the executable path. If `yt-dlp` is missing, podcast metadata/transcript enrichment degrades without blocking the rest of the pipeline.
+RSS podcast feeds do not need extra tools. YouTube podcast metadata and transcript fetching require `yt-dlp`; install it on `PATH`, or set `YTDLP_BIN` to the executable path. If `yt-dlp` is missing, that YouTube podcast source is marked failed without blocking the rest of the pipeline.
 
 ## 📦 Dependencies
 

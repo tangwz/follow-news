@@ -6,6 +6,7 @@ import json
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from datetime import datetime, timezone
 from pathlib import Path
@@ -269,6 +270,59 @@ class TestTranscriptBackend(unittest.TestCase):
         self.assertEqual(result["transcript_status"], "ok")
         self.assertEqual(result["transcript"], "Speaker 1 | 00:00 - 00:05 Hello world.")
 
+    @patch("subprocess.run")
+    def test_ytdlp_transcript_uses_language_priority(self, run):
+        def write_subtitle(cmd, **_kwargs):
+            language = cmd[cmd.index("--sub-langs") + 1]
+            output = Path(cmd[cmd.index("--output") + 1])
+            output.parent.mkdir(parents=True, exist_ok=True)
+            (output.parent / f"abc.{language}.vtt").write_text(
+                f"WEBVTT\n\n00:00:00.000 --> 00:00:01.000\n{language} transcript.\n",
+                encoding="utf-8",
+            )
+            return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+
+        run.side_effect = write_subtitle
+
+        result = fetch_podcast.run_ytdlp_transcript(
+            "/usr/local/bin/yt-dlp",
+            self.episode,
+            ["zh", "en"],
+        )
+
+        self.assertEqual(result["status"], "ok")
+        self.assertIn("zh transcript.", result["transcript"])
+        self.assertEqual(run.call_count, 1)
+
+    @patch("subprocess.run")
+    def test_ytdlp_transcript_falls_back_to_next_language(self, run):
+        def maybe_write_subtitle(cmd, **_kwargs):
+            language = cmd[cmd.index("--sub-langs") + 1]
+            output = Path(cmd[cmd.index("--output") + 1])
+            output.parent.mkdir(parents=True, exist_ok=True)
+            if language == "en":
+                (output.parent / "abc.en.vtt").write_text(
+                    "WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nEnglish transcript.\n",
+                    encoding="utf-8",
+                )
+            return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+
+        run.side_effect = maybe_write_subtitle
+
+        result = fetch_podcast.run_ytdlp_transcript(
+            "/usr/local/bin/yt-dlp",
+            self.episode,
+            ["zh", "en"],
+        )
+
+        called_languages = [
+            call.args[0][call.args[0].index("--sub-langs") + 1]
+            for call in run.call_args_list
+        ]
+        self.assertEqual(called_languages, ["zh", "en"])
+        self.assertEqual(result["status"], "ok")
+        self.assertIn("English transcript.", result["transcript"])
+
     def test_cache_key_uses_guid(self):
         key = fetch_podcast.transcript_cache_key(self.episode)
 
@@ -369,6 +423,7 @@ class TestPodcastCliOutput(unittest.TestCase):
 
     def test_save_podcast_cache_round_trips_via_atomic_path(self):
         cache = {
+            "metadata": {},
             "transcripts": {
                 "episode": {
                     "status": "ok",
@@ -386,6 +441,56 @@ class TestPodcastCliOutput(unittest.TestCase):
                 loaded = fetch_podcast.load_podcast_cache()
 
         self.assertEqual(loaded, cache)
+
+    @patch("fetch_podcast.hydrate_youtube_metadata")
+    @patch("fetch_podcast.run_ytdlp_metadata")
+    @patch("fetch_podcast.resolve_ytdlp_bin", return_value="/usr/local/bin/yt-dlp")
+    def test_fetch_youtube_source_reuses_metadata_cache(
+        self,
+        _resolve,
+        run_metadata,
+        hydrate_metadata,
+    ):
+        source = {
+            "id": "training-data-podcast",
+            "type": "podcast",
+            "name": "Training Data",
+            "url": "https://www.youtube.com/playlist?list=abc",
+            "platform": "youtube",
+            "topics": ["llm"],
+            "transcript": {"enabled": False},
+        }
+        payload = {
+            "entries": [
+                {
+                    "id": "abc123",
+                    "title": "Cached Episode",
+                    "webpage_url": "https://www.youtube.com/watch?v=abc123",
+                    "upload_date": "20260504",
+                }
+            ]
+        }
+        cache = {
+            "metadata": {
+                fetch_podcast.metadata_cache_key(source): {
+                    "payload": payload,
+                    "ts": time.time(),
+                }
+            },
+            "transcripts": {},
+        }
+
+        episodes = fetch_podcast.fetch_youtube_source(
+            source,
+            utc("2026-05-01T00:00:00Z"),
+            cache,
+            no_cache=False,
+        )
+
+        run_metadata.assert_not_called()
+        hydrate_metadata.assert_not_called()
+        self.assertEqual(len(episodes), 1)
+        self.assertEqual(episodes[0]["title"], "Cached Episode")
 
     def test_save_podcast_cache_suppresses_replace_failure(self):
         with tempfile.TemporaryDirectory() as tmpdir:

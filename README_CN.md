@@ -142,7 +142,7 @@ OpenCLI 是默认优先后端，因为它可以复用已经登录的 Chrome/Chro
 
 OpenCLI 的稳定性取决于本机浏览器扩展桥接状态。抓取器默认使用 10 并发 OpenCLI 请求（`OPENCLI_MAX_WORKERS=10`，上限 10），同时默认会关闭本次 OpenCLI 抓取中新建的 X/Twitter 标签页（`OPENCLI_CLOSE_TABS_AFTER_RUN=1`），并在 macOS 上关闭 OpenCLI 本次打开的 Chrome 自动化窗口（`OPENCLI_CLOSE_CHROME_WINDOWS_AFTER_RUN=1`），不会关闭执行前已经存在的窗口。
 
-YouTube 播客转录文本抓取是可选能力。安装 `yt-dlp` 并确保它在 `PATH` 上，或通过 `YTDLP_BIN` 指向可执行文件。缺少 `yt-dlp` 时，播客元数据和转录文本增强会降级，不会阻塞其他数据源。
+RSS 播客订阅源不需要额外工具。YouTube 播客元数据和转录文本抓取需要 `yt-dlp`；请将它安装到 `PATH`，或通过 `YTDLP_BIN` 指向可执行文件。缺少 `yt-dlp` 时，对应 YouTube 播客源会标记为失败，但不会阻塞其他数据源。
 
 ## 📦 依赖
 

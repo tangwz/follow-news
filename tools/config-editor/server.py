@@ -316,9 +316,20 @@ class ConfigEditorHandler(SimpleHTTPRequestHandler):
                     if not isinstance(transcript, dict):
                         raise ValueError(f"Source '{source_id}' has invalid field 'transcript'")
 
+                    enabled = transcript.get("enabled", False)
+                    if "enabled" in transcript and not isinstance(enabled, bool):
+                        raise ValueError(f"Source '{source_id}' has invalid field 'transcript.enabled'")
+
                     backend = transcript.get("backend", "auto")
                     if backend not in {"auto", "yt-dlp"}:
                         raise ValueError(f"Source '{source_id}' has invalid field 'transcript.backend'")
+
+                    languages = transcript.get("languages", [])
+                    if "languages" in transcript and (
+                        not isinstance(languages, list)
+                        or not all(isinstance(language, str) for language in languages)
+                    ):
+                        raise ValueError(f"Source '{source_id}' has invalid field 'transcript.languages'")
 
     def _validate_topics_payload(self, topics: Any) -> None:
         if not isinstance(topics, list):

@@ -270,9 +270,10 @@ python3 scripts/fetch-reddit.py [--defaults DIR] [--config DIR] [--hours 48] [--
 python3 scripts/fetch-podcast.py [--defaults DIR] [--config DIR] [--hours 48] [--output FILE] [--verbose]
 ```
 - Loads custom `type: "podcast"` sources from the unified source config.
-- Supports RSS podcast feeds and YouTube playlists/channels via `platform: "youtube"`.
-- YouTube metadata and transcript fetching use optional `yt-dlp`; set `YTDLP_BIN` when it is not available on `PATH`.
-- Transcript backends: `auto` or `yt-dlp`; missing `yt-dlp` degrades transcript status instead of failing the full pipeline.
+- Supports RSS podcast feeds without extra tools.
+- Supports YouTube playlists/channels via `platform: "youtube"` when `yt-dlp` is available.
+- YouTube metadata and transcript fetching require `yt-dlp`; set `YTDLP_BIN` when it is not available on `PATH`.
+- Transcript backends: `auto` or `yt-dlp`; missing `yt-dlp` fails only that YouTube podcast source instead of the full pipeline.
 
 #### `enrich-articles.py` - Article Full-Text Enrichment
 ```bash

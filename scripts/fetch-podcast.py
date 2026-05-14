@@ -30,6 +30,7 @@ TIMEOUT = 30
 MAX_EPISODES_PER_SOURCE = 20
 YOUTUBE_METADATA_WORKERS = 4
 PODCAST_CACHE_PATH = "/tmp/follow-news-podcast-cache.json"
+METADATA_CACHE_TTL_SECONDS = 3600
 TRANSCRIPT_SUCCESS_TTL_SECONDS = 30 * 86400
 TRANSCRIPT_FAILURE_TTL_SECONDS = 6 * 3600
 
@@ -122,7 +123,7 @@ def build_episode(
         "platform": platform,
         "transcript_status": "disabled",
     }
-    if config.get("enabled"):
+    if config.get("enabled") is True:
         episode["transcript_status"] = "missing"
     return episode
 
@@ -271,7 +272,11 @@ def transcript_languages(source: Dict[str, Any]) -> List[str]:
     config = transcript_config(source)
     languages = config.get("languages")
     if isinstance(languages, list) and languages:
-        normalized = [str(language).strip() for language in languages if str(language).strip()]
+        normalized = [
+            language.strip()
+            for language in languages
+            if isinstance(language, str) and language.strip()
+        ]
         if normalized:
             return normalized
     return ["en", "zh", "zh-Hans"]
@@ -285,51 +290,67 @@ def run_ytdlp_transcript(
 ) -> Dict[str, str]:
     import subprocess
 
+    preferred_languages = [str(language).strip() for language in languages if str(language).strip()]
+    if not preferred_languages:
+        return {"status": "missing", "error": "No subtitle languages configured"}
+
+    last_error: Optional[Dict[str, str]] = None
     with tempfile.TemporaryDirectory(prefix="follow-news-ytdlp-") as tmpdir:
-        cmd = [
-            ytdlp_bin,
-            "--skip-download",
-            "--write-subs",
-            "--write-auto-subs",
-            "--sub-langs",
-            ",".join(languages),
-            "--sub-format",
-            "vtt",
-            "--convert-subs",
-            "vtt",
-            "--output",
-            str(Path(tmpdir) / "%(id)s.%(ext)s"),
-            episode["link"],
-        ]
-        try:
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=timeout,
-            )
-        except subprocess.TimeoutExpired:
-            return {"status": "timeout", "error": "yt-dlp transcript command timed out"}
-        except OSError as exc:
-            return {"status": "error", "error": str(exc)[:200]}
+        for index, language in enumerate(preferred_languages):
+            language_dir = Path(tmpdir) / str(index)
+            language_dir.mkdir(parents=True, exist_ok=True)
+            cmd = [
+                ytdlp_bin,
+                "--skip-download",
+                "--write-subs",
+                "--write-auto-subs",
+                "--sub-langs",
+                language,
+                "--sub-format",
+                "vtt",
+                "--convert-subs",
+                "vtt",
+                "--output",
+                str(language_dir / "%(id)s.%(ext)s"),
+                episode["link"],
+            ]
+            try:
+                result = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=timeout,
+                )
+            except subprocess.TimeoutExpired:
+                return {"status": "timeout", "error": "yt-dlp transcript command timed out"}
+            except OSError as exc:
+                return {"status": "error", "error": str(exc)[:200]}
 
-        if result.returncode != 0:
-            message = (result.stderr or result.stdout or "yt-dlp transcript command failed").strip()
-            return {"status": "error", "error": message[:200]}
+            if result.returncode != 0:
+                message = (result.stderr or result.stdout or "yt-dlp transcript command failed").strip()
+                last_error = {"status": "error", "error": message[:200]}
+                continue
 
-        vtt_files = sorted(Path(tmpdir).glob("*.vtt"))
-        if not vtt_files:
-            return {"status": "missing", "error": "No subtitle track found"}
+            vtt_files = sorted(language_dir.glob("*.vtt"))
+            if not vtt_files:
+                continue
 
-        try:
-            transcript = parse_vtt_transcript(
-                vtt_files[0].read_text(encoding="utf-8", errors="replace")
-            )
-        except OSError as exc:
-            return {"status": "parse_error", "error": str(exc)[:200]}
-        if not transcript.strip():
-            return {"status": "parse_error", "error": "Subtitle file did not contain transcript text"}
-        return {"status": "ok", "transcript": transcript}
+            for vtt_file in vtt_files:
+                try:
+                    transcript = parse_vtt_transcript(
+                        vtt_file.read_text(encoding="utf-8", errors="replace")
+                    )
+                except OSError as exc:
+                    last_error = {"status": "parse_error", "error": str(exc)[:200]}
+                    continue
+                if transcript.strip():
+                    return {"status": "ok", "transcript": transcript}
+                last_error = {
+                    "status": "parse_error",
+                    "error": "Subtitle file did not contain transcript text",
+                }
+
+    return last_error or {"status": "missing", "error": "No subtitle track found"}
 
 
 def parse_vtt_transcript(content: str) -> str:
@@ -376,6 +397,19 @@ def cache_entry_valid(entry: Dict[str, Any], now: float) -> bool:
     return now - ts < ttl
 
 
+def metadata_cache_key(source: Dict[str, Any]) -> str:
+    platform = source.get("platform") or infer_platform(source.get("url", ""))
+    return f"{platform}:{source.get('url', '')}:{MAX_EPISODES_PER_SOURCE}"
+
+
+def metadata_cache_entry_valid(entry: Dict[str, Any], now: float) -> bool:
+    try:
+        ts = float(entry.get("ts", 0))
+    except (TypeError, ValueError):
+        return False
+    return now - ts < METADATA_CACHE_TTL_SECONDS and isinstance(entry.get("payload"), dict)
+
+
 def enrich_episode_transcript(
     episode: Dict[str, Any],
     source: Dict[str, Any],
@@ -383,7 +417,7 @@ def enrich_episode_transcript(
     no_cache: bool = False,
 ) -> Dict[str, Any]:
     config = transcript_config(source)
-    if not config.get("enabled"):
+    if config.get("enabled") is not True:
         episode["transcript_status"] = "disabled"
         return episode
 
@@ -448,16 +482,18 @@ def load_podcast_sources(defaults_dir: Path, config_dir: Optional[Path] = None) 
 
 def load_podcast_cache(no_cache: bool = False) -> Dict[str, Any]:
     if no_cache:
-        return {"transcripts": {}}
+        return {"metadata": {}, "transcripts": {}}
 
     try:
         with open(PODCAST_CACHE_PATH, "r", encoding="utf-8") as handle:
             cache = json.load(handle)
     except (OSError, json.JSONDecodeError):
-        return {"transcripts": {}}
+        return {"metadata": {}, "transcripts": {}}
 
     if not isinstance(cache, dict):
-        return {"transcripts": {}}
+        return {"metadata": {}, "transcripts": {}}
+    if not isinstance(cache.get("metadata"), dict):
+        cache["metadata"] = {}
     if not isinstance(cache.get("transcripts"), dict):
         cache["transcripts"] = {}
     return cache
@@ -642,8 +678,19 @@ def fetch_youtube_source(
     if not ytdlp_bin:
         raise RuntimeError("yt-dlp is not available")
 
-    payload = run_ytdlp_metadata(ytdlp_bin, source)
-    payload = hydrate_youtube_metadata(payload, ytdlp_bin)
+    cache_key = metadata_cache_key(source)
+    now = time.time()
+    cached = None if no_cache else cache.get("metadata", {}).get(cache_key)
+    if isinstance(cached, dict) and metadata_cache_entry_valid(cached, now):
+        payload = cached["payload"]
+    else:
+        payload = run_ytdlp_metadata(ytdlp_bin, source)
+        payload = hydrate_youtube_metadata(payload, ytdlp_bin)
+        if not no_cache:
+            cache.setdefault("metadata", {})[cache_key] = {
+                "payload": payload,
+                "ts": now,
+            }
     episodes = normalize_youtube_metadata(payload, source, cutoff)
     return [
         enrich_episode_transcript(episode, source, cache, no_cache=no_cache)
