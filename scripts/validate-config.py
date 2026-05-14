@@ -165,17 +165,18 @@ def validate_source_types(sources_data: Dict[str, Any]) -> bool:
                 errors.append(
                     f"Podcast source '{source_id}' has invalid platform: {platform}"
                 )
-            transcript = source.get("transcript", {})
-            if transcript and not isinstance(transcript, dict):
-                errors.append(
-                    f"Podcast source '{source_id}' has invalid transcript config"
-                )
-            if isinstance(transcript, dict):
-                backend = transcript.get("backend", "auto")
-                if backend not in {"auto", "yt-dlp"}:
+            if "transcript" in source:
+                transcript = source["transcript"]
+                if not isinstance(transcript, dict):
                     errors.append(
-                        f"Podcast source '{source_id}' has invalid transcript backend: {backend}"
+                        f"Podcast source '{source_id}' has invalid transcript config"
                     )
+                else:
+                    backend = transcript.get("backend", "auto")
+                    if backend not in {"auto", "yt-dlp"}:
+                        errors.append(
+                            f"Podcast source '{source_id}' has invalid transcript backend: {backend}"
+                        )
         elif source_type == "web":
             # Web sources are handled by topics, no specific validation needed
             pass

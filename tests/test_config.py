@@ -2,6 +2,7 @@
 """Tests for config_loader.py."""
 
 import json
+import importlib.util
 import sys
 import tempfile
 import unittest
@@ -17,8 +18,16 @@ README_EN = Path(__file__).parent.parent / "README.md"
 README_ZH = Path(__file__).parent.parent / "README_CN.md"
 SKILL_FILE = Path(__file__).parent.parent / "SKILL.md"
 TEST_PIPELINE = Path(__file__).parent.parent / "scripts" / "test-pipeline.sh"
+VALIDATE_CONFIG = Path(__file__).parent.parent / "scripts" / "validate-config.py"
 
 REQUIRED_TOPICS = {"llm", "ai-agent", "builder", "kol", "frontier-tech"}
+
+validate_config_spec = importlib.util.spec_from_file_location(
+    "validate_config", VALIDATE_CONFIG
+)
+validate_config = importlib.util.module_from_spec(validate_config_spec)
+validate_config_spec.loader.exec_module(validate_config)
+validate_source_types = validate_config.validate_source_types
 
 
 def read_skill_frontmatter():
@@ -272,6 +281,21 @@ class TestLoadTopics(unittest.TestCase):
 
 
 class TestPodcastConfigValidation(unittest.TestCase):
+    def test_validate_source_types_rejects_non_object_transcript(self):
+        sources_data = {
+            "sources": [
+                {
+                    "id": "broken-podcast",
+                    "type": "podcast",
+                    "url": "https://example.com/feed.xml",
+                    "platform": "rss",
+                    "transcript": [],
+                }
+            ]
+        }
+
+        self.assertFalse(validate_source_types(sources_data))
+
     def test_validate_config_accepts_podcast_overlay(self):
         import subprocess
 
