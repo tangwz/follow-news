@@ -255,6 +255,10 @@ def youtube_entry_published_at(entry: Dict[str, Any]) -> Optional[datetime]:
     )
 
 
+def youtube_entry_has_precise_published_at(entry: Dict[str, Any]) -> bool:
+    return timestamp_to_datetime(entry.get("timestamp")) is not None
+
+
 def youtube_entry_link(entry: Dict[str, Any]) -> str:
     link = str(entry.get("webpage_url") or entry.get("url") or "").strip()
     video_id = str(entry.get("id") or youtube_video_id(link)).strip()
@@ -664,7 +668,7 @@ def hydrate_youtube_metadata(
         if not isinstance(entry, dict):
             continue
         hydrated_entries.append(entry)
-        if youtube_entry_published_at(entry):
+        if youtube_entry_has_precise_published_at(entry):
             continue
 
         link = youtube_entry_link(entry)

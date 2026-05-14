@@ -311,6 +311,57 @@ class TestYoutubeMetadataNormalization(unittest.TestCase):
         self.assertEqual(episodes[0]["duration_seconds"], 1800)
 
     @patch("fetch_podcast.run_ytdlp_video_metadata")
+    def test_hydrates_date_only_youtube_entry_before_hour_cutoff(self, run_video_metadata):
+        run_video_metadata.return_value = {
+            "id": "abc123",
+            "title": "Hydrated Date Only Episode",
+            "webpage_url": "https://www.youtube.com/watch?v=abc123",
+            "timestamp": 1777925100,
+        }
+        payload = {
+            "entries": [
+                {
+                    "id": "abc123",
+                    "title": "Date Only Episode",
+                    "webpage_url": "https://www.youtube.com/watch?v=abc123",
+                    "upload_date": "20260504",
+                },
+            ]
+        }
+
+        hydrated = fetch_podcast.hydrate_youtube_metadata(payload, "/usr/local/bin/yt-dlp")
+        episodes = fetch_podcast.normalize_youtube_metadata(
+            hydrated,
+            self.source,
+            utc("2026-05-04T12:00:00Z"),
+        )
+
+        run_video_metadata.assert_called_once_with(
+            "/usr/local/bin/yt-dlp",
+            "https://www.youtube.com/watch?v=abc123",
+        )
+        self.assertEqual(len(episodes), 1)
+        self.assertEqual(episodes[0]["date"], "2026-05-04T20:05:00+00:00")
+
+    @patch("fetch_podcast.run_ytdlp_video_metadata")
+    def test_skips_hydration_for_precise_youtube_timestamp(self, run_video_metadata):
+        payload = {
+            "entries": [
+                {
+                    "id": "abc123",
+                    "title": "Timestamped Episode",
+                    "webpage_url": "https://www.youtube.com/watch?v=abc123",
+                    "timestamp": 1777925100,
+                },
+            ]
+        }
+
+        hydrated = fetch_podcast.hydrate_youtube_metadata(payload, "/usr/local/bin/yt-dlp")
+
+        run_video_metadata.assert_not_called()
+        self.assertEqual(hydrated["entries"][0]["title"], "Timestamped Episode")
+
+    @patch("fetch_podcast.run_ytdlp_video_metadata")
     def test_hydrates_tail_playlist_window_before_normalization(self, run_video_metadata):
         run_video_metadata.return_value = {
             "id": "tail",
@@ -323,7 +374,7 @@ class TestYoutubeMetadataNormalization(unittest.TestCase):
                 "id": f"head-{index}",
                 "title": f"Head Episode {index}",
                 "webpage_url": f"https://www.youtube.com/watch?v=head-{index}",
-                "upload_date": "20260501",
+                "timestamp": 1777665900,
             }
             for index in range(fetch_podcast.MAX_EPISODES_PER_SOURCE)
         ]
