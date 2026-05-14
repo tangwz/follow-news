@@ -77,6 +77,13 @@ def summarize(data: dict, top_n: int = 10, topic_filter: str = None):
                 if num_comments:
                     print(f" · {num_comments} comments", end="")
                 print()
+
+            if source_type == "podcast":
+                transcript_status = a.get("transcript_status", "missing")
+                show_name = a.get("show_name") or source
+                print(f"      Podcast: {show_name} · transcript={transcript_status}")
+                if a.get("duration_seconds"):
+                    print(f"      Duration: {a['duration_seconds']}s")
         
         print()
 
