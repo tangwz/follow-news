@@ -212,6 +212,26 @@ class ConfigEditorHandler(SimpleHTTPRequestHandler):
             return "twitter"
         return source_type
 
+    @staticmethod
+    def _is_http_url_with_hostname(value: Any) -> bool:
+        if not isinstance(value, str):
+            return False
+        if any(char.isspace() or ord(char) < 32 for char in value):
+            return False
+
+        try:
+            parsed = urlparse(value)
+            hostname = parsed.hostname
+            parsed.port
+        except ValueError:
+            return False
+
+        if not hostname:
+            return False
+        if any(char.isspace() or ord(char) < 32 for char in hostname):
+            return False
+        return parsed.scheme in {"http", "https"}
+
     def _normalize_sources_payload(self, sources: Any) -> int:
         if not isinstance(sources, list):
             return 0
@@ -280,6 +300,25 @@ class ConfigEditorHandler(SimpleHTTPRequestHandler):
             elif source_type == "reddit":
                 if not isinstance(source.get("subreddit"), str) or not source["subreddit"].strip():
                     raise ValueError(f"Source '{source_id}' missing required field 'subreddit'")
+            elif source_type == "podcast":
+                url = source.get("url")
+                if not url:
+                    raise ValueError(f"Source '{source_id}' missing required field 'url'")
+                if not self._is_http_url_with_hostname(url):
+                    raise ValueError(f"Source '{source_id}' has invalid field 'url'")
+
+                platform = source.get("platform", "auto")
+                if platform not in {"auto", "rss", "youtube"}:
+                    raise ValueError(f"Source '{source_id}' has invalid field 'platform'")
+
+                if "transcript" in source:
+                    transcript = source["transcript"]
+                    if not isinstance(transcript, dict):
+                        raise ValueError(f"Source '{source_id}' has invalid field 'transcript'")
+
+                    backend = transcript.get("backend", "auto")
+                    if backend not in {"auto", "yt-dlp"}:
+                        raise ValueError(f"Source '{source_id}' has invalid field 'transcript.backend'")
 
     def _validate_topics_payload(self, topics: Any) -> None:
         if not isinstance(topics, list):

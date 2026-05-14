@@ -200,6 +200,83 @@ class ConfigEditorServerTest(unittest.TestCase):
                     server.server_close()
                     server_thread.join(timeout=1.0)
 
+    def test_post_rejects_invalid_podcast_source_fields_on_save(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            sources_path = Path(tmpdir) / "sources.json"
+            topics_path = Path(tmpdir) / "topics.json"
+
+            sources_path.write_text('{"sources": []}', encoding="utf-8")
+            topics_path.write_text("[]", encoding="utf-8")
+
+            allowed_files = {
+                "sources": {
+                    "path": sources_path,
+                    "label_zh": "测试源",
+                    "label_en": "Test sources",
+                },
+                "topics": {
+                    "path": topics_path,
+                    "label_zh": "测试话题",
+                    "label_en": "Test topics",
+                },
+            }
+
+            base_source = {
+                "id": "broken-podcast",
+                "type": "podcast",
+                "name": "Broken Podcast",
+                "enabled": True,
+                "priority": False,
+                "topics": ["llm"],
+                "url": "https://example.com/feed.xml",
+                "platform": "rss",
+                "transcript": {"backend": "auto"},
+            }
+            cases = [
+                ("missing_url", {"url": None}),
+                ("invalid_url", {"url": "not a url"}),
+                ("invalid_platform", {"platform": "vimeo"}),
+                ("invalid_transcript", {"transcript": []}),
+                ("invalid_transcript_backend", {"transcript": {"backend": "manual"}}),
+            ]
+
+            port = _get_free_port()
+
+            with patch.dict(server_module.ALLOWED_FILES, allowed_files):
+                server = server_module.HTTPServer(("127.0.0.1", port), server_module.ConfigEditorHandler)
+                server_thread = threading.Thread(target=server.serve_forever, daemon=True)
+                server_thread.start()
+                try:
+                    time.sleep(0.05)
+                    for case_name, overrides in cases:
+                        with self.subTest(case=case_name):
+                            source = dict(base_source)
+                            for key, value in overrides.items():
+                                if value is None:
+                                    source.pop(key, None)
+                                else:
+                                    source[key] = value
+                            request_payload = {
+                                "key": "sources",
+                                "content": {"sources": [source]},
+                            }
+                            request = Request(
+                                f"http://127.0.0.1:{port}/api/file",
+                                data=json.dumps(request_payload, ensure_ascii=False).encode("utf-8"),
+                                method="POST",
+                                headers={
+                                    "Content-Type": "application/json",
+                                    "Origin": f"http://127.0.0.1:{port}",
+                                },
+                            )
+                            with self.assertRaises(HTTPError) as context:
+                                urlopen(request, timeout=2.0)
+                            self.assertEqual(context.exception.code, 400)
+                finally:
+                    server.shutdown()
+                    server.server_close()
+                    server_thread.join(timeout=1.0)
+
     def test_post_rejects_invalid_content_type(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             sources_path = Path(tmpdir) / "sources.json"

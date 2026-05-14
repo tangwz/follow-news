@@ -142,9 +142,21 @@ def is_http_url_with_hostname(value: Any) -> bool:
     """Return whether value is an HTTP(S) URL with a hostname."""
     if not isinstance(value, str):
         return False
+    if any(char.isspace() or ord(char) < 32 for char in value):
+        return False
 
-    parsed = urlparse(value.strip())
-    return parsed.scheme in {"http", "https"} and bool(parsed.hostname)
+    try:
+        parsed = urlparse(value)
+        hostname = parsed.hostname
+        parsed.port
+    except ValueError:
+        return False
+
+    if not hostname:
+        return False
+    if any(char.isspace() or ord(char) < 32 for char in hostname):
+        return False
+    return parsed.scheme in {"http", "https"}
 
 
 def validate_source_types(sources_data: Dict[str, Any]) -> bool:

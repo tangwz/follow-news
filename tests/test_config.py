@@ -300,6 +300,38 @@ class TestPodcastConfigValidation(unittest.TestCase):
 
         self.assertFalse(validate_source_types(sources_data))
 
+    def test_validate_source_types_accepts_valid_podcast_urls(self):
+        sources_data = {
+            "sources": [
+                self.podcast_source(id="rss-podcast", url="http://example.com/feed.xml"),
+                self.podcast_source(
+                    id="youtube-podcast",
+                    url="https://www.youtube.com/playlist?list=abc",
+                    platform="youtube",
+                ),
+            ]
+        }
+
+        self.assertTrue(validate_source_types(sources_data))
+
+    def test_validate_source_types_rejects_podcast_url_with_whitespace_host(self):
+        sources_data = {
+            "sources": [
+                self.podcast_source(url="https://exa mple.com/feed.xml"),
+            ]
+        }
+
+        self.assertFalse(validate_source_types(sources_data))
+
+    def test_validate_source_types_rejects_podcast_url_with_malformed_ipv6(self):
+        sources_data = {
+            "sources": [
+                self.podcast_source(url="https://[::1/feed.xml"),
+            ]
+        }
+
+        self.assertFalse(validate_source_types(sources_data))
+
     def test_validate_source_types_rejects_invalid_podcast_platform(self):
         sources_data = {
             "sources": [
