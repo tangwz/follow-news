@@ -19,6 +19,17 @@ spec.loader.exec_module(summarize_mod)
 
 
 class TestPodcastSummary(unittest.TestCase):
+    def test_ok_status_without_transcript_is_not_ready(self):
+        self.assertEqual(
+            summarize_mod.display_transcript_status(
+                {
+                    "transcript_status": "ok",
+                    "transcript": "",
+                }
+            ),
+            "ok",
+        )
+
     def test_ready_transcript_is_displayed_for_ok_transcript(self):
         data = {
             "output_stats": {"total_articles": 1},

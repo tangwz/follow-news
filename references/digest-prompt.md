@@ -114,7 +114,7 @@ No 🔥 score prefix for this section. Filter for `source_type == "github_trendi
 ```
 If `full_text` is available, write summary from full text; otherwise use title + snippet. Summary should highlight unique insights or technical depth — do not just translate the title.
 
-**🎙️ Podcast Remix** — Top 1-3 podcast episodes with usable transcripts. Filter for `source_type == "podcast"` and `transcript_status == "ok"` from merged JSON. Skip this section if no podcast transcript is available. Use `transcript` as remixable thought material, not as ordinary news copy. Format:
+**🎙️ Podcast Remix** — Top 1-3 podcast episodes with usable transcripts. Filter for `source_type == "podcast"`, `transcript_status == "ok"`, and non-empty `transcript` from merged JSON. Skip this section if no podcast transcript is available. Use `transcript` as remixable thought material, not as ordinary news copy. Format:
 ```
 • **Episode Title** — Show Name | core takeaway, speaker context, and 2-4 specific insights. Include one short quote from the transcript.
   <https://episode.example.com>
