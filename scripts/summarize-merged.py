@@ -127,7 +127,7 @@ def summarize(data: dict, top_n: int = 10, topic_filter: str = None):
                 print(f"      Snippet: {snippet}")
             if rich_evidence_enabled:
                 field_name, summary_material = select_summary_material(a)
-                if summary_material and summary_material != snippet:
+                if summary_material:
                     print(f"      Summary material ({field_name}): {summary_material}")
 
             handle = a.get("handle") or a.get("username") or a.get("screen_name")

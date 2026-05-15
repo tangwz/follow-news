@@ -145,6 +145,21 @@ class TestRenderedEvidence(unittest.TestCase):
         self.assertIn("Summary material (full_text): OpenAI released", output)
         self.assertIn("Multi-source: 3 sources · Example RSS, Hacker News, Reddit", output)
 
+    def test_non_github_article_prints_summary_material_when_only_snippet_exists(self):
+        output = self.render_summary(
+            {
+                "title": "Short RSS item",
+                "link": "https://example.com/short",
+                "source_name": "Example RSS",
+                "source_type": "rss",
+                "quality_score": 7,
+                "snippet": "Only snippet is available.",
+            }
+        )
+
+        self.assertIn("Snippet: Only snippet is available.", output)
+        self.assertIn("Summary material (snippet): Only snippet is available.", output)
+
     def test_twitter_article_prints_author_and_all_metrics(self):
         output = self.render_summary(
             {
