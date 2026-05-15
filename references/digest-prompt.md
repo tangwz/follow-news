@@ -74,14 +74,16 @@ Select articles **purely by quality_score regardless of source type**. Articles 
 
 Keep every selected item's original title and link unchanged. Enrich only the summary or description text after the title.
 
-Use the evidence printed by `summarize-merged.py`, especially `Summary material`, `Author`, `Twitter/X`, `Reddit`, `Podcast`, `Transcript excerpt`, and `Multi-source` lines. Do not invent details beyond that evidence. If the available material is thin, write a shorter and more cautious summary.
+Use the evidence printed by `summarize-merged.py`, especially `Summary material`, `Author`, `Twitter/X`, `Reddit`, `Podcast`, `Transcript excerpt`, and `Multi-source` lines. Do not invent details beyond that evidence. If the available material is thin, write a shorter and more cautious summary. Distinguish source claims, author opinions, and community reactions from confirmed facts, especially for Twitter/X and Reddit items.
 
 Apply these source-specific styles:
 
-- `twitter`: Write 2-4 Chinese sentences. Identify the person or organization, explain the key claim or action, and add practical context about why it matters. Prefer concrete claims over generic paraphrases. Include metrics only when they help explain significance.
+- `twitter`: Write 2-4 Chinese sentences. Identify the person or organization, explain the key claim or action, and add practical context about why it matters. Prefer concrete claims over generic paraphrases. Include metrics only when they indicate unusual reach or engagement, or when they help explain why the item matters.
 - `rss` and `web`: Write 80-150 Chinese characters when only snippet-level material is available, and up to 150-220 Chinese characters when `full_text` material is available. Include the core fact, technical or product detail, and likely impact.
-- `reddit`: Write 2-3 Chinese sentences. Distinguish the linked story from the community reaction. Include subreddit, score, and comment count when useful.
-- `podcast`: For items with `transcript=ready`, write 150-300 Chinese characters with the core takeaway, speaker or show context, 2-4 concrete insights, and one short quote from the transcript. For items without a usable transcript, write only metadata-backed summaries from title, show name, snippet, duration, and source metadata.
+- `reddit`: Write 2-3 Chinese sentences. Distinguish the linked story from the community reaction. Do not repeat subreddit or score in the description if they already appear in the Reddit suffix; mention comments or community reaction only when it adds signal.
+- `podcast`: For items with `transcript_status == "ok"` and a non-empty transcript, or an available `Transcript excerpt` line from `summarize-merged.py`, write 150-300 Chinese characters with the core takeaway, speaker or show context, 2-4 concrete insights, and one short quote from the transcript. For items without a usable transcript, write only metadata-backed summaries from title, show name, snippet, duration, and source metadata.
+
+Control length aggressively to avoid Discord and weekly-report bloat. Topic items should stay one compact paragraph. Daily reports should prefer the lower end of the ranges above. Weekly reports may use the upper ranges only for the highest-signal items. Lower-score items or items with thin source material should be compressed to one sentence.
 
 Do not apply this enrichment style to `source_type == "github"` or `source_type == "github_trending"`. The GitHub Releases and GitHub Trending fixed sections below keep their existing rules.
 
