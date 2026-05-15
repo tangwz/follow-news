@@ -79,20 +79,19 @@ class TestAcceptanceFixture(unittest.TestCase):
 
 class TestAcceptanceRenderer(unittest.TestCase):
     def test_daily_digest_matches_golden(self):
-        expected = DAILY_GOLDEN.read_text()
+        expected = DAILY_GOLDEN.read_text(encoding="utf-8")
         actual = render_daily_digest()
 
         if actual != expected:
-            diff = "\n".join(
+            diff = "".join(
                 difflib.unified_diff(
-                    expected.splitlines(),
-                    actual.splitlines(),
+                    expected.splitlines(keepends=True),
+                    actual.splitlines(keepends=True),
                     fromfile=str(DAILY_GOLDEN),
                     tofile="rendered daily digest",
-                    lineterm="",
                 )
             )
-            self.fail(f"Daily digest golden mismatch:\n{diff}")
+            self.fail("Daily digest golden mismatch:\n" + diff)
 
     def test_render_digest_uses_current_discord_structure(self):
         data = load_acceptance_fixture()
