@@ -381,7 +381,15 @@ def build_codex_prompt(report_date: str, version: str) -> str:
             "- Do not run the network pipeline.",
             "- Use merged.json as the only source fixture.",
             "- Use summarized.txt for a quick fixture overview.",
-            "- Use expected.md as the rendered acceptance digest.",
+            (
+                "- Follow references/digest-prompt.md and "
+                "references/templates/discord.md as the source-of-truth "
+                "Markdown and Discord formatting rules."
+            ),
+            (
+                "- Treat expected.md as a deterministic comparison sample, "
+                "not as the prompt source of truth."
+            ),
             "- Save the generated report as `actual.md` in this directory.",
             "- Compare expected.md vs actual.md with `diff -u expected.md actual.md`.",
             "- Keep golden updates gated by UPDATE_GOLDEN=1.",

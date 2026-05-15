@@ -20,6 +20,13 @@ GOLDEN_DIR = ROOT_DIR / "tests" / "golden"
 TOPICS_FILE = ROOT_DIR / "config" / "defaults" / "topics.json"
 ACCEPTANCE_FIXTURE = FIXTURES_DIR / "acceptance-merged.json"
 DAILY_GOLDEN = GOLDEN_DIR / "daily-discord.md"
+FIXED_DIGEST_SECTIONS = {
+    "## 📢 KOL Updates",
+    "## 📦 GitHub Releases",
+    "## 🐙 GitHub Trending",
+    "## 📝 Blog Picks",
+    "## 🎙️ Podcast Remix",
+}
 
 spec = importlib.util.spec_from_file_location(
     "render_acceptance_digest",
@@ -123,20 +130,27 @@ class TestAcceptanceRenderer(unittest.TestCase):
             self.assertLess(index + 1, len(lines))
             self.assertRegex(lines[index + 1], r"^  <https?://.+>$")
 
-        llm_start = lines.index("## 🧠 LLM / Large Models")
-        llm_end = next(
-            index
-            for index in range(llm_start + 1, len(lines))
-            if lines[index].startswith("## ")
-        )
-        llm_scores = [
-            float(match.group(1))
-            for line in lines[llm_start:llm_end]
-            for match in [re.match(r"^• 🔥([0-9]+(?:\.[0-9]+)?) \| ", line)]
-            if match
+        section_starts = [
+            index for index, line in enumerate(lines) if line.startswith("## ")
         ]
-        self.assertGreater(len(llm_scores), 0)
-        self.assertEqual(llm_scores, sorted(llm_scores, reverse=True))
+        for position, start in enumerate(section_starts):
+            section_title = lines[start]
+            if section_title in FIXED_DIGEST_SECTIONS:
+                continue
+
+            end = (
+                section_starts[position + 1]
+                if position + 1 < len(section_starts)
+                else len(lines)
+            )
+            scores = [
+                float(match.group(1))
+                for line in lines[start:end]
+                for match in [re.match(r"^• 🔥([0-9]+(?:\.[0-9]+)?) \| ", line)]
+                if match
+            ]
+            self.assertGreater(len(scores), 0, section_title)
+            self.assertEqual(scores, sorted(scores, reverse=True), section_title)
 
     def test_update_golden_requires_explicit_environment_flag(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -212,6 +226,18 @@ class TestAcceptanceRenderer(unittest.TestCase):
             )
             self.assertIn(
                 "diff -u expected.md actual.md",
+                (output_dir / "prompt.md").read_text(encoding="utf-8"),
+            )
+            self.assertIn(
+                "references/digest-prompt.md",
+                (output_dir / "prompt.md").read_text(encoding="utf-8"),
+            )
+            self.assertIn(
+                "references/templates/discord.md",
+                (output_dir / "prompt.md").read_text(encoding="utf-8"),
+            )
+            self.assertIn(
+                "expected.md as a deterministic comparison sample",
                 (output_dir / "prompt.md").read_text(encoding="utf-8"),
             )
             self.assertIn(
