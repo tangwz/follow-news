@@ -9,6 +9,7 @@ Usage:
 import json
 import argparse
 from pathlib import Path
+from typing import Tuple
 
 
 def normalize_whitespace(value: str) -> str:
@@ -27,7 +28,7 @@ def truncate_text(value, max_chars: int = 500) -> str:
     return normalized[:max_chars].rstrip() + "..."
 
 
-def select_summary_material(article: dict, max_chars: int = 500) -> tuple[str, str]:
+def select_summary_material(article: dict, max_chars: int = 500) -> Tuple[str, str]:
     """Pick the richest available text field for digest writing."""
     for field in ("full_text", "summary", "snippet", "title"):
         material = truncate_text(article.get(field), max_chars)
