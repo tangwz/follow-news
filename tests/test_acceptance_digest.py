@@ -29,8 +29,7 @@ spec.loader.exec_module(render_mod)
 
 
 def load_acceptance_fixture():
-    with open(ACCEPTANCE_FIXTURE, "r") as f:
-        return json.load(f)
+    return json.loads(ACCEPTANCE_FIXTURE.read_text(encoding="utf-8"))
 
 
 def render_daily_digest():
