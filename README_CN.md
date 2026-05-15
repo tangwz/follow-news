@@ -171,7 +171,7 @@ pip install weasyprint yt-dlp
 ## 🧪 测试
 
 ```bash
-python3 -m unittest discover -s tests -v   # 41 个测试，纯标准库
+python3 -m unittest discover -s tests -v
 ```
 
 ## 🧪 产品验收测试
