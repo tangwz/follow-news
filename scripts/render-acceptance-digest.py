@@ -382,6 +382,8 @@ def build_codex_prompt(report_date: str, version: str) -> str:
             "- Use merged.json as the only source fixture.",
             "- Use summarized.txt for a quick fixture overview.",
             "- Use expected.md as the rendered acceptance digest.",
+            "- Save the generated report as `actual.md` in this directory.",
+            "- Compare expected.md vs actual.md with `diff -u expected.md actual.md`.",
             "- Keep golden updates gated by UPDATE_GOLDEN=1.",
             f"- Report date: {report_date}",
             f"- follow-news version: {version}",
@@ -415,7 +417,7 @@ def prepare_codex_acceptance_context(
     )
 
 
-def parse_args() -> argparse.Namespace:
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Render deterministic Markdown/Discord digest acceptance output."
     )
@@ -423,12 +425,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--topics", type=Path, required=True, help="Topics JSON file")
     parser.add_argument("--date", required=True, help="Report date in YYYY-MM-DD format")
     parser.add_argument("--version", required=True, help="follow-news version string")
-    parser.add_argument("--output", type=Path, required=True, help="Markdown output path")
+    parser.add_argument("--output", type=Path, help="Markdown output path")
     parser.add_argument(
         "--prepare-codex-context",
         type=Path,
         help="Directory for manual Codex acceptance context files",
     )
+    return parser
+
+
+def parse_args() -> argparse.Namespace:
+    parser = build_parser()
     return parser.parse_args()
 
 
@@ -446,6 +453,10 @@ def main() -> int:
             args.version,
         )
         return 0
+
+    if not args.output:
+        parser = build_parser()
+        parser.error("--output is required unless --prepare-codex-context is used")
 
     output = render_digest(data, topic_defs, args.date, args.version)
     args.output.parent.mkdir(parents=True, exist_ok=True)

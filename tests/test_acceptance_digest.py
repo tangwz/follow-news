@@ -6,6 +6,7 @@ import importlib.util
 import json
 import os
 import re
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -206,12 +207,51 @@ class TestAcceptanceRenderer(unittest.TestCase):
                 (output_dir / "prompt.md").read_text(encoding="utf-8"),
             )
             self.assertIn(
+                "Save the generated report as `actual.md` in this directory.",
+                (output_dir / "prompt.md").read_text(encoding="utf-8"),
+            )
+            self.assertIn(
+                "diff -u expected.md actual.md",
+                (output_dir / "prompt.md").read_text(encoding="utf-8"),
+            )
+            self.assertIn(
                 "# 🚀 Tech Digest - 2026-02-27",
                 (output_dir / "expected.md").read_text(encoding="utf-8"),
             )
             self.assertIn(
                 "Total articles: 9",
                 (output_dir / "summarized.txt").read_text(encoding="utf-8"),
+            )
+
+    def test_cli_prepare_codex_context_does_not_require_output(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            output_dir = Path(tmp_dir)
+
+            result = subprocess.run(
+                [
+                    "python3",
+                    str(SCRIPTS_DIR / "render-acceptance-digest.py"),
+                    "--input",
+                    str(ACCEPTANCE_FIXTURE),
+                    "--topics",
+                    str(TOPICS_FILE),
+                    "--date",
+                    "2026-02-27",
+                    "--version",
+                    "3.17.0",
+                    "--prepare-codex-context",
+                    str(output_dir),
+                ],
+                cwd=ROOT_DIR,
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(
+                {path.name for path in output_dir.iterdir()},
+                {"merged.json", "summarized.txt", "prompt.md", "expected.md"},
             )
 
 
