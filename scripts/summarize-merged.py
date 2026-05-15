@@ -114,6 +114,7 @@ def summarize(data: dict, top_n: int = 10, topic_filter: str = None):
             # Metrics for Twitter
             metrics = a.get("metrics", {})
             display_name = a.get("display_name", "")
+            rich_evidence_enabled = source_type not in {"github", "github_trending"}
             
             print(f"\n  [{i+1}] ({qs:.0f}pts) [{source_type}] {title}")
             print(f"      Source: {source}", end="")
@@ -124,9 +125,10 @@ def summarize(data: dict, top_n: int = 10, topic_filter: str = None):
                 print(f"      Link: {link}")
             if snippet:
                 print(f"      Snippet: {snippet}")
-            field_name, summary_material = select_summary_material(a)
-            if summary_material and summary_material != snippet:
-                print(f"      Summary material ({field_name}): {summary_material}")
+            if rich_evidence_enabled:
+                field_name, summary_material = select_summary_material(a)
+                if summary_material and summary_material != snippet:
+                    print(f"      Summary material ({field_name}): {summary_material}")
 
             handle = a.get("handle") or a.get("username") or a.get("screen_name")
             if source_type == "twitter" and display_name:
@@ -135,7 +137,7 @@ def summarize(data: dict, top_n: int = 10, topic_filter: str = None):
                     author = f"{author} (@{handle})"
                 print(f"      Author: {author}")
 
-            if a.get("multi_source") and a.get("source_count"):
+            if rich_evidence_enabled and a.get("multi_source") and a.get("source_count"):
                 source_names = a.get("all_sources") or []
                 if source_names:
                     print(

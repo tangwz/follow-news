@@ -202,6 +202,36 @@ class TestRenderedEvidence(unittest.TestCase):
         self.assertIn("Podcast: Training Data · transcript=ready", output)
         self.assertIn("Transcript excerpt: Speaker | 00:00 - 00:05 Autonomy", output)
 
+    def test_github_release_output_does_not_add_richer_evidence_lines(self):
+        output = self.render_summary(
+            {
+                "title": "Project v1.2.3",
+                "link": "https://github.com/org/project/releases/tag/v1.2.3",
+                "source_name": "org/project",
+                "source_type": "github",
+                "quality_score": 8,
+            }
+        )
+
+        self.assertIn("[github] Project v1.2.3", output)
+        self.assertNotIn("Summary material", output)
+        self.assertNotIn("Multi-source", output)
+
+    def test_github_trending_output_does_not_add_richer_evidence_lines(self):
+        output = self.render_summary(
+            {
+                "title": "org/trending-project",
+                "link": "https://github.com/org/trending-project",
+                "source_name": "GitHub Trending",
+                "source_type": "github_trending",
+                "quality_score": 8,
+            }
+        )
+
+        self.assertIn("[github_trending] org/trending-project", output)
+        self.assertNotIn("Summary material", output)
+        self.assertNotIn("Multi-source", output)
+
 
 if __name__ == "__main__":
     unittest.main()
