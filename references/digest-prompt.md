@@ -41,7 +41,7 @@ Read the most recent file from `<WORKSPACE>/archive/follow-news/` to avoid repea
 
 ## Data Collection Pipeline
 
-**Use the unified pipeline** (runs all 5 sources in parallel, ~30s):
+**Use the unified pipeline** (runs all 6 sources in parallel, ~30s):
 
 ```bash
 python3 <SKILL_DIR>/scripts/run-pipeline.py \

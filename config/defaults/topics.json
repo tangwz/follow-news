@@ -82,6 +82,22 @@
         "max_items": 8,
         "style": "detailed"
       }
+    },
+    {
+      "id": "podcast",
+      "emoji": "🎧",
+      "label": "Podcast",
+      "description": "Podcast episodes from configured podcast feeds and YouTube sources",
+      "search": {
+        "queries": [],
+        "twitter_queries": [],
+        "must_include": [],
+        "exclude": []
+      },
+      "display": {
+        "max_items": 8,
+        "style": "compact"
+      }
     }
   ]
 }
