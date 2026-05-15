@@ -174,6 +174,33 @@ pip install weasyprint yt-dlp
 - **weasyprint** — Enables PDF report generation
 - **yt-dlp** — Enables YouTube podcast metadata and transcript fetching; `YTDLP_BIN` can point to a standalone binary
 
+## 🧪 Product Acceptance Test
+
+Run the digest acceptance test before changing digest rendering behavior:
+
+```bash
+python3 -m unittest tests.test_acceptance_digest -v
+```
+
+When the expected digest intentionally changes, update the golden file and review the diff before committing:
+
+```bash
+UPDATE_GOLDEN=1 python3 -m unittest tests.test_acceptance_digest -v
+git diff -- tests/golden/daily-discord.md
+```
+
+To manually prepare Codex context for the acceptance fixture:
+
+```bash
+python3 scripts/render-acceptance-digest.py \
+  --input tests/fixtures/acceptance-merged.json \
+  --topics config/defaults/topics.json \
+  --date 2026-02-27 \
+  --version 3.17.0 \
+  --prepare-codex-context /tmp/follow-news-acceptance \
+  --output /tmp/follow-news-acceptance/expected.md
+```
+
 ## 📂 Repository
 
 **GitHub**: [github.com/tangwz/follow-news](https://github.com/tangwz/follow-news)
