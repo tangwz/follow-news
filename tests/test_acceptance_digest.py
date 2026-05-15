@@ -4,8 +4,12 @@
 import difflib
 import importlib.util
 import json
+import os
+import re
+import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 
 ROOT_DIR = Path(__file__).parent.parent
@@ -38,6 +42,26 @@ def render_daily_digest():
         report_date="2026-02-27",
         version="3.17.0",
     )
+
+
+def assert_or_update_golden(testcase, expected_path, actual):
+    if os.environ.get("UPDATE_GOLDEN") == "1":
+        expected_path.parent.mkdir(parents=True, exist_ok=True)
+        expected_path.write_text(actual, encoding="utf-8")
+        print(f"golden updated: {expected_path}")
+        return
+
+    expected = expected_path.read_text(encoding="utf-8")
+    if actual != expected:
+        diff = "".join(
+            difflib.unified_diff(
+                expected.splitlines(keepends=True),
+                actual.splitlines(keepends=True),
+                fromfile=str(expected_path),
+                tofile="rendered daily digest",
+            )
+        )
+        testcase.fail("Daily digest golden mismatch:\n" + diff)
 
 
 class TestAcceptanceFixture(unittest.TestCase):
@@ -79,19 +103,54 @@ class TestAcceptanceFixture(unittest.TestCase):
 
 class TestAcceptanceRenderer(unittest.TestCase):
     def test_daily_digest_matches_golden(self):
-        expected = DAILY_GOLDEN.read_text(encoding="utf-8")
-        actual = render_daily_digest()
+        assert_or_update_golden(self, DAILY_GOLDEN, render_daily_digest())
 
-        if actual != expected:
-            diff = "".join(
-                difflib.unified_diff(
-                    expected.splitlines(keepends=True),
-                    actual.splitlines(keepends=True),
-                    fromfile=str(DAILY_GOLDEN),
-                    tofile="rendered daily digest",
-                )
-            )
-            self.fail("Daily digest golden mismatch:\n" + diff)
+    def test_daily_digest_structure_contract(self):
+        text = render_daily_digest()
+        lines = text.splitlines()
+
+        self.assertTrue(text.startswith("# 🚀 Tech Digest - 2026-02-27\n"))
+        self.assertIn("## 🧠 LLM / Large Models", text)
+        self.assertIn("---\n", text)
+        self.assertIn("Powered by OpenClaw", text)
+
+        article_lines = [line for line in lines if line.startswith("• 🔥")]
+        self.assertGreater(len(article_lines), 0)
+        for index, line in enumerate(lines):
+            if not line.startswith("• 🔥"):
+                continue
+            self.assertRegex(line, r"^• 🔥[0-9]+(?:\.[0-9]+)? \| .+")
+            self.assertLess(index + 1, len(lines))
+            self.assertRegex(lines[index + 1], r"^  <https?://.+>$")
+
+        llm_start = lines.index("## 🧠 LLM / Large Models")
+        llm_end = next(
+            index
+            for index in range(llm_start + 1, len(lines))
+            if lines[index].startswith("## ")
+        )
+        llm_scores = [
+            float(match.group(1))
+            for line in lines[llm_start:llm_end]
+            for match in [re.match(r"^• 🔥([0-9]+(?:\.[0-9]+)?) \| ", line)]
+            if match
+        ]
+        self.assertGreater(len(llm_scores), 0)
+        self.assertEqual(llm_scores, sorted(llm_scores, reverse=True))
+
+    def test_update_golden_requires_explicit_environment_flag(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            expected_path = Path(tmp_dir) / "golden.md"
+            expected_path.write_text("old\n", encoding="utf-8")
+
+            with patch.dict(os.environ, {}, clear=True):
+                with self.assertRaises(AssertionError):
+                    assert_or_update_golden(self, expected_path, "new\n")
+                self.assertEqual(expected_path.read_text(encoding="utf-8"), "old\n")
+
+            with patch.dict(os.environ, {"UPDATE_GOLDEN": "1"}, clear=True):
+                assert_or_update_golden(self, expected_path, "new\n")
+                self.assertEqual(expected_path.read_text(encoding="utf-8"), "new\n")
 
     def test_render_digest_uses_current_discord_structure(self):
         data = load_acceptance_fixture()
