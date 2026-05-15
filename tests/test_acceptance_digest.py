@@ -1,14 +1,24 @@
 #!/usr/bin/env python3
 """Acceptance tests for final Markdown/Discord digest output."""
 
+import importlib.util
 import json
 import unittest
 from pathlib import Path
 
 
 ROOT_DIR = Path(__file__).parent.parent
+SCRIPTS_DIR = ROOT_DIR / "scripts"
 FIXTURES_DIR = ROOT_DIR / "tests" / "fixtures"
+TOPICS_FILE = ROOT_DIR / "config" / "defaults" / "topics.json"
 ACCEPTANCE_FIXTURE = FIXTURES_DIR / "acceptance-merged.json"
+
+spec = importlib.util.spec_from_file_location(
+    "render_acceptance_digest",
+    SCRIPTS_DIR / "render-acceptance-digest.py",
+)
+render_mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(render_mod)
 
 
 def load_acceptance_fixture():
@@ -51,6 +61,37 @@ class TestAcceptanceFixture(unittest.TestCase):
                 for article in articles
             )
         )
+
+
+class TestAcceptanceRenderer(unittest.TestCase):
+    def test_render_digest_uses_current_discord_structure(self):
+        data = load_acceptance_fixture()
+        topic_defs = render_mod.load_topic_definitions(TOPICS_FILE)
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs,
+            report_date="2026-02-27",
+            version="3.17.0",
+        )
+
+        self.assertIn("# 🚀 Tech Digest - 2026-02-27", text)
+        self.assertIn("## 🧠 LLM / Large Models", text)
+        self.assertIn("• 🔥18 | OpenAI ships structured agent evaluation suite", text)
+        self.assertIn("  <https://openai.com/research/agent-evals>", text)
+        self.assertIn("  *[3 sources]*", text)
+        self.assertNotIn("Low scoring model rumor should not render", text)
+        self.assertIn("## 📢 KOL Updates", text)
+        self.assertIn("`👁 12.5K | 💬 45 | 🔁 230 | ❤️ 1.8K`", text)
+        self.assertIn("## 📦 GitHub Releases", text)
+        self.assertIn("## 🐙 GitHub Trending", text)
+        self.assertIn("## 📝 Blog Picks", text)
+        self.assertIn("## 🎙️ Podcast Remix", text)
+        self.assertIn(
+            "📊 Data Sources: RSS 3 | Twitter 1 | Reddit 1 | Web 1 | GitHub 1 releases + 1 trending | Podcast 1 episodes | Dedup: 9 articles",
+            text,
+        )
+        self.assertTrue(text.endswith("\n"))
 
 
 if __name__ == "__main__":
