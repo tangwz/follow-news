@@ -68,7 +68,22 @@ python3 <SKILL_DIR>/scripts/summarize-merged.py --input /tmp/td-merged.json --to
 
 Use this output to select articles — **do NOT write ad-hoc Python to parse the JSON**. Apply the template from `<SKILL_DIR>/references/templates/<TEMPLATE>.md`.
 
-Select articles **purely by quality_score regardless of source type**. When an article has a `full_text` field, use it to write a richer 2-3 sentence summary instead of relying solely on the title/snippet. Articles in merged JSON are already sorted by quality_score descending within each topic — respect this order. For Reddit posts, append `*[Reddit r/xxx, {{score}}↑]*`.
+Select articles **purely by quality_score regardless of source type**. Articles in merged JSON are already sorted by quality_score descending within each topic — respect this order. For Reddit posts, append `*[Reddit r/xxx, {{score}}↑]*`.
+
+### Source-Aware Summary Style
+
+Keep every selected item's original title and link unchanged. Enrich only the summary or description text after the title.
+
+Use the evidence printed by `summarize-merged.py`, especially `Summary material`, `Author`, `Twitter/X`, `Reddit`, `Podcast`, `Transcript excerpt`, and `Multi-source` lines. Do not invent details beyond that evidence. If the available material is thin, write a shorter and more cautious summary.
+
+Apply these source-specific styles:
+
+- `twitter`: Write 2-4 Chinese sentences. Identify the person or organization, explain the key claim or action, and add practical context about why it matters. Prefer concrete claims over generic paraphrases. Include metrics only when they help explain significance.
+- `rss` and `web`: Write 80-150 Chinese characters when only snippet-level material is available, and up to 150-220 Chinese characters when `full_text` material is available. Include the core fact, technical or product detail, and likely impact.
+- `reddit`: Write 2-3 Chinese sentences. Distinguish the linked story from the community reaction. Include subreddit, score, and comment count when useful.
+- `podcast`: For items with `transcript=ready`, write 150-300 Chinese characters with the core takeaway, speaker or show context, 2-4 concrete insights, and one short quote from the transcript. For items without a usable transcript, write only metadata-backed summaries from title, show name, snippet, duration, and source metadata.
+
+Do not apply this enrichment style to `source_type == "github"` or `source_type == "github_trending"`. The GitHub Releases and GitHub Trending fixed sections below keep their existing rules.
 
 Each article line must include its quality score using 🔥 prefix. Format: `🔥{score} | {summary with link}`. This makes scoring transparent and helps readers identify the most important news at a glance.
 
@@ -81,6 +96,8 @@ From `topics.json`: `emoji` + `label` headers, `<ITEMS_PER_SECTION>` items each.
 **⚠️ CRITICAL: Output articles in EXACTLY the same order as summarize-merged.py output (quality_score descending). Do NOT reorder, group by subtopic, or rearrange. The 🔥 scores must appear in strictly decreasing order within each section.**
 
 **⚠️ Minimum score threshold: For every topic section generated from `topics.json`, only include articles with quality_score ≥ 5. Skip anything below 5 for all configured topics.**
+
+For each selected topic article, keep the title and link from the source item. Write the description using the source-aware style above. The description should add concrete context, not merely translate or repeat the title.
 
 ### Fixed Sections (after topics)
 
