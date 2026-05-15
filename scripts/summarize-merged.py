@@ -124,18 +124,49 @@ def summarize(data: dict, top_n: int = 10, topic_filter: str = None):
                 print(f"      Link: {link}")
             if snippet:
                 print(f"      Snippet: {snippet}")
+            field_name, summary_material = select_summary_material(a)
+            if summary_material and summary_material != snippet:
+                print(f"      Summary material ({field_name}): {summary_material}")
+
+            handle = a.get("handle") or a.get("username") or a.get("screen_name")
+            if source_type == "twitter" and display_name:
+                author = display_name
+                if handle:
+                    author = f"{author} (@{handle})"
+                print(f"      Author: {author}")
+
+            if a.get("multi_source") and a.get("source_count"):
+                source_names = a.get("all_sources") or []
+                if source_names:
+                    print(
+                        "      Multi-source: "
+                        f"{a['source_count']} sources · {', '.join(source_names[:5])}"
+                    )
+                else:
+                    print(f"      Multi-source: {a['source_count']} sources")
+
             if metrics:
-                parts = []
-                for k, v in metrics.items():
-                    if v and v > 0:
-                        parts.append(f"{k}={v}")
-                if parts:
-                    print(f"      Metrics: {', '.join(parts)}")
+                if source_type == "twitter":
+                    print(f"      Twitter/X: {format_twitter_metrics(metrics)}")
+                else:
+                    parts = []
+                    for k, v in metrics.items():
+                        if v and v > 0:
+                            parts.append(f"{k}={v}")
+                    if parts:
+                        print(f"      Metrics: {', '.join(parts)}")
             
             # Reddit-specific
             reddit_score = a.get("score")
             num_comments = a.get("num_comments")
-            if reddit_score is not None:
+            if source_type == "reddit" and reddit_score is not None:
+                reddit_parts = [source, f"{reddit_score}↑"]
+                if num_comments is not None:
+                    reddit_parts.append(f"{num_comments} comments")
+                if a.get("flair"):
+                    reddit_parts.append(f"flair={a['flair']}")
+                print(f"      Reddit: {' · '.join(reddit_parts)}")
+            elif reddit_score is not None:
                 print(f"      Reddit: {reddit_score}↑", end="")
                 if num_comments:
                     print(f" · {num_comments} comments", end="")
@@ -147,6 +178,10 @@ def summarize(data: dict, top_n: int = 10, topic_filter: str = None):
                 print(f"      Podcast: {show_name} · transcript={transcript_status}")
                 if a.get("duration_seconds"):
                     print(f"      Duration: {a['duration_seconds']}s")
+                if transcript_status == "ready":
+                    transcript_excerpt = truncate_text(a.get("transcript"), 600)
+                    if transcript_excerpt:
+                        print(f"      Transcript excerpt: {transcript_excerpt}")
         
         print()
 
