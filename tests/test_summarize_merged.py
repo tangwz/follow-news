@@ -61,5 +61,54 @@ class TestPodcastSummary(unittest.TestCase):
         self.assertIn("Duration: 3600s", text)
 
 
+class TestSummaryMaterial(unittest.TestCase):
+    def test_truncate_text_normalizes_whitespace_and_adds_ellipsis(self):
+        text = "Alpha\n\nBeta\tGamma Delta"
+
+        result = summarize_mod.truncate_text(text, 16)
+
+        self.assertEqual(result, "Alpha Beta Gamma...")
+
+    def test_truncate_text_returns_empty_string_for_missing_text(self):
+        self.assertEqual(summarize_mod.truncate_text(None, 20), "")
+        self.assertEqual(summarize_mod.truncate_text("", 20), "")
+
+    def test_select_summary_material_prefers_full_text(self):
+        article = {
+            "title": "Fallback title",
+            "snippet": "Snippet text",
+            "summary": "Summary text",
+            "full_text": "Full text wins",
+        }
+
+        result = summarize_mod.select_summary_material(article, max_chars=80)
+
+        self.assertEqual(result, ("full_text", "Full text wins"))
+
+    def test_select_summary_material_falls_back_to_title(self):
+        article = {"title": "Only title is available"}
+
+        result = summarize_mod.select_summary_material(article, max_chars=80)
+
+        self.assertEqual(result, ("title", "Only title is available"))
+
+    def test_format_metric_count_uses_compact_units(self):
+        self.assertEqual(summarize_mod.format_metric_count(999), "999")
+        self.assertEqual(summarize_mod.format_metric_count(1200), "1.2K")
+        self.assertEqual(summarize_mod.format_metric_count(2_500_000), "2.5M")
+
+    def test_format_twitter_metrics_returns_all_four_metrics(self):
+        metrics = {
+            "impression_count": 12345,
+            "reply_count": 12,
+            "retweet_count": 345,
+            "like_count": 6789,
+        }
+
+        result = summarize_mod.format_twitter_metrics(metrics)
+
+        self.assertEqual(result, "views=12.3K, replies=12, reposts=345, likes=6.8K")
+
+
 if __name__ == "__main__":
     unittest.main()

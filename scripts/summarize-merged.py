@@ -11,6 +11,61 @@ import argparse
 from pathlib import Path
 
 
+def normalize_whitespace(value: str) -> str:
+    """Collapse repeated whitespace for compact terminal output."""
+    return " ".join(str(value).split())
+
+
+def truncate_text(value, max_chars: int = 500) -> str:
+    """Return normalized text capped at max_chars."""
+    if not value:
+        return ""
+
+    normalized = normalize_whitespace(value)
+    if len(normalized) <= max_chars:
+        return normalized
+    return normalized[:max_chars].rstrip() + "..."
+
+
+def select_summary_material(article: dict, max_chars: int = 500) -> tuple[str, str]:
+    """Pick the richest available text field for digest writing."""
+    for field in ("full_text", "summary", "snippet", "title"):
+        material = truncate_text(article.get(field), max_chars)
+        if material:
+            return field, material
+    return "", ""
+
+
+def format_metric_count(value) -> str:
+    """Format large engagement counts for human scanning."""
+    if value is None:
+        return "0"
+
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return "0"
+
+    if number >= 1_000_000:
+        return f"{number / 1_000_000:.1f}M"
+    if number >= 1_000:
+        return f"{number / 1_000:.1f}K"
+    return str(int(number))
+
+
+def format_twitter_metrics(metrics: dict) -> str:
+    """Return the four Twitter/X metrics used by the digest prompt."""
+    if not isinstance(metrics, dict):
+        metrics = {}
+
+    return (
+        f"views={format_metric_count(metrics.get('impression_count'))}, "
+        f"replies={format_metric_count(metrics.get('reply_count'))}, "
+        f"reposts={format_metric_count(metrics.get('retweet_count'))}, "
+        f"likes={format_metric_count(metrics.get('like_count'))}"
+    )
+
+
 def display_transcript_status(article: dict) -> str:
     """Return the human-facing transcript state for podcast summaries."""
     status = article.get("transcript_status", "missing")
