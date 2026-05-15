@@ -180,6 +180,40 @@ class TestAcceptanceRenderer(unittest.TestCase):
         )
         self.assertTrue(text.endswith("\n"))
 
+    def test_prepare_manual_codex_context(self):
+        data = load_acceptance_fixture()
+        topic_defs = render_mod.load_topic_definitions(TOPICS_FILE)
+        source_fixture = ACCEPTANCE_FIXTURE
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            output_dir = Path(tmp_dir)
+
+            render_mod.prepare_codex_acceptance_context(
+                data,
+                topic_defs,
+                source_fixture,
+                output_dir,
+                report_date="2026-02-27",
+                version="3.17.0",
+            )
+
+            self.assertEqual(
+                {path.name for path in output_dir.iterdir()},
+                {"merged.json", "summarized.txt", "prompt.md", "expected.md"},
+            )
+            self.assertIn(
+                "Do not run the network pipeline.",
+                (output_dir / "prompt.md").read_text(encoding="utf-8"),
+            )
+            self.assertIn(
+                "# 🚀 Tech Digest - 2026-02-27",
+                (output_dir / "expected.md").read_text(encoding="utf-8"),
+            )
+            self.assertIn(
+                "Total articles: 9",
+                (output_dir / "summarized.txt").read_text(encoding="utf-8"),
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

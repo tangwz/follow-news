@@ -3,6 +3,7 @@
 
 import argparse
 import json
+import shutil
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence
 
@@ -11,7 +12,7 @@ MIN_QUALITY_SCORE = 5
 
 
 def load_json(path: Path) -> Dict[str, Any]:
-    with open(path, "r") as f:
+    with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
 
 
@@ -327,6 +328,93 @@ def render_digest(
     return "\n\n".join(sections).rstrip() + "\n"
 
 
+def summarize_fixture(data: Dict[str, Any]) -> str:
+    stats = data.get("output_stats", {})
+    topics = data.get("topics", {})
+    total_articles = stats.get("total_articles", 0)
+
+    lines = [
+        "Acceptance digest fixture summary",
+        f"Total articles: {total_articles}",
+        f"Topics: {len(topics)}",
+        "",
+    ]
+
+    for topic_id in sorted(topics):
+        topic_data = topics.get(topic_id, {})
+        if not isinstance(topic_data, dict):
+            continue
+
+        articles = [
+            article
+            for article in topic_data.get("articles", [])
+            if isinstance(article, dict)
+        ]
+        lines.append(f"## {topic_id} ({len(articles)} articles)")
+        for article in sorted(articles, key=lambda item: item.get("title", "")):
+            title = article.get("title", "?")
+            source_type = article.get("source_type", "unknown")
+            score = format_score(quality_score(article))
+            summary = (
+                article.get("summary")
+                or article.get("snippet")
+                or article.get("description")
+                or article.get("full_text")
+                or ""
+            )
+            lines.append(f"- [{source_type} score={score}] {title}")
+            if summary:
+                lines.append(f"  Summary: {summary}")
+        lines.append("")
+
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def build_codex_prompt(report_date: str, version: str) -> str:
+    return "\n".join(
+        [
+            "# Manual Codex Acceptance Context",
+            "",
+            "Use this folder to review the deterministic digest renderer manually.",
+            "",
+            "Rules:",
+            "- Do not run the network pipeline.",
+            "- Use merged.json as the only source fixture.",
+            "- Use summarized.txt for a quick fixture overview.",
+            "- Use expected.md as the rendered acceptance digest.",
+            "- Keep golden updates gated by UPDATE_GOLDEN=1.",
+            f"- Report date: {report_date}",
+            f"- follow-news version: {version}",
+            "",
+        ]
+    )
+
+
+def prepare_codex_acceptance_context(
+    data: Dict[str, Any],
+    topic_defs: Sequence[Dict[str, Any]],
+    source_fixture: Path,
+    output_dir: Path,
+    report_date: str,
+    version: str,
+) -> None:
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    shutil.copyfile(source_fixture, output_dir / "merged.json")
+    (output_dir / "summarized.txt").write_text(
+        summarize_fixture(data),
+        encoding="utf-8",
+    )
+    (output_dir / "prompt.md").write_text(
+        build_codex_prompt(report_date, version),
+        encoding="utf-8",
+    )
+    (output_dir / "expected.md").write_text(
+        render_digest(data, topic_defs, report_date, version),
+        encoding="utf-8",
+    )
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Render deterministic Markdown/Discord digest acceptance output."
@@ -336,6 +424,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--date", required=True, help="Report date in YYYY-MM-DD format")
     parser.add_argument("--version", required=True, help="follow-news version string")
     parser.add_argument("--output", type=Path, required=True, help="Markdown output path")
+    parser.add_argument(
+        "--prepare-codex-context",
+        type=Path,
+        help="Directory for manual Codex acceptance context files",
+    )
     return parser.parse_args()
 
 
@@ -343,9 +436,20 @@ def main() -> int:
     args = parse_args()
     data = load_json(args.input)
     topic_defs = load_topic_definitions(args.topics)
+    if args.prepare_codex_context:
+        prepare_codex_acceptance_context(
+            data,
+            topic_defs,
+            args.input,
+            args.prepare_codex_context,
+            args.date,
+            args.version,
+        )
+        return 0
+
     output = render_digest(data, topic_defs, args.date, args.version)
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(output)
+    args.output.write_text(output, encoding="utf-8")
     return 0
 
 
