@@ -25,7 +25,13 @@ def truncate_text(value, max_chars: int = 500) -> str:
     normalized = normalize_whitespace(value)
     if len(normalized) <= max_chars:
         return normalized
-    return normalized[:max_chars].rstrip() + "..."
+
+    ellipsis = "..."
+    if max_chars <= 0:
+        return ""
+    if max_chars <= len(ellipsis):
+        return normalized[:max_chars]
+    return normalized[: max_chars - len(ellipsis)].rstrip() + ellipsis
 
 
 def select_summary_material(article: dict, max_chars: int = 500) -> Tuple[str, str]:
@@ -50,21 +56,29 @@ def format_metric_count(value) -> str:
     if number >= 1_000_000:
         return f"{number / 1_000_000:.1f}M"
     if number >= 1_000:
-        return f"{number / 1_000:.1f}K"
+        rounded_thousands = round(number / 1_000, 1)
+        if rounded_thousands >= 1_000:
+            return f"{number / 1_000_000:.1f}M"
+        return f"{rounded_thousands:.1f}K"
     return str(int(number))
 
 
 def format_twitter_metrics(metrics: dict) -> str:
-    """Return the four Twitter/X metrics used by the digest prompt."""
+    """Return available Twitter/X metrics without fabricating missing values."""
     if not isinstance(metrics, dict):
         metrics = {}
 
-    return (
-        f"views={format_metric_count(metrics.get('impression_count'))}, "
-        f"replies={format_metric_count(metrics.get('reply_count'))}, "
-        f"reposts={format_metric_count(metrics.get('retweet_count'))}, "
-        f"likes={format_metric_count(metrics.get('like_count'))}"
+    metric_fields = (
+        ("impression_count", "views"),
+        ("reply_count", "replies"),
+        ("retweet_count", "reposts"),
+        ("like_count", "likes"),
     )
+    parts = []
+    for field, label in metric_fields:
+        if field in metrics and metrics[field] is not None:
+            parts.append(f"{label}={format_metric_count(metrics[field])}")
+    return ", ".join(parts)
 
 
 def display_transcript_status(article: dict) -> str:
@@ -150,7 +164,9 @@ def summarize(data: dict, top_n: int = 10, topic_filter: str = None):
 
             if metrics:
                 if source_type == "twitter":
-                    print(f"      Twitter/X: {format_twitter_metrics(metrics)}")
+                    twitter_metrics = format_twitter_metrics(metrics)
+                    if twitter_metrics:
+                        print(f"      Twitter/X: {twitter_metrics}")
                 else:
                     parts = []
                     for k, v in metrics.items():

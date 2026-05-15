@@ -67,7 +67,12 @@ class TestSummaryMaterial(unittest.TestCase):
 
         result = summarize_mod.truncate_text(text, 16)
 
-        self.assertEqual(result, "Alpha Beta Gamma...")
+        self.assertEqual(result, "Alpha Beta Ga...")
+        self.assertLessEqual(len(result), 16)
+
+    def test_truncate_text_respects_small_max_chars(self):
+        self.assertEqual(summarize_mod.truncate_text("abcdef", 3), "abc")
+        self.assertEqual(summarize_mod.truncate_text("abcdef", 0), "")
 
     def test_truncate_text_returns_empty_string_for_missing_text(self):
         self.assertEqual(summarize_mod.truncate_text(None, 20), "")
@@ -96,6 +101,8 @@ class TestSummaryMaterial(unittest.TestCase):
         self.assertEqual(summarize_mod.format_metric_count(999), "999")
         self.assertEqual(summarize_mod.format_metric_count(1200), "1.2K")
         self.assertEqual(summarize_mod.format_metric_count(2_500_000), "2.5M")
+        self.assertEqual(summarize_mod.format_metric_count(999_949), "999.9K")
+        self.assertEqual(summarize_mod.format_metric_count(999_950), "1.0M")
 
     def test_format_twitter_metrics_returns_all_four_metrics(self):
         metrics = {
@@ -108,6 +115,16 @@ class TestSummaryMaterial(unittest.TestCase):
         result = summarize_mod.format_twitter_metrics(metrics)
 
         self.assertEqual(result, "views=12.3K, replies=12, reposts=345, likes=6.8K")
+
+    def test_format_twitter_metrics_skips_missing_fields(self):
+        metrics = {
+            "reply_count": 12,
+            "like_count": 0,
+        }
+
+        result = summarize_mod.format_twitter_metrics(metrics)
+
+        self.assertEqual(result, "replies=12, likes=0")
 
 
 class TestRenderedEvidence(unittest.TestCase):
