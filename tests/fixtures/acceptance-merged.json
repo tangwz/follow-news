@@ -18,12 +18,13 @@
   },
   "output_stats": {
     "total_articles": 9,
-    "topics_count": 4,
+    "topics_count": 5,
     "topic_distribution": {
       "llm": 3,
       "ai-agent": 2,
       "builder": 1,
-      "podcast": 1
+      "podcast": 1,
+      "frontier-tech": 2
     }
   },
   "topics": {
