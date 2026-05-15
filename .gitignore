@@ -21,3 +21,6 @@ tech-digest-merged-*.json
 
 # Local runtime cache
 /.cache/
+
+# Local git worktrees
+/.worktrees/
