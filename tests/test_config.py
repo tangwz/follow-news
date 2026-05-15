@@ -20,7 +20,7 @@ SKILL_FILE = Path(__file__).parent.parent / "SKILL.md"
 TEST_PIPELINE = Path(__file__).parent.parent / "scripts" / "test-pipeline.sh"
 VALIDATE_CONFIG = Path(__file__).parent.parent / "scripts" / "validate-config.py"
 
-REQUIRED_TOPICS = {"llm", "ai-agent", "builder", "kol", "frontier-tech"}
+REQUIRED_TOPICS = {"llm", "ai-agent", "builder", "kol", "frontier-tech", "podcast"}
 
 validate_config_spec = importlib.util.spec_from_file_location(
     "validate_config", VALIDATE_CONFIG
@@ -55,6 +55,7 @@ def get_source_counts():
         "twitter": len([s for s in sources if s["type"] == "twitter"]),
         "github": len([s for s in sources if s["type"] == "github"]),
         "reddit": len([s for s in sources if s["type"] == "reddit"]),
+        "podcast": len([s for s in sources if s["type"] == "podcast"]),
         "topics": len(topics),
     }
 
@@ -472,7 +473,7 @@ class TestSourceCounts(unittest.TestCase):
 
     def test_twitter_count(self):
         counts = get_source_counts()
-        self.assertEqual(counts["twitter"], 60)
+        self.assertEqual(counts["twitter"], 61)
 
     def test_rss_count(self):
         counts = get_source_counts()
@@ -513,7 +514,7 @@ class TestReadmeCounts(unittest.TestCase):
         )
         self.assertIn("GitHub Tr.", content)
         self.assertIn(
-            f"`config/defaults/sources.json` — {counts['total']} built-in sources ({counts['rss']} RSS, {counts['twitter']} Twitter, {counts['github']} GitHub, {counts['reddit']} Reddit)",
+            f"`config/defaults/sources.json` — {counts['total']} built-in sources ({counts['rss']} RSS, {counts['twitter']} Twitter, {counts['github']} GitHub, {counts['reddit']} Reddit, {counts['podcast']} Podcast)",
             content,
         )
 
@@ -543,7 +544,7 @@ class TestReadmeCounts(unittest.TestCase):
         self.assertIn("RSS 播客订阅源、YouTube 播放列表/频道，以及可选转录文本", content)
         self.assertIn("GitHub Tr.", content)
         self.assertIn(
-            f"`config/defaults/sources.json` — {counts['total']} 个内置数据源（{counts['rss']} RSS、{counts['twitter']} Twitter、{counts['github']} GitHub、{counts['reddit']} Reddit）",
+            f"`config/defaults/sources.json` — {counts['total']} 个内置数据源（{counts['rss']} RSS、{counts['twitter']} Twitter、{counts['github']} GitHub、{counts['reddit']} Reddit、{counts['podcast']} Podcast）",
             content,
         )
 

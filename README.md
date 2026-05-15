@@ -1,6 +1,6 @@
 # Follow News
 
-> Automated tech news digest — 156 built-in sources, 7-source pipeline, one chat message to install.
+> Automated tech news digest — 163 built-in sources, 7-source pipeline, one chat message to install.
 
 **English** | [中文](README_CN.md)
 
@@ -32,13 +32,13 @@ clawhub install follow-news
 
 ## 📊 What You Get
 
-A quality-scored, deduplicated tech digest built from **156 built-in sources** plus **5 web search topics**:
+A quality-scored, deduplicated tech digest built from **163 built-in sources** plus **6 web search topics**:
 
 | Layer | Sources | What |
 |-------|---------|------|
 | 📡 RSS | 65 feeds | OpenAI, Simon Willison, Hugging Face, HN, 36氪… |
 | 🐦 Twitter/X | 60 KOLs | @sama, @karpathy, @paulg, @garrytan, @dotey… |
-| 🔍 Web Search | 5 topics | `llm`, `ai-agent`, `builder`, `kol`, `frontier-tech` with freshness filters |
+| 🔍 Web Search | 6 topics | `llm`, `ai-agent`, `builder`, `kol`, `frontier-tech`, `podcast` with freshness filters |
 | 🐙 GitHub | 23 repos | Releases from key projects (LangChain, vLLM, DeepSeek, Llama…) |
 | 🗣️ Reddit | 8 subs | r/MachineLearning, r/LocalLLaMA, r/OpenAI, r/ExperiencedDevs… |
 | 🎙️ Podcast | custom sources | RSS podcast feeds and YouTube playlists/channels with optional transcripts |
@@ -64,13 +64,13 @@ A quality-scored, deduplicated tech digest built from **156 built-in sources** p
 
 ## ⚙️ Configuration
 
-- `config/defaults/sources.json` — 156 built-in sources (65 RSS, 60 Twitter, 23 GitHub, 8 Reddit)
-- `config/defaults/topics.json` — 5 topics: `llm`, `ai-agent`, `builder`, `kol`, `frontier-tech`
+- `config/defaults/sources.json` — 163 built-in sources (65 RSS, 61 Twitter, 23 GitHub, 8 Reddit, 6 Podcast)
+- `config/defaults/topics.json` — 6 topics: `llm`, `ai-agent`, `builder`, `kol`, `frontier-tech`, `podcast`
 - User overrides in `workspace/config/` take priority
 
 ## 🎨 Customize Your Sources
 
-Works out of the box with 156 built-in sources (65 RSS, 60 Twitter, 23 GitHub, 8 Reddit) and supports custom podcast sources — but fully customizable. Copy the defaults to your workspace config and override:
+Works out of the box with 163 built-in sources (65 RSS, 61 Twitter, 23 GitHub, 8 Reddit, 6 Podcast) and supports custom podcast sources — but fully customizable. Copy the defaults to your workspace config and override:
 
 ```bash
 # Copy and customize
@@ -95,7 +95,7 @@ Your overlay file **merges** with defaults:
       "platform": "youtube",
       "enabled": true,
       "priority": true,
-      "topics": ["llm", "ai-agent"],
+      "topics": ["podcast"],
       "transcript": {
         "enabled": true,
         "backend": "yt-dlp",

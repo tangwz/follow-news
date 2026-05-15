@@ -324,7 +324,7 @@
     {
       "id": "sama-twitter",
       "type": "twitter",
-      "name": "Sam Altman (OpenAI CEO)",
+      "name": "Sam Altman",
       "handle": "sama",
       "enabled": true,
       "priority": true,
@@ -922,12 +922,24 @@
     {
       "id": "trq212-twitter",
       "type": "twitter",
-      "name": "trq212",
+      "name": "Thariq",
       "handle": "trq212",
       "enabled": true,
       "priority": false,
       "topics": [
         "builder"
+      ]
+    },
+    {
+      "id": "thenanyu-twitter",
+      "type": "twitter",
+      "name": "Nan Yu",
+      "handle": "thenanyu",
+      "enabled": true,
+      "priority": false,
+      "topics": [
+        "llm",
+        "ai-agent"
       ]
     },
     {
@@ -1907,6 +1919,78 @@
       "topics": [
         "llm",
         "ai-agent"
+      ],
+      "priority": false,
+      "enabled": true
+    },
+    {
+      "id": "latent-space-podcast",
+      "type": "podcast",
+      "name": "Latent Space",
+      "url": "https://pod2txt.vercel.app/api/feed?url=https://api.substack.com/feed/podcast/1084089.rss",
+      "platform": "rss",
+      "topics": [
+        "podcast"
+      ],
+      "priority": false,
+      "enabled": true
+    },
+    {
+      "id": "training-data-podcast",
+      "type": "podcast",
+      "name": "Training Data",
+      "url": "https://feeds.megaphone.fm/trainingdata",
+      "platform": "rss",
+      "topics": [
+        "podcast"
+      ],
+      "priority": false,
+      "enabled": true
+    },
+    {
+      "id": "no-priors-podcast",
+      "type": "podcast",
+      "name": "No Priors",
+      "url": "https://feeds.megaphone.fm/nopriors",
+      "platform": "rss",
+      "topics": [
+        "podcast"
+      ],
+      "priority": false,
+      "enabled": true
+    },
+    {
+      "id": "unsupervised-learning-podcast",
+      "type": "podcast",
+      "name": "Unsupervised Learning",
+      "url": "https://feeds.simplecast.com/dOSE_bdP",
+      "platform": "rss",
+      "topics": [
+        "podcast"
+      ],
+      "priority": false,
+      "enabled": true
+    },
+    {
+      "id": "mad-podcast-with-matt-turck",
+      "type": "podcast",
+      "name": "The MAD Podcast with Matt Turck",
+      "url": "https://anchor.fm/s/f2ee4948/podcast/rss",
+      "platform": "rss",
+      "topics": [
+        "podcast"
+      ],
+      "priority": false,
+      "enabled": true
+    },
+    {
+      "id": "ai-and-i-by-every-podcast",
+      "type": "podcast",
+      "name": "AI & I by Every",
+      "url": "https://anchor.fm/s/ed1f5584/podcast/rss",
+      "platform": "rss",
+      "topics": [
+        "podcast"
       ],
       "priority": false,
       "enabled": true

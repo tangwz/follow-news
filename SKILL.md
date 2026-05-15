@@ -161,7 +161,7 @@ Automated tech news digest system with unified data source model, quality scorin
       "platform": "youtube",
       "enabled": true,
       "priority": true,
-      "topics": ["llm", "ai-agent"],
+      "topics": ["podcast"],
       "transcript": {
         "enabled": true,
         "backend": "yt-dlp",
@@ -385,13 +385,13 @@ Place custom configs in `workspace/config/` to override defaults:
 - Emoji icons, page headers/footers with page numbers
 - Generated via `scripts/generate-pdf.py` (requires `weasyprint`)
 
-## Default Sources (156 total)
+## Default Sources (163 total)
 
 - **RSS Feeds (65)**: AI labs, engineering blogs, founder/operator writing, Chinese tech media
 - **Twitter/X KOLs (60)**: AI researchers, builder accounts, product operators, technology commentators
 - **GitHub Repos (23)**: Major open-source projects (LangChain, vLLM, DeepSeek, Llama, etc.)
 - **Reddit (8)**: r/MachineLearning, r/LocalLLaMA, r/OpenAI, r/ExperiencedDevs, etc.
-- **Web Search (5 topics)**: `llm`, `ai-agent`, `builder`, `kol`, `frontier-tech`
+- **Web Search (6 topics)**: `llm`, `ai-agent`, `builder`, `kol`, `frontier-tech`, `podcast`
 - **Podcast (custom)**: RSS podcast feeds and YouTube podcast playlists/channels, with optional `yt-dlp` transcript enrichment
 
 All sources pre-configured with appropriate topic tags and priority levels.
