@@ -9,76 +9,6 @@ Usage:
 import json
 import argparse
 from pathlib import Path
-from typing import Tuple
-
-
-def normalize_whitespace(value: str) -> str:
-    """Collapse repeated whitespace for compact terminal output."""
-    return " ".join(str(value).split())
-
-
-def truncate_text(value, max_chars: int = 500) -> str:
-    """Return normalized text capped at max_chars."""
-    if not value:
-        return ""
-
-    normalized = normalize_whitespace(value)
-    if len(normalized) <= max_chars:
-        return normalized
-
-    ellipsis = "..."
-    if max_chars <= 0:
-        return ""
-    if max_chars <= len(ellipsis):
-        return normalized[:max_chars]
-    return normalized[: max_chars - len(ellipsis)].rstrip() + ellipsis
-
-
-def select_summary_material(article: dict, max_chars: int = 500) -> Tuple[str, str]:
-    """Pick the richest available text field for digest writing."""
-    for field in ("full_text", "summary", "snippet", "title"):
-        material = truncate_text(article.get(field), max_chars)
-        if material:
-            return field, material
-    return "", ""
-
-
-def format_metric_count(value) -> str:
-    """Format large engagement counts for human scanning."""
-    if value is None:
-        return "0"
-
-    try:
-        number = float(value)
-    except (TypeError, ValueError):
-        return "0"
-
-    if number >= 1_000_000:
-        return f"{number / 1_000_000:.1f}M"
-    if number >= 1_000:
-        rounded_thousands = round(number / 1_000, 1)
-        if rounded_thousands >= 1_000:
-            return f"{number / 1_000_000:.1f}M"
-        return f"{rounded_thousands:.1f}K"
-    return str(int(number))
-
-
-def format_twitter_metrics(metrics: dict) -> str:
-    """Return available Twitter/X metrics without fabricating missing values."""
-    if not isinstance(metrics, dict):
-        metrics = {}
-
-    metric_fields = (
-        ("impression_count", "views"),
-        ("reply_count", "replies"),
-        ("retweet_count", "reposts"),
-        ("like_count", "likes"),
-    )
-    parts = []
-    for field, label in metric_fields:
-        if field in metrics and metrics[field] is not None:
-            parts.append(f"{label}={format_metric_count(metrics[field])}")
-    return ", ".join(parts)
 
 
 def display_transcript_status(article: dict) -> str:
@@ -129,7 +59,6 @@ def summarize(data: dict, top_n: int = 10, topic_filter: str = None):
             # Metrics for Twitter
             metrics = a.get("metrics", {})
             display_name = a.get("display_name", "")
-            rich_evidence_enabled = source_type not in {"github", "github_trending"}
             
             print(f"\n  [{i+1}] ({qs:.0f}pts) [{source_type}] {title}")
             print(f"      Source: {source}", end="")
@@ -140,52 +69,18 @@ def summarize(data: dict, top_n: int = 10, topic_filter: str = None):
                 print(f"      Link: {link}")
             if snippet:
                 print(f"      Snippet: {snippet}")
-            if rich_evidence_enabled:
-                field_name, summary_material = select_summary_material(a)
-                if summary_material:
-                    print(f"      Summary material ({field_name}): {summary_material}")
-
-            handle = a.get("handle") or a.get("username") or a.get("screen_name")
-            if source_type == "twitter" and display_name:
-                author = display_name
-                if handle:
-                    author = f"{author} (@{handle})"
-                print(f"      Author: {author}")
-
-            if rich_evidence_enabled and a.get("multi_source") and a.get("source_count"):
-                source_names = a.get("all_sources") or []
-                if source_names:
-                    print(
-                        "      Multi-source: "
-                        f"{a['source_count']} sources · {', '.join(source_names[:5])}"
-                    )
-                else:
-                    print(f"      Multi-source: {a['source_count']} sources")
-
             if metrics:
-                if source_type == "twitter":
-                    twitter_metrics = format_twitter_metrics(metrics)
-                    if twitter_metrics:
-                        print(f"      Twitter/X: {twitter_metrics}")
-                else:
-                    parts = []
-                    for k, v in metrics.items():
-                        if v and v > 0:
-                            parts.append(f"{k}={v}")
-                    if parts:
-                        print(f"      Metrics: {', '.join(parts)}")
+                parts = []
+                for k, v in metrics.items():
+                    if v and v > 0:
+                        parts.append(f"{k}={v}")
+                if parts:
+                    print(f"      Metrics: {', '.join(parts)}")
             
             # Reddit-specific
             reddit_score = a.get("score")
             num_comments = a.get("num_comments")
-            if source_type == "reddit" and reddit_score is not None:
-                reddit_parts = [source, f"{reddit_score}↑"]
-                if num_comments is not None:
-                    reddit_parts.append(f"{num_comments} comments")
-                if a.get("flair"):
-                    reddit_parts.append(f"flair={a['flair']}")
-                print(f"      Reddit: {' · '.join(reddit_parts)}")
-            elif reddit_score is not None:
+            if reddit_score is not None:
                 print(f"      Reddit: {reddit_score}↑", end="")
                 if num_comments:
                     print(f" · {num_comments} comments", end="")
@@ -197,10 +92,6 @@ def summarize(data: dict, top_n: int = 10, topic_filter: str = None):
                 print(f"      Podcast: {show_name} · transcript={transcript_status}")
                 if a.get("duration_seconds"):
                     print(f"      Duration: {a['duration_seconds']}s")
-                if transcript_status == "ready":
-                    transcript_excerpt = truncate_text(a.get("transcript"), 600)
-                    if transcript_excerpt:
-                        print(f"      Transcript excerpt: {transcript_excerpt}")
         
         print()
 
