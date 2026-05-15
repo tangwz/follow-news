@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Acceptance tests for final Markdown/Discord digest output."""
 
+import difflib
 import importlib.util
 import json
 import unittest
@@ -10,8 +11,10 @@ from pathlib import Path
 ROOT_DIR = Path(__file__).parent.parent
 SCRIPTS_DIR = ROOT_DIR / "scripts"
 FIXTURES_DIR = ROOT_DIR / "tests" / "fixtures"
+GOLDEN_DIR = ROOT_DIR / "tests" / "golden"
 TOPICS_FILE = ROOT_DIR / "config" / "defaults" / "topics.json"
 ACCEPTANCE_FIXTURE = FIXTURES_DIR / "acceptance-merged.json"
+DAILY_GOLDEN = GOLDEN_DIR / "daily-discord.md"
 
 spec = importlib.util.spec_from_file_location(
     "render_acceptance_digest",
@@ -24,6 +27,17 @@ spec.loader.exec_module(render_mod)
 def load_acceptance_fixture():
     with open(ACCEPTANCE_FIXTURE, "r") as f:
         return json.load(f)
+
+
+def render_daily_digest():
+    data = load_acceptance_fixture()
+    topic_defs = render_mod.load_topic_definitions(TOPICS_FILE)
+    return render_mod.render_digest(
+        data,
+        topic_defs,
+        report_date="2026-02-27",
+        version="3.17.0",
+    )
 
 
 class TestAcceptanceFixture(unittest.TestCase):
@@ -64,6 +78,22 @@ class TestAcceptanceFixture(unittest.TestCase):
 
 
 class TestAcceptanceRenderer(unittest.TestCase):
+    def test_daily_digest_matches_golden(self):
+        expected = DAILY_GOLDEN.read_text()
+        actual = render_daily_digest()
+
+        if actual != expected:
+            diff = "\n".join(
+                difflib.unified_diff(
+                    expected.splitlines(),
+                    actual.splitlines(),
+                    fromfile=str(DAILY_GOLDEN),
+                    tofile="rendered daily digest",
+                    lineterm="",
+                )
+            )
+            self.fail(f"Daily digest golden mismatch:\n{diff}")
+
     def test_render_digest_uses_current_discord_structure(self):
         data = load_acceptance_fixture()
         topic_defs = render_mod.load_topic_definitions(TOPICS_FILE)
