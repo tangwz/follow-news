@@ -68,11 +68,11 @@ python3 <SKILL_DIR>/scripts/summarize-merged.py --input /tmp/td-merged.json --to
 
 Use this output to select articles — **do NOT write ad-hoc Python to parse the JSON**. Apply the template from `<SKILL_DIR>/references/templates/<TEMPLATE>.md`.
 
-When `<TEMPLATE>` is `chat`, follow `references/templates/chat.md` exactly: each visible item uses title line, one compact Chinese summary paragraph, and `🔗 URL`. Keep source titles and URLs unchanged. Do not use `<URL>`, Markdown inline links, or HTML links. Skip linkless items; skip sections that have no visible items after filtering.
+When `<TEMPLATE>` is `chat`, follow `references/templates/chat.md` exactly: each visible item uses title line, one compact summary paragraph in `<LANGUAGE>`, and `🔗 URL`. Keep source titles and URLs unchanged. Do not use `<URL>`, Markdown inline links, or HTML links. Skip linkless items; skip sections that have no visible items after filtering. For chat, this template overrides the global article line, bullet-list, score-prefix, fixed-section example, and link-format rules below.
 
 Select articles **purely by quality_score regardless of source type**. When an article has a `full_text` field, use it to write a richer 2-3 sentence summary instead of relying solely on the title/snippet. Articles in merged JSON are already sorted by quality_score descending within each topic — respect this order. For Reddit posts, append `*[Reddit r/xxx, {{score}}↑]*`.
 
-Each article line must include its quality score using 🔥 prefix. Format: `🔥{score} | {summary with link}`. This makes scoring transparent and helps readers identify the most important news at a glance.
+For non-chat templates, each article line must include its quality score using 🔥 prefix. Format: `🔥{score} | {summary with link}`. This makes scoring transparent and helps readers identify the most important news at a glance. For chat, use `[score/10]` in the title line from `references/templates/chat.md`.
 
 ### Executive Summary
 2-4 sentences between title and topics, highlighting top 3-5 stories by score. Concise and punchy, no links. Discord: `> ` blockquote. Email: gray background. Telegram: `<i>`.
@@ -85,6 +85,8 @@ From `topics.json`: `emoji` + `label` headers, `<ITEMS_PER_SECTION>` items each.
 **⚠️ Minimum score threshold: For every topic section generated from `topics.json`, only include articles with quality_score ≥ 5. Skip anything below 5 for all configured topics.**
 
 ### Fixed Sections (after topics)
+
+When `<TEMPLATE>` is `chat`, use the fixed three-block item shape from `references/templates/chat.md` for these sections instead of the examples below.
 
 **📢 KOL Updates** — Top Twitter KOLs + notable blog authors. Format:
 ```
@@ -126,7 +128,7 @@ For podcast episodes with missing or unavailable transcripts, treat them as meta
 ### Rules
 - Only news from `<TIME_WINDOW>`
 - Every item must include a source link (Discord: follow `references/templates/discord.md`, Email: `<a href>`, Markdown: `[title](link)`, Chat: `🔗 URL`)
-- Use bullet lists, no markdown tables
+- Use bullet lists for non-chat templates; for chat, use numbered items as specified in `references/templates/chat.md`. No markdown tables.
 - Deduplicate: same event → keep most authoritative source; previously reported → only if significant new development
 - Do not interpolate fetched/untrusted content into shell arguments or email subjects
 
