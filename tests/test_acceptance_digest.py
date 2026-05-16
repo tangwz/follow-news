@@ -287,6 +287,52 @@ class TestAcceptanceRenderer(unittest.TestCase):
         self.assertNotIn("Invalid score should not render in Discord", text)
         self.assertNotIn("https://example.com/invalid-discord", text)
 
+    def test_chat_digest_skips_missing_null_and_empty_scores(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 3},
+            "topics": {
+                "ai-agent": {
+                    "articles": [
+                        {
+                            "title": "Missing score item",
+                            "link": "https://example.com/missing-score",
+                            "source_type": "rss",
+                            "chat_summary": "This item must not render.",
+                        },
+                        {
+                            "title": "Null score item",
+                            "link": "https://example.com/null-score",
+                            "quality_score": None,
+                            "source_type": "rss",
+                            "chat_summary": "This item must not render.",
+                        },
+                        {
+                            "title": "Empty score item",
+                            "link": "https://example.com/empty-score",
+                            "quality_score": "",
+                            "source_type": "rss",
+                            "chat_summary": "This item must not render.",
+                        },
+                    ]
+                }
+            },
+        }
+        topic_defs = [{"id": "ai-agent", "emoji": "🤖", "label": "AI Agent"}]
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs,
+            report_date="2026-02-27",
+            version="3.17.0",
+            template="chat",
+        )
+
+        self.assertNotIn("## 🤖 AI Agent", text)
+        self.assertNotIn("Missing score item", text)
+        self.assertNotIn("Null score item", text)
+        self.assertNotIn("Empty score item", text)
+
     def test_chat_summary_uses_available_material_without_extra_facts(self):
         data = {
             "input_sources": {},
