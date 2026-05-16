@@ -128,7 +128,7 @@ class TestAcceptanceRenderer(unittest.TestCase):
                 continue
             self.assertRegex(line, r"^• 🔥[0-9]+(?:\.[0-9]+)? \| .+")
             self.assertLess(index + 1, len(lines))
-            self.assertRegex(lines[index + 1], r"^  <https?://.+>$")
+            self.assertRegex(lines[index + 1], r"^  🔗 https?://.+$")
 
         section_starts = [
             index for index, line in enumerate(lines) if line.startswith("## ")
@@ -180,7 +180,7 @@ class TestAcceptanceRenderer(unittest.TestCase):
         self.assertIn("# 🚀 Tech Digest - 2026-02-27", text)
         self.assertIn("## 🧠 LLM / Large Models", text)
         self.assertIn("• 🔥18 | OpenAI ships structured agent evaluation suite", text)
-        self.assertIn("  <https://openai.com/research/agent-evals>", text)
+        self.assertIn("  🔗 https://openai.com/research/agent-evals", text)
         self.assertIn("  *[3 sources]*", text)
         self.assertNotIn("Low scoring model rumor should not render", text)
         self.assertIn("## 📢 KOL Updates", text)
