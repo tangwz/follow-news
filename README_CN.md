@@ -171,7 +171,34 @@ pip install weasyprint yt-dlp
 ## 🧪 测试
 
 ```bash
-python -m unittest discover -s tests -v   # 41 个测试，纯标准库
+python3 -m unittest discover -s tests -v
+```
+
+## 🧪 产品验收测试
+
+修改摘要渲染行为前，先运行验收测试：
+
+```bash
+python3 -m unittest tests.test_acceptance_digest -v
+```
+
+当预期摘要需要更新时，重新生成 golden 文件，并在提交前检查差异：
+
+```bash
+UPDATE_GOLDEN=1 python3 -m unittest tests.test_acceptance_digest -v
+git diff -- tests/golden/daily-discord.md
+```
+
+如需手动准备 Codex 验收上下文：
+
+```bash
+python3 scripts/render-acceptance-digest.py \
+  --input tests/fixtures/acceptance-merged.json \
+  --topics config/defaults/topics.json \
+  --date 2026-02-27 \
+  --version 3.17.0 \
+  --prepare-codex-context /tmp/follow-news-acceptance \
+  --output /tmp/follow-news-acceptance/expected.md
 ```
 
 ## 📂 仓库地址
