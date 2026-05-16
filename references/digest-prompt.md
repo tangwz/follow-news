@@ -82,7 +82,7 @@ From `topics.json`: `emoji` + `label` headers, `<ITEMS_PER_SECTION>` items each.
 
 **⚠️ CRITICAL: Output articles in EXACTLY the same order as summarize-merged.py output (quality_score descending). Do NOT reorder, group by subtopic, or rearrange. For non-chat templates, the 🔥 scores must appear in strictly decreasing order within each section. For chat, the [score/10] values in title lines must follow the same quality_score descending order.**
 
-**⚠️ Minimum score threshold: For every topic section generated from `topics.json`, only include articles with quality_score ≥ 5. Skip anything below 5 for all configured topics.**
+**⚠️ Minimum score threshold: For every topic section generated from `topics.json`, skip valid numeric `quality_score` values below 5. For non-chat templates, only include articles with finite numeric `quality_score >= 5`. For chat, skip finite numeric scores below 5, but keep linked items with explicit invalid, non-finite, or non-numeric scores and render them as `[0/10]`. Missing, null, or empty scores are skipped for chat topic sections unless future renderer behavior explicitly changes this rule.**
 
 ### Fixed Sections (after topics)
 

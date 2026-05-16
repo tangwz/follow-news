@@ -35,6 +35,7 @@ Universal IM format for Telegram, Feishu, WeChat, WeCom, and similar chat surfac
 - Do not force a `理由：` label. Include significance naturally when the evidence supports it.
 - Skip items without a usable link.
 - Skip sections that have no visible items after filtering.
+- Use valid numeric `quality_score` as the `[score/10]` title-line value. Explicit invalid, non-finite, or non-numeric scores render as `[0/10]`. Missing, null, or empty scores are skipped from topic sections. Valid numeric scores below the configured threshold are skipped.
 
 ## Evidence Rules
 

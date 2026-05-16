@@ -256,6 +256,37 @@ class TestAcceptanceRenderer(unittest.TestCase):
 
         self.assertIn("1. 🤖 [0/10] Invalid score item", text)
 
+    def test_default_discord_digest_filters_invalid_score_items(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 1},
+            "topics": {
+                "ai-agent": {
+                    "articles": [
+                        {
+                            "title": "Invalid score should not render in Discord",
+                            "link": "https://example.com/invalid-discord",
+                            "quality_score": "NaN",
+                            "source_type": "rss",
+                            "summary": "This item must not render in Discord.",
+                        }
+                    ]
+                }
+            },
+        }
+        topic_defs = [{"id": "ai-agent", "emoji": "🤖", "label": "AI Agent"}]
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs,
+            report_date="2026-02-27",
+            version="3.17.0",
+            template="discord",
+        )
+
+        self.assertNotIn("Invalid score should not render in Discord", text)
+        self.assertNotIn("https://example.com/invalid-discord", text)
+
     def test_chat_summary_uses_available_material_without_extra_facts(self):
         data = {
             "input_sources": {},
