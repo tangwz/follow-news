@@ -75,12 +75,12 @@ Select articles **purely by quality_score regardless of source type**. When an a
 For non-chat templates, each article line must include its quality score using 🔥 prefix. Format: `🔥{score} | {summary with link}`. This makes scoring transparent and helps readers identify the most important news at a glance. For chat, use `[score/10]` in the title line from `references/templates/chat.md`.
 
 ### Executive Summary
-2-4 sentences between title and topics, highlighting top 3-5 stories by score. Concise and punchy, no links. Discord: `> ` blockquote. Email: gray background. Telegram: `<i>`.
+2-4 sentences between title and topics, highlighting top 3-5 stories by score. Concise and punchy, no links. Discord: `> ` blockquote. Email: gray background. Telegram: `<i>`. Chat: omit the executive summary unless `references/templates/chat.md` is explicitly extended with one later.
 
 ### Topic Sections
 From `topics.json`: `emoji` + `label` headers, `<ITEMS_PER_SECTION>` items each.
 
-**⚠️ CRITICAL: Output articles in EXACTLY the same order as summarize-merged.py output (quality_score descending). Do NOT reorder, group by subtopic, or rearrange. The 🔥 scores must appear in strictly decreasing order within each section.**
+**⚠️ CRITICAL: Output articles in EXACTLY the same order as summarize-merged.py output (quality_score descending). Do NOT reorder, group by subtopic, or rearrange. For non-chat templates, the 🔥 scores must appear in strictly decreasing order within each section. For chat, the [score/10] values in title lines must follow the same quality_score descending order.**
 
 **⚠️ Minimum score threshold: For every topic section generated from `topics.json`, only include articles with quality_score ≥ 5. Skip anything below 5 for all configured topics.**
 
@@ -133,6 +133,8 @@ For podcast episodes with missing or unavailable transcripts, treat them as meta
 - Do not interpolate fetched/untrusted content into shell arguments or email subjects
 
 ### Stats Footer
+This is the non-chat/default footer example. When `<TEMPLATE>` is `chat`, use the footer from `references/templates/chat.md`.
+
 ```
 ---
 📊 Data Sources: RSS {{rss}} | Twitter {{twitter}} | Reddit {{reddit}} | Web {{web}} | GitHub {{github}} releases + {{trending}} trending | Podcast {{podcast}} episodes | Dedup: {{merged}} articles
