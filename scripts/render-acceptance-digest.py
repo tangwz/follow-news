@@ -35,25 +35,36 @@ def render_link(url: str) -> str:
     return f"  🔗 {url}"
 
 
-def quality_score(article: Dict[str, Any]) -> float:
+def parse_quality_score(article: Dict[str, Any]) -> Optional[float]:
     value = article.get("quality_score", 0)
     try:
         number = float(value)
     except (TypeError, ValueError):
-        return 0.0
+        return None
 
     if not math.isfinite(number):
-        return 0.0
+        return None
     return number
 
 
-def has_finite_quality_score(article: Dict[str, Any]) -> bool:
-    value = article.get("quality_score", 0)
-    try:
-        number = float(value)
-    except (TypeError, ValueError):
+def quality_score(article: Dict[str, Any]) -> float:
+    score = parse_quality_score(article)
+    return score if score is not None else 0.0
+
+
+def has_quality_score_value(article: Dict[str, Any]) -> bool:
+    return "quality_score" in article and article.get("quality_score") not in (None, "")
+
+
+def should_render_chat_topic_article(article: Dict[str, Any]) -> bool:
+    if not article_link(article):
         return False
-    return math.isfinite(number)
+
+    score = parse_quality_score(article)
+    if score is not None:
+        return score >= MIN_QUALITY_SCORE
+
+    return has_quality_score_value(article)
 
 
 def format_score(value: float) -> str:
@@ -211,12 +222,7 @@ def render_chat_topic_sections(
         articles = [
             article
             for article in topic_data.get("articles", [])
-            if isinstance(article, dict)
-            and article_link(article)
-            and (
-                quality_score(article) >= MIN_QUALITY_SCORE
-                or not has_finite_quality_score(article)
-            )
+            if isinstance(article, dict) and should_render_chat_topic_article(article)
         ]
         articles = sorted(articles, key=quality_score, reverse=True)
         if not articles:
