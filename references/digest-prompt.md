@@ -21,7 +21,7 @@ Replace `<...>` placeholders before use. Daily defaults shown; weekly overrides 
 | `<EMAIL>` | *(optional)* Recipient email | |
 | `<EMAIL_FROM>` | *(optional)* e.g. `MyBot <bot@example.com>` | |
 | `<LANGUAGE>` | `Chinese` | |
-| `<TEMPLATE>` | `discord` / `email` / `markdown` | |
+| `<TEMPLATE>` | `discord` / `email` / `markdown` / `chat` | |
 | `<DATE>` | Today's date YYYY-MM-DD (caller provides) | |
 | `<VERSION>` | Read from SKILL.md frontmatter | |
 
@@ -67,6 +67,8 @@ python3 <SKILL_DIR>/scripts/summarize-merged.py --input /tmp/td-merged.json --to
 ```
 
 Use this output to select articles — **do NOT write ad-hoc Python to parse the JSON**. Apply the template from `<SKILL_DIR>/references/templates/<TEMPLATE>.md`.
+
+When `<TEMPLATE>` is `chat`, follow `references/templates/chat.md` exactly: each visible item uses title line, one compact Chinese summary paragraph, and `🔗 URL`. Keep source titles and URLs unchanged. Do not use `<URL>`, Markdown inline links, or HTML links. Skip linkless items; skip sections that have no visible items after filtering.
 
 Select articles **purely by quality_score regardless of source type**. When an article has a `full_text` field, use it to write a richer 2-3 sentence summary instead of relying solely on the title/snippet. Articles in merged JSON are already sorted by quality_score descending within each topic — respect this order. For Reddit posts, append `*[Reddit r/xxx, {{score}}↑]*`.
 
@@ -123,7 +125,7 @@ For podcast episodes with missing or unavailable transcripts, treat them as meta
 
 ### Rules
 - Only news from `<TIME_WINDOW>`
-- Every item must include a source link (Discord: `<link>`, Email: `<a href>`, Markdown: `[title](link)`)
+- Every item must include a source link (Discord: follow `references/templates/discord.md`, Email: `<a href>`, Markdown: `[title](link)`, Chat: `🔗 URL`)
 - Use bullet lists, no markdown tables
 - Deduplicate: same event → keep most authoritative source; previously reported → only if significant new development
 - Do not interpolate fetched/untrusted content into shell arguments or email subjects
