@@ -20,6 +20,7 @@ GOLDEN_DIR = ROOT_DIR / "tests" / "golden"
 TOPICS_FILE = ROOT_DIR / "config" / "defaults" / "topics.json"
 ACCEPTANCE_FIXTURE = FIXTURES_DIR / "acceptance-merged.json"
 DAILY_GOLDEN = GOLDEN_DIR / "daily-discord.md"
+DAILY_CHAT_GOLDEN = GOLDEN_DIR / "daily-chat.md"
 FIXED_DIGEST_SECTIONS = {
     "## 📢 KOL Updates",
     "## 📦 GitHub Releases",
@@ -48,6 +49,18 @@ def render_daily_digest():
         topic_defs,
         report_date="2026-02-27",
         version="3.17.0",
+    )
+
+
+def render_daily_chat_digest():
+    data = load_acceptance_fixture()
+    topic_defs = render_mod.load_topic_definitions(TOPICS_FILE)
+    return render_mod.render_digest(
+        data,
+        topic_defs,
+        report_date="2026-02-27",
+        version="3.17.0",
+        template="chat",
     )
 
 
@@ -111,6 +124,208 @@ class TestAcceptanceFixture(unittest.TestCase):
 class TestAcceptanceRenderer(unittest.TestCase):
     def test_daily_digest_matches_golden(self):
         assert_or_update_golden(self, DAILY_GOLDEN, render_daily_digest())
+
+    def test_daily_chat_digest_matches_golden(self):
+        assert_or_update_golden(self, DAILY_CHAT_GOLDEN, render_daily_chat_digest())
+
+    def test_daily_chat_digest_structure_contract(self):
+        text = render_daily_chat_digest()
+        lines = text.splitlines()
+
+        self.assertTrue(text.startswith("# 🚀 Tech Digest - 2026-02-27\n"))
+        self.assertIn("## 🧠 LLM / Large Models", text)
+        self.assertIn("1. 🧠 [9/10] OpenAI ships structured agent evaluation suite", text)
+        self.assertIn("🔗 https://openai.com/research/agent-evals", text)
+        self.assertIn("## 📦 GitHub Releases", text)
+        self.assertIn("## 🐙 GitHub Trending", text)
+        self.assertNotIn("<https://", text)
+        self.assertNotIn("Low scoring model rumor should not render", text)
+
+        title_lines = [
+            line
+            for line in lines
+            if re.match(r"^[0-9]+\. .+ \[[0-9]+(?:\.[0-9]+)?/10\] .+", line)
+        ]
+        self.assertGreater(len(title_lines), 0)
+
+        for index, line in enumerate(lines):
+            if not re.match(r"^[0-9]+\. .+ \[[0-9]+(?:\.[0-9]+)?/10\] .+", line):
+                continue
+            self.assertLess(index + 4, len(lines))
+            self.assertEqual(lines[index + 1], "")
+            self.assertNotEqual(lines[index + 2], "")
+            self.assertEqual(lines[index + 3], "")
+            self.assertRegex(lines[index + 4], r"^🔗 https?://.+$")
+
+        section_starts = [
+            index for index, line in enumerate(lines) if line.startswith("## ")
+        ]
+        for position, start in enumerate(section_starts):
+            end = (
+                section_starts[position + 1]
+                if position + 1 < len(section_starts)
+                else len(lines)
+            )
+            section_text = "\n".join(lines[start:end])
+            self.assertRegex(
+                section_text,
+                r"(?m)^[0-9]+\. .+ \[[0-9]+(?:\.[0-9]+)?/10\] .+",
+                lines[start],
+            )
+
+    def test_chat_digest_filters_linkless_items_and_empty_topics(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 2},
+            "topics": {
+                "llm": {
+                    "articles": [
+                        {
+                            "title": "No link item",
+                            "quality_score": 18,
+                            "source_type": "rss",
+                            "chat_summary": "This item must not render because it has no link.",
+                        }
+                    ]
+                },
+                "ai-agent": {
+                    "articles": [
+                        {
+                            "title": "Visible agent item",
+                            "link": "https://example.com/agent",
+                            "quality_score": "NaN",
+                            "source_type": "rss",
+                            "chat_summary": "This item remains visible and uses fallback scoring.",
+                        }
+                    ]
+                },
+            },
+        }
+        topic_defs = [
+            {"id": "llm", "emoji": "🧠", "label": "LLM / Large Models"},
+            {"id": "ai-agent", "emoji": "🤖", "label": "AI Agent"},
+        ]
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs,
+            report_date="2026-02-27",
+            version="3.17.0",
+            template="chat",
+        )
+
+        self.assertNotIn("## 🧠 LLM / Large Models", text)
+        self.assertNotIn("No link item", text)
+        self.assertIn("## 🤖 AI Agent", text)
+        self.assertIn("1. 🤖 [0/10] Visible agent item", text)
+        self.assertIn("🔗 https://example.com/agent", text)
+
+    def test_chat_summary_uses_available_material_without_extra_facts(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 1},
+            "topics": {
+                "llm": {
+                    "articles": [
+                        {
+                            "title": "Snippet-only model note",
+                            "link": "https://example.com/snippet",
+                            "quality_score": 10,
+                            "source_type": "web",
+                            "snippet": "Only this snippet is available.",
+                        }
+                    ]
+                }
+            },
+        }
+        topic_defs = [{"id": "llm", "emoji": "🧠", "label": "LLM / Large Models"}]
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs,
+            report_date="2026-02-27",
+            version="3.17.0",
+            template="chat",
+        )
+
+        self.assertIn("Only this snippet is available.", text)
+        self.assertNotIn("announced", text.lower())
+        self.assertNotIn("released", text.lower())
+
+    def test_chat_podcast_without_transcript_does_not_create_transcript_insight(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 1},
+            "topics": {
+                "podcast": {
+                    "articles": [
+                        {
+                            "title": "Agent taste preview",
+                            "link": "https://example.com/podcast",
+                            "quality_score": 12,
+                            "source_type": "podcast",
+                            "show_name": "Training Data",
+                            "transcript_status": "missing",
+                            "snippet": "A short preview for an upcoming episode.",
+                        }
+                    ]
+                }
+            },
+        }
+        topic_defs = [{"id": "podcast", "emoji": "🎧", "label": "Podcast"}]
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs,
+            report_date="2026-02-27",
+            version="3.17.0",
+            template="chat",
+        )
+
+        self.assertIn("A short preview for an upcoming episode.", text)
+        self.assertNotIn("Quote:", text)
+        self.assertNotIn("guest", text.lower())
+        self.assertNotIn("argues", text.lower())
+
+    def test_chat_twitter_metrics_are_not_rendered_without_summary_support(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 1},
+            "topics": {
+                "ai-agent": {
+                    "articles": [
+                        {
+                            "title": "Agent benchmark post",
+                            "link": "https://x.com/example/status/1",
+                            "quality_score": 11,
+                            "source_type": "twitter",
+                            "display_name": "Example Lab",
+                            "handle": "example",
+                            "summary": "Example Lab shared a benchmark note.",
+                            "metrics": {
+                                "impression_count": 12500,
+                                "reply_count": 45,
+                                "retweet_count": 230,
+                                "like_count": 1800,
+                            },
+                        }
+                    ]
+                }
+            },
+        }
+        topic_defs = [{"id": "ai-agent", "emoji": "🤖", "label": "AI Agent"}]
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs,
+            report_date="2026-02-27",
+            version="3.17.0",
+            template="chat",
+        )
+
+        self.assertIn("Example Lab shared a benchmark note.", text)
+        self.assertNotIn("12.5K", text)
+        self.assertNotIn("views", text.lower())
 
     def test_daily_digest_structure_contract(self):
         text = render_daily_digest()
@@ -279,6 +494,39 @@ class TestAcceptanceRenderer(unittest.TestCase):
                 {path.name for path in output_dir.iterdir()},
                 {"merged.json", "summarized.txt", "prompt.md", "expected.md"},
             )
+
+    def test_cli_can_render_chat_template(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            output_path = Path(tmp_dir) / "daily-chat.md"
+
+            result = subprocess.run(
+                [
+                    "python3",
+                    str(SCRIPTS_DIR / "render-acceptance-digest.py"),
+                    "--input",
+                    str(ACCEPTANCE_FIXTURE),
+                    "--topics",
+                    str(TOPICS_FILE),
+                    "--date",
+                    "2026-02-27",
+                    "--version",
+                    "3.17.0",
+                    "--template",
+                    "chat",
+                    "--output",
+                    str(output_path),
+                ],
+                cwd=ROOT_DIR,
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            text = output_path.read_text(encoding="utf-8")
+            self.assertIn("1. 🧠 [9/10] OpenAI ships structured agent evaluation suite", text)
+            self.assertIn("🔗 https://openai.com/research/agent-evals", text)
+            self.assertNotIn("<https://", text)
 
 
 if __name__ == "__main__":
