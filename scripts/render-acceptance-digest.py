@@ -3,6 +3,7 @@
 
 import argparse
 import json
+import math
 import shutil
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence
@@ -30,12 +31,40 @@ def article_link(article: Dict[str, Any]) -> str:
     )
 
 
-def quality_score(article: Dict[str, Any]) -> float:
+def render_link(url: str) -> str:
+    return f"  🔗 {url}"
+
+
+def parse_quality_score(article: Dict[str, Any]) -> Optional[float]:
     value = article.get("quality_score", 0)
     try:
-        return float(value)
+        number = float(value)
     except (TypeError, ValueError):
-        return 0.0
+        return None
+
+    if not math.isfinite(number):
+        return None
+    return number
+
+
+def quality_score(article: Dict[str, Any]) -> float:
+    score = parse_quality_score(article)
+    return score if score is not None else 0.0
+
+
+def has_quality_score_value(article: Dict[str, Any]) -> bool:
+    return "quality_score" in article and article.get("quality_score") not in (None, "")
+
+
+def should_render_chat_topic_article(article: Dict[str, Any]) -> bool:
+    if not article_link(article):
+        return False
+
+    score = parse_quality_score(article)
+    if score is not None:
+        return score >= MIN_QUALITY_SCORE
+
+    return has_quality_score_value(article)
 
 
 def format_score(value: float) -> str:
@@ -55,6 +84,56 @@ def format_count(value: Any) -> str:
     if number >= 1_000:
         return f"{number / 1_000:.1f}K".replace(".0K", "K")
     return str(number)
+
+
+def format_chat_score(article: Dict[str, Any]) -> str:
+    score = max(0.0, min(quality_score(article), 20.0)) / 2
+    return format_score(score)
+
+
+def compact_text(value: Any) -> str:
+    return " ".join(str(value).split()) if value else ""
+
+
+def chat_summary(article: Dict[str, Any]) -> str:
+    for field in (
+        "chat_summary",
+        "summary",
+        "snippet",
+        "full_text",
+        "description",
+        "transcript",
+        "title",
+    ):
+        text = compact_text(article.get(field))
+        if text:
+            return text
+    return "No summary material is available."
+
+
+def chat_title_line(
+    article: Dict[str, Any],
+    index: int,
+    emoji: str,
+) -> str:
+    title = article.get("title") or article.get("repo") or "Untitled"
+    return f"{index}. {emoji} [{format_chat_score(article)}/10] {title}"
+
+
+def render_chat_item(
+    article: Dict[str, Any],
+    index: int,
+    emoji: str,
+) -> str:
+    return "\n".join(
+        [
+            chat_title_line(article, index, emoji),
+            "",
+            chat_summary(article),
+            "",
+            f"🔗 {article_link(article)}",
+        ]
+    )
 
 
 def iter_articles(data: Dict[str, Any]) -> Iterable[Dict[str, Any]]:
@@ -118,9 +197,44 @@ def render_topic_sections(
         for article in articles:
             score = format_score(quality_score(article))
             lines.append(f"• 🔥{score} | {article.get('title', '?')}")
-            lines.append(f"  <{article_link(article)}>")
+            lines.append(render_link(article_link(article)))
             if article.get("multi_source"):
                 lines.append(f"  *[{article.get('source_count', 2)} sources]*")
+            lines.append("")
+        sections.append("\n".join(lines).rstrip())
+
+    return sections
+
+
+def render_chat_topic_sections(
+    data: Dict[str, Any],
+    topic_defs: Sequence[Dict[str, Any]],
+) -> List[str]:
+    sections = []
+    topics = data.get("topics", {})
+
+    for topic_def in topic_defs:
+        topic_id = topic_def.get("id")
+        topic_data = topics.get(topic_id)
+        if not isinstance(topic_data, dict):
+            continue
+
+        articles = [
+            article
+            for article in topic_data.get("articles", [])
+            if isinstance(article, dict) and should_render_chat_topic_article(article)
+        ]
+        articles = sorted(articles, key=quality_score, reverse=True)
+        if not articles:
+            continue
+
+        emoji = topic_def.get("emoji", "")
+        lines = [
+            f"## {emoji} {topic_def.get('label', topic_id)}".rstrip(),
+            "",
+        ]
+        for index, article in enumerate(articles, 1):
+            lines.append(render_chat_item(article, index, emoji))
             lines.append("")
         sections.append("\n".join(lines).rstrip())
 
@@ -154,7 +268,7 @@ def render_kol_updates(data: Dict[str, Any]) -> Optional[str]:
             "title", ""
         )
         lines.append(f"• **{display_name}** (@{handle}) — {summary} `{metric_text}`")
-        lines.append(f"  <{article_link(article)}>")
+        lines.append(render_link(article_link(article)))
         lines.append("")
 
     return "\n".join(lines).rstrip()
@@ -180,7 +294,7 @@ def render_github_releases(data: Dict[str, Any]) -> Optional[str]:
             "title", ""
         )
         lines.append(f"• **{repo}** `{tag}` — {summary}")
-        lines.append(f"  <{article_link(article)}>")
+        lines.append(render_link(article_link(article)))
         lines.append("")
 
     return "\n".join(lines).rstrip()
@@ -211,7 +325,7 @@ def render_github_trending(data: Dict[str, Any]) -> Optional[str]:
             f"• **{repo}** ⭐ {stars} (+{daily_stars}/day) | "
             f"{language} — {description}"
         )
-        lines.append(f"  <{article_link(article)}>")
+        lines.append(render_link(article_link(article)))
         lines.append("")
 
     return "\n".join(lines).rstrip()
@@ -237,7 +351,7 @@ def render_blog_picks(data: Dict[str, Any]) -> Optional[str]:
             or ""
         )
         lines.append(f"• **{article.get('title', '?')}** — {author} | {summary}")
-        lines.append(f"  <{article_link(article)}>")
+        lines.append(render_link(article_link(article)))
         lines.append("")
 
     return "\n".join(lines).rstrip()
@@ -264,10 +378,82 @@ def render_podcast_remix(data: Dict[str, Any]) -> Optional[str]:
             f"• **{article.get('title', '?')}** — {show_name} | "
             f'{summary} Quote: "{quote}"'
         )
-        lines.append(f"  <{article_link(article)}>")
+        lines.append(render_link(article_link(article)))
         lines.append("")
 
     return "\n".join(lines).rstrip()
+
+
+def render_chat_article_section(
+    title: str,
+    emoji: str,
+    articles: Sequence[Dict[str, Any]],
+) -> Optional[str]:
+    visible_articles = [article for article in articles if article_link(article)]
+    if not visible_articles:
+        return None
+
+    lines = [title, ""]
+    for index, article in enumerate(visible_articles, 1):
+        lines.append(render_chat_item(article, index, emoji))
+        lines.append("")
+    return "\n".join(lines).rstrip()
+
+
+def render_chat_kol_updates(data: Dict[str, Any]) -> Optional[str]:
+    tweets = [
+        article
+        for article in unique_articles(iter_articles(data), "twitter")
+        if article_link(article)
+    ]
+    tweets = sorted(tweets, key=quality_score, reverse=True)
+    return render_chat_article_section("## 📢 KOL Updates", "📢", tweets)
+
+
+def render_chat_github_releases(data: Dict[str, Any]) -> Optional[str]:
+    releases = [
+        article
+        for article in unique_articles(iter_articles(data), "github")
+        if article_link(article)
+    ]
+    releases = sorted(releases, key=quality_score, reverse=True)
+    return render_chat_article_section("## 📦 GitHub Releases", "📦", releases)
+
+
+def render_chat_github_trending(data: Dict[str, Any]) -> Optional[str]:
+    repos = [
+        article
+        for article in unique_articles(iter_articles(data), "github_trending")
+        if article_link(article)
+    ]
+    repos = sorted(
+        repos,
+        key=lambda article: article.get("daily_stars_est", 0),
+        reverse=True,
+    )
+    return render_chat_article_section("## 🐙 GitHub Trending", "🐙", repos)
+
+
+def render_chat_blog_picks(data: Dict[str, Any]) -> Optional[str]:
+    picks = [
+        article
+        for article in unique_articles(iter_articles(data))
+        if article.get("is_blog_pick") and article_link(article)
+    ]
+    picks = sorted(picks, key=quality_score, reverse=True)
+    return render_chat_article_section("## 📝 Blog Picks", "📝", picks)
+
+
+def render_chat_podcast_remix(data: Dict[str, Any]) -> Optional[str]:
+    episodes = [
+        article
+        for article in unique_articles(iter_articles(data), "podcast")
+        if article.get("transcript_status") == "ok"
+        and article.get("transcript")
+        and article_link(article)
+    ]
+    episodes = sorted(episodes, key=quality_score, reverse=True)
+    return render_chat_article_section("## 🎙️ Podcast Remix", "🎙️", episodes)
 
 
 def source_count(data: Dict[str, Any], key: str) -> int:
@@ -298,7 +484,7 @@ def render_footer(data: Dict[str, Any], version: str) -> str:
             ),
             (
                 f"🤖 Generated by follow-news v{version} | "
-                "<https://github.com/tangwz/follow-news> | Powered by OpenClaw"
+                "🔗 https://github.com/tangwz/follow-news | Powered by OpenClaw"
             ),
         ]
     )
@@ -309,7 +495,13 @@ def render_digest(
     topic_defs: Sequence[Dict[str, Any]],
     report_date: str,
     version: str,
+    template: str = "discord",
 ) -> str:
+    if template == "chat":
+        return render_chat_digest(data, topic_defs, report_date, version)
+    if template != "discord":
+        raise ValueError(f"Unsupported template: {template}")
+
     sections = [f"# 🚀 Tech Digest - {report_date}"]
     sections.extend(render_topic_sections(data, topic_defs))
 
@@ -319,6 +511,30 @@ def render_digest(
         render_github_trending,
         render_blog_picks,
         render_podcast_remix,
+    ):
+        section = renderer(data)
+        if section:
+            sections.append(section)
+
+    sections.append(render_footer(data, version))
+    return "\n\n".join(sections).rstrip() + "\n"
+
+
+def render_chat_digest(
+    data: Dict[str, Any],
+    topic_defs: Sequence[Dict[str, Any]],
+    report_date: str,
+    version: str,
+) -> str:
+    sections = [f"# 🚀 Tech Digest - {report_date}"]
+    sections.extend(render_chat_topic_sections(data, topic_defs))
+
+    for renderer in (
+        render_chat_kol_updates,
+        render_chat_github_releases,
+        render_chat_github_trending,
+        render_chat_blog_picks,
+        render_chat_podcast_remix,
     ):
         section = renderer(data)
         if section:
@@ -370,7 +586,7 @@ def summarize_fixture(data: Dict[str, Any]) -> str:
     return "\n".join(lines).rstrip() + "\n"
 
 
-def build_codex_prompt(report_date: str, version: str) -> str:
+def build_codex_prompt(report_date: str, version: str, template: str) -> str:
     return "\n".join(
         [
             "# Manual Codex Acceptance Context",
@@ -383,7 +599,7 @@ def build_codex_prompt(report_date: str, version: str) -> str:
             "- Use summarized.txt for a quick fixture overview.",
             (
                 "- Follow references/digest-prompt.md and "
-                "references/templates/discord.md as the source-of-truth "
+                f"references/templates/{template}.md as the source-of-truth "
                 "Markdown and Discord formatting rules."
             ),
             (
@@ -407,6 +623,7 @@ def prepare_codex_acceptance_context(
     output_dir: Path,
     report_date: str,
     version: str,
+    template: str = "discord",
 ) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -416,11 +633,11 @@ def prepare_codex_acceptance_context(
         encoding="utf-8",
     )
     (output_dir / "prompt.md").write_text(
-        build_codex_prompt(report_date, version),
+        build_codex_prompt(report_date, version, template),
         encoding="utf-8",
     )
     (output_dir / "expected.md").write_text(
-        render_digest(data, topic_defs, report_date, version),
+        render_digest(data, topic_defs, report_date, version, template=template),
         encoding="utf-8",
     )
 
@@ -433,6 +650,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--topics", type=Path, required=True, help="Topics JSON file")
     parser.add_argument("--date", required=True, help="Report date in YYYY-MM-DD format")
     parser.add_argument("--version", required=True, help="follow-news version string")
+    parser.add_argument(
+        "--template",
+        choices=("discord", "chat"),
+        default="discord",
+        help="Output template to render",
+    )
     parser.add_argument("--output", type=Path, help="Markdown output path")
     parser.add_argument(
         "--prepare-codex-context",
@@ -459,6 +682,7 @@ def main() -> int:
             args.prepare_codex_context,
             args.date,
             args.version,
+            template=args.template,
         )
         return 0
 
@@ -466,7 +690,13 @@ def main() -> int:
         parser = build_parser()
         parser.error("--output is required unless --prepare-codex-context is used")
 
-    output = render_digest(data, topic_defs, args.date, args.version)
+    output = render_digest(
+        data,
+        topic_defs,
+        args.date,
+        args.version,
+        template=args.template,
+    )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(output, encoding="utf-8")
     return 0
