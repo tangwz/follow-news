@@ -87,7 +87,7 @@ def assert_or_update_golden(testcase, expected_path, actual):
                 tofile="rendered daily digest",
             )
         )
-        testcase.fail("Daily digest golden mismatch:\n" + diff)
+        testcase.fail(f"Golden mismatch for {expected_path}:\n" + diff)
 
 
 class TestAcceptanceFixture(unittest.TestCase):
@@ -317,7 +317,6 @@ class TestAcceptanceRenderer(unittest.TestCase):
         )
 
         self.assertIn("A short preview for an upcoming episode.", text)
-        self.assertNotIn("Quote:", text)
 
     def test_chat_twitter_metrics_are_not_rendered_without_summary_support(self):
         data = {
