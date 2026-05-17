@@ -197,6 +197,23 @@ class TestAcceptanceRenderer(unittest.TestCase):
         self.assertIn("Missing, null, empty, or unparsable metric values render as 0.", prompt)
         self.assertIn("Discord and email length limits take precedence over sentence-count targets.", prompt)
 
+    def test_templates_document_non_github_summary_contract(self):
+        template_paths = [
+            ROOT_DIR / "references" / "templates" / "chat.md",
+            ROOT_DIR / "references" / "templates" / "discord.md",
+            ROOT_DIR / "references" / "templates" / "email.md",
+        ]
+
+        for template_path in template_paths:
+            with self.subTest(template=template_path.name):
+                text = template_path.read_text(encoding="utf-8")
+                self.assertIn("Non-GitHub Summary Quality", text)
+                self.assertIn("KOL, non-GitHub topic, Blog Picks, Reddit, and Podcast", text)
+                self.assertIn("GitHub Releases and GitHub Trending keep their existing concise style.", text)
+                self.assertIn("full_text > summary > snippet > title", text)
+                self.assertIn("Lower-priority fields may provide supplemental context", text)
+                self.assertIn("length limits take precedence over sentence-count targets", text)
+
     def test_chat_digest_filters_linkless_items_and_empty_topics(self):
         data = {
             "input_sources": {},

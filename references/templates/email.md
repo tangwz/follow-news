@@ -81,6 +81,16 @@ The agent should generate an HTML email body. Use inline styles (email clients s
 - **No images**: Pure text/HTML for maximum compatibility
 - **No tables for layout**: Use div + inline styles
 
+## Non-GitHub Summary Quality
+
+This applies to KOL, non-GitHub topic, Blog Picks, Reddit, and Podcast items. GitHub Releases and GitHub Trending keep their existing concise style.
+
+Use a tendency-based structure: what happened, what object changed, and why it matters when the evidence supports it. Do not force all three points into every item.
+
+Use `full_text > summary > snippet > title` as evidence weight. Lower-priority fields may provide supplemental context such as names or short background, but they must not override higher-priority facts.
+
+Email length limits take precedence over sentence-count targets. When space is tight, compress non-GitHub summaries to 1-2 evidence-backed sentences.
+
 ## Example Output
 
 ```html
