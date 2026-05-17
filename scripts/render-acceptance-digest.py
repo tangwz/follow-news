@@ -145,14 +145,56 @@ class VisibleArticleRegistry:
             self.seen_keys.add(key)
 
     def filter_unseen(self, articles: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        candidates = self._candidate_components(articles)
         visible = []
-        for article in articles:
-            if self.is_seen(article):
-                self.mark(article)
+        for article, keys, component_keys in candidates:
+            if not keys:
+                visible.append(article)
                 continue
-            self.mark(article)
+
+            if component_keys & self.seen_keys:
+                self.seen_keys.update(component_keys)
+                continue
+
+            self.seen_keys.update(component_keys)
             visible.append(article)
         return visible
+
+    def _candidate_components(
+        self,
+        articles: Iterable[Dict[str, Any]],
+    ) -> List[tuple[Dict[str, Any], List[str], set]]:
+        candidates = [(article, article_dedupe_keys(article)) for article in articles]
+        parent = {}
+
+        def find(key: str) -> str:
+            parent.setdefault(key, key)
+            if parent[key] != key:
+                parent[key] = find(parent[key])
+            return parent[key]
+
+        def union(first: str, second: str) -> None:
+            first_root = find(first)
+            second_root = find(second)
+            if first_root != second_root:
+                parent[second_root] = first_root
+
+        for _, keys in candidates:
+            if not keys:
+                continue
+            first = keys[0]
+            find(first)
+            for key in keys[1:]:
+                union(first, key)
+
+        component_keys = {}
+        for key in list(parent):
+            component_keys.setdefault(find(key), set()).add(key)
+
+        return [
+            (article, keys, component_keys.get(find(keys[0]), set()) if keys else set())
+            for article, keys in candidates
+        ]
 
 
 def render_link(url: str) -> str:

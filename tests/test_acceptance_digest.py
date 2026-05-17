@@ -292,6 +292,35 @@ class TestVisibleArticleDedupe(unittest.TestCase):
 
         self.assertEqual(visible, [])
 
+    def test_visible_registry_propagates_late_bridge_aliases_before_rendering(self):
+        registry = render_mod.VisibleArticleRegistry()
+
+        visible = registry.filter_unseen(
+            [
+                {"title": "Canonical", "link": "https://example.com/a"},
+                {"title": "Bridge", "link": "https://example.com/b"},
+                {"title": "Bridge", "link": "https://example.com/a"},
+            ]
+        )
+
+        self.assertEqual(
+            [article["link"] for article in visible],
+            ["https://example.com/a"],
+        )
+
+    def test_visible_registry_applies_prior_seen_late_bridge_aliases(self):
+        registry = render_mod.VisibleArticleRegistry()
+        registry.mark({"title": "Canonical", "link": "https://example.com/a"})
+
+        visible = registry.filter_unseen(
+            [
+                {"title": "Bridge", "link": "https://example.com/b"},
+                {"title": "Bridge", "link": "https://example.com/a"},
+            ]
+        )
+
+        self.assertEqual(visible, [])
+
     def test_article_dedupe_key_only_strips_leading_www(self):
         self.assertEqual(
             render_mod.article_dedupe_key(
