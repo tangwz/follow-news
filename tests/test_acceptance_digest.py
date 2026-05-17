@@ -64,6 +64,12 @@ def render_daily_chat_digest():
     )
 
 
+def extract_chat_summary(text, title_line):
+    lines = text.splitlines()
+    index = lines.index(title_line)
+    return lines[index + 2]
+
+
 def assert_or_update_golden(testcase, expected_path, actual):
     if os.environ.get("UPDATE_GOLDEN") == "1":
         expected_path.parent.mkdir(parents=True, exist_ok=True)
@@ -178,6 +184,21 @@ class TestAcceptanceRenderer(unittest.TestCase):
                 r"(?m)^[0-9]+\. .+ \[[0-9]+(?:\.[0-9]+)?/10\] .+",
                 lines[start],
             )
+
+    def test_chat_non_github_summaries_keep_stable_evidence_phrases(self):
+        text = render_daily_chat_digest()
+
+        expected_phrases = [
+            "结构化评测",
+            "LangGraph 新增 checkpoint",
+            "prompt injection",
+            "product taste",
+            "SWE-bench 分享了一份",
+        ]
+
+        for phrase in expected_phrases:
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, text)
 
     def test_digest_prompt_documents_non_github_summary_contract(self):
         prompt = (ROOT_DIR / "references" / "digest-prompt.md").read_text(
@@ -396,8 +417,16 @@ class TestAcceptanceRenderer(unittest.TestCase):
             version="3.17.0",
             template="chat",
         )
+        summary = extract_chat_summary(
+            text,
+            "1. 🧠 [5/10] Snippet-only model note",
+        )
 
-        self.assertIn("Only this snippet is available.", text)
+        self.assertEqual(summary, "Only this snippet is available.")
+        self.assertNotIn("OpenAI", summary)
+        self.assertNotIn("Anthropic", summary)
+        self.assertNotIn("2026", summary)
+        self.assertNotIn("CEO", summary)
 
     def test_chat_podcast_without_transcript_does_not_create_transcript_insight(self):
         data = {
