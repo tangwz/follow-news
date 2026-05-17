@@ -449,8 +449,8 @@ class TestAcceptanceRenderer(unittest.TestCase):
         )
 
         self.assertIn("Example Lab shared a benchmark note.", text)
-        self.assertNotIn("12.5K", text.split("## 📢 KOL Updates")[0])
-        self.assertNotIn("views", text.split("## 📢 KOL Updates")[0].lower())
+        self.assertNotIn("12.5K", text)
+        self.assertNotIn("views", text.lower())
 
     def test_daily_digest_structure_contract(self):
         text = render_daily_digest()
