@@ -44,9 +44,19 @@ Universal IM format for Telegram, Feishu, WeChat, WeCom, and similar chat surfac
 - If only thin material is available, write a shorter and more cautious summary.
 - If only fetch time exists, do not write it as the news publication time.
 
+## Non-GitHub Summary Quality
+
+This applies to KOL, non-GitHub topic, Blog Picks, Reddit, and Podcast items. GitHub Releases and GitHub Trending keep their existing concise style.
+
+Use a tendency-based structure: what happened, what object changed, and why it matters when the evidence supports it. Do not force all three points into every item.
+
+Use `full_text > summary > snippet > title` as evidence weight. Lower-priority fields may provide supplemental context such as names or short background, but they must not override higher-priority facts.
+
+Chat summaries normally use 2-4 sentences in one compact paragraph. Platform length limits take precedence over sentence-count targets when the output is sent through constrained channels.
+
 ## Source Rules
 
-- Twitter/X and KOL: identify display name, handle, or known identity only when present in evidence. Include metrics only when they explain reach, controversy, or importance.
+- Twitter/X and KOL: identify display name, handle, or known identity only when present in evidence. In fixed KOL sections, always include interaction metrics from merged JSON fields `metrics.impression_count`, `metrics.reply_count`, `metrics.retweet_count`, and `metrics.like_count` as `👁 views | 💬 replies | 🔁 reposts | ❤️ likes`. Missing, null, empty, or unparsable metric values render as `0`. Never omit these metrics when an item appears in the section.
 - RSS and Web: prefer concrete product, model, version, company, person, metric, and publication-time details when present.
 - Reddit: distinguish the linked item from subreddit discussion. Treat score, comments, and controversy as discussion signals, not factual proof.
 - Podcast: use transcript-backed insight only when transcript text is available. Without transcript, summarize only title, show name, snippet, duration, and source metadata.

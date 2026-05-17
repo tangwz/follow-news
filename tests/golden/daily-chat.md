@@ -62,7 +62,7 @@ browser-use/web-ui 是一个 TypeScript 项目，用本地 Web UI 运行 browser
 
 1. 📢 [5.5/10] SWE-agent benchmark report
 
-SWE-bench 分享了一份关于仓库级 coding agent 的 benchmark report，重点是评估 Agent 在真实代码库中的修复能力。该条目只基于账号名称、原始摘要和链接，不额外推断账号背景或行业地位。
+SWE-bench 分享了一份关于仓库级 coding agent 的 benchmark report，重点是评估 Agent 在真实代码库中的修复能力。该条目只基于账号名称、原始摘要和链接，不额外推断账号背景或行业地位。 `👁 12.5K | 💬 45 | 🔁 230 | ❤️ 1.8K`
 
 🔗 https://x.com/swebench/status/1234567890
 

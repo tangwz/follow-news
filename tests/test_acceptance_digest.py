@@ -64,6 +64,12 @@ def render_daily_chat_digest():
     )
 
 
+def extract_chat_summary(text, title_line):
+    lines = text.splitlines()
+    index = lines.index(title_line)
+    return lines[index + 2]
+
+
 def assert_or_update_golden(testcase, expected_path, actual):
     if os.environ.get("UPDATE_GOLDEN") == "1":
         expected_path.parent.mkdir(parents=True, exist_ok=True)
@@ -178,6 +184,57 @@ class TestAcceptanceRenderer(unittest.TestCase):
                 r"(?m)^[0-9]+\. .+ \[[0-9]+(?:\.[0-9]+)?/10\] .+",
                 lines[start],
             )
+
+    def test_chat_non_github_summaries_keep_stable_evidence_phrases(self):
+        text = render_daily_chat_digest()
+
+        expected_phrases = [
+            "结构化评测",
+            "LangGraph 新增 checkpoint",
+            "prompt injection",
+            "product taste",
+            "SWE-bench 分享了一份",
+        ]
+
+        for phrase in expected_phrases:
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, text)
+
+    def test_digest_prompt_documents_non_github_summary_contract(self):
+        prompt = (ROOT_DIR / "references" / "digest-prompt.md").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("### Non-GitHub Summary Quality Contract", prompt)
+        self.assertIn("This contract applies to KOL, non-GitHub topic, Blog Picks, Reddit, and Podcast items.", prompt)
+        self.assertIn("It does not apply to GitHub Releases or GitHub Trending.", prompt)
+        self.assertIn("Use a tendency-based structure", prompt)
+        self.assertIn("full_text > summary > snippet > title", prompt)
+        self.assertIn("Lower-priority fields may provide supplemental context", prompt)
+        self.assertIn("metrics.impression_count", prompt)
+        self.assertIn("metrics.reply_count", prompt)
+        self.assertIn("metrics.retweet_count", prompt)
+        self.assertIn("metrics.like_count", prompt)
+        self.assertIn("Missing, null, empty, or unparsable metric values render as 0.", prompt)
+        self.assertIn("Discord and email length limits take precedence over sentence-count targets.", prompt)
+
+    def test_templates_document_non_github_summary_contract(self):
+        template_paths = [
+            ROOT_DIR / "references" / "templates" / "chat.md",
+            ROOT_DIR / "references" / "templates" / "discord.md",
+            ROOT_DIR / "references" / "templates" / "email.md",
+        ]
+
+        for template_path in template_paths:
+            with self.subTest(template=template_path.name):
+                text = template_path.read_text(encoding="utf-8")
+                self.assertIn("Non-GitHub Summary Quality", text)
+                self.assertIn("KOL, non-GitHub topic, Blog Picks, Reddit, and Podcast", text)
+                self.assertIn("GitHub Releases and GitHub Trending keep their existing concise style.", text)
+                self.assertIn("Use a tendency-based structure", text)
+                self.assertIn("full_text > summary > snippet > title", text)
+                self.assertIn("Lower-priority fields may provide supplemental context", text)
+                self.assertIn("length limits take precedence over sentence-count targets", text)
 
     def test_chat_digest_filters_linkless_items_and_empty_topics(self):
         data = {
@@ -360,8 +417,52 @@ class TestAcceptanceRenderer(unittest.TestCase):
             version="3.17.0",
             template="chat",
         )
+        summary = extract_chat_summary(
+            text,
+            "1. 🧠 [5/10] Snippet-only model note",
+        )
 
-        self.assertIn("Only this snippet is available.", text)
+        self.assertEqual(summary, "Only this snippet is available.")
+        self.assertNotIn("OpenAI", summary)
+        self.assertNotIn("Anthropic", summary)
+        self.assertNotIn("2026", summary)
+        self.assertNotIn("CEO", summary)
+
+    def test_chat_summary_prefers_full_text_over_lower_priority_fields(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 1},
+            "topics": {
+                "builder": {
+                    "articles": [
+                        {
+                            "title": "Title-level fallback only",
+                            "link": "https://example.com/priority",
+                            "quality_score": 10,
+                            "source_type": "rss",
+                            "full_text": "Full text evidence should win.",
+                            "summary": "Summary evidence should not win.",
+                            "snippet": "Snippet evidence should not win.",
+                        }
+                    ]
+                }
+            },
+        }
+        topic_defs = [{"id": "builder", "emoji": "🏗️", "label": "Builder"}]
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs,
+            report_date="2026-02-27",
+            version="3.17.0",
+            template="chat",
+        )
+        summary = extract_chat_summary(
+            text,
+            "1. 🏗️ [5/10] Title-level fallback only",
+        )
+
+        self.assertEqual(summary, "Full text evidence should win.")
 
     def test_chat_podcast_without_transcript_does_not_create_transcript_insight(self):
         data = {
@@ -432,8 +533,113 @@ class TestAcceptanceRenderer(unittest.TestCase):
         )
 
         self.assertIn("Example Lab shared a benchmark note.", text)
-        self.assertNotIn("12.5K", text)
-        self.assertNotIn("views", text.lower())
+        topic_text = text.split("## 📢 KOL Updates", 1)[0]
+        self.assertNotIn("12.5K", topic_text)
+        self.assertNotIn("views", topic_text.lower())
+
+    def test_chat_kol_metrics_render_zero_for_missing_values(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 1},
+            "topics": {
+                "ai-agent": {
+                    "articles": [
+                        {
+                            "title": "Sparse KOL post",
+                            "link": "https://x.com/example/status/2",
+                            "quality_score": 11,
+                            "source_type": "twitter",
+                            "display_name": "Example Lab",
+                            "handle": "example",
+                            "summary": "Example Lab shared a sparse benchmark note.",
+                            "metrics": {
+                                "impression_count": None,
+                                "reply_count": "",
+                                "retweet_count": "not-a-number",
+                                "like_count": 0,
+                            },
+                        }
+                    ]
+                }
+            },
+        }
+        topic_defs = [{"id": "ai-agent", "emoji": "🤖", "label": "AI Agent"}]
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs,
+            report_date="2026-02-27",
+            version="3.17.0",
+            template="chat",
+        )
+
+        kol_text = text.split("## 📢 KOL Updates", 1)[1]
+        self.assertIn("`👁 0 | 💬 0 | 🔁 0 | ❤️ 0`", kol_text)
+
+    def test_chat_kol_metrics_render_zero_for_invalid_metrics_container(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 1},
+            "topics": {
+                "ai-agent": {
+                    "articles": [
+                        {
+                            "title": "Invalid metrics container",
+                            "link": "https://x.com/example/status/3",
+                            "quality_score": 11,
+                            "source_type": "twitter",
+                            "display_name": "Example Lab",
+                            "handle": "example",
+                            "summary": "Example Lab shared another benchmark note.",
+                            "metrics": None,
+                        }
+                    ]
+                }
+            },
+        }
+        topic_defs = [{"id": "ai-agent", "emoji": "🤖", "label": "AI Agent"}]
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs,
+            report_date="2026-02-27",
+            version="3.17.0",
+            template="chat",
+        )
+
+        kol_text = text.split("## 📢 KOL Updates", 1)[1]
+        self.assertIn("`👁 0 | 💬 0 | 🔁 0 | ❤️ 0`", kol_text)
+
+    def test_chat_kol_updates_skips_empty_section(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 1},
+            "topics": {
+                "builder": {
+                    "articles": [
+                        {
+                            "title": "Builder article",
+                            "link": "https://example.com/builder",
+                            "quality_score": 10,
+                            "source_type": "rss",
+                            "chat_summary": "Builder evidence remains visible.",
+                        }
+                    ]
+                }
+            },
+        }
+        topic_defs = [{"id": "builder", "emoji": "🏗️", "label": "Builder"}]
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs,
+            report_date="2026-02-27",
+            version="3.17.0",
+            template="chat",
+        )
+
+        self.assertIn("## 🏗️ Builder", text)
+        self.assertNotIn("## 📢 KOL Updates", text)
 
     def test_daily_digest_structure_contract(self):
         text = render_daily_digest()
