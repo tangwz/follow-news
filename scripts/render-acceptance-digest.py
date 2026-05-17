@@ -53,6 +53,8 @@ def normalize_visible_url(url: str) -> str:
         parsed = urlparse(url)
         domain = normalize_visible_domain(parsed.netloc)
         path = parsed.path.rstrip("/")
+        if parsed.params:
+            path = f"{path};{parsed.params}"
 
         if domain in {"youtube.com", "m.youtube.com"} and path == "/watch":
             video_id = parse_qs(parsed.query).get("v", [""])[0]
@@ -88,6 +90,7 @@ def normalize_visible_title(title: Any) -> str:
     value = str(title)
     value = re.sub(r"^(RT\s+@\w+:\s*)", "", value, flags=re.IGNORECASE)
     value = re.sub(r"\s+", " ", value).strip()
+    value = re.sub(r"(?<=\d)\.(?=\d)", " ", value)
     value = re.sub(r"[^\w\s]", "", value.lower())
     return value
 
@@ -181,9 +184,16 @@ class VisibleArticleRegistry:
 
     def _find(self, key: str) -> str:
         self.parent.setdefault(key, key)
-        if self.parent[key] != key:
-            self.parent[key] = self._find(self.parent[key])
-        return self.parent[key]
+        root = key
+        while self.parent[root] != root:
+            root = self.parent[root]
+
+        while self.parent[key] != key:
+            parent = self.parent[key]
+            self.parent[key] = root
+            key = parent
+
+        return root
 
     def _union(self, first: str, second: str) -> None:
         first_root = self._find(first)

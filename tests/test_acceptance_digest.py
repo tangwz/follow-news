@@ -310,6 +310,15 @@ class TestVisibleArticleDedupe(unittest.TestCase):
             render_mod.article_dedupe_key(second),
         )
 
+    def test_article_dedupe_key_preserves_path_parameters(self):
+        first = {"link": "https://example.com/post;v=1"}
+        second = {"link": "https://example.com/post;v=2"}
+
+        self.assertNotEqual(
+            render_mod.article_dedupe_key(first),
+            render_mod.article_dedupe_key(second),
+        )
+
     def test_article_dedupe_key_drops_tracking_query_parameters(self):
         first = {"link": "https://example.com/post?utm_source=rss&fbclid=x"}
         second = {"link": "https://www.example.com/post?utm_medium=email"}
@@ -376,6 +385,20 @@ class TestVisibleArticleDedupe(unittest.TestCase):
 
         self.assertEqual(registry.filter_unseen(articles), articles)
 
+    def test_visible_registry_handles_deep_alias_chains(self):
+        registry = render_mod.VisibleArticleRegistry()
+        articles = [
+            {
+                "title": "Shared release title",
+                "link": f"https://example.com/releases/{index}",
+            }
+            for index in range(1200)
+        ]
+
+        visible = registry.filter_unseen(articles)
+
+        self.assertEqual(visible, articles[:1])
+
     def test_article_dedupe_key_only_strips_leading_www(self):
         self.assertEqual(
             render_mod.article_dedupe_key(
@@ -415,6 +438,15 @@ class TestVisibleArticleDedupe(unittest.TestCase):
                     "link": "https://example.com/gpt-4",
                 }
             )
+        )
+
+    def test_article_dedupe_key_keeps_punctuation_version_titles_distinct(self):
+        first = {"title": "OpenAI releases GPT-4.1"}
+        second = {"title": "OpenAI releases GPT-41"}
+
+        self.assertNotEqual(
+            render_mod.article_dedupe_key(first),
+            render_mod.article_dedupe_key(second),
         )
 
     def test_article_dedupe_key_keeps_dash_subtitles_distinct(self):
