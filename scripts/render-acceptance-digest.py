@@ -8,10 +8,19 @@ import re
 import shutil
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qsl, parse_qs, urlencode, urlparse
 
 
 MIN_QUALITY_SCORE = 5
+TRACKING_QUERY_PARAMS = {
+    "fbclid",
+    "gclid",
+    "igshid",
+    "mc_cid",
+    "mc_eid",
+    "ref",
+    "ref_src",
+}
 
 
 def load_json(path: Path) -> Dict[str, Any]:
@@ -50,7 +59,15 @@ def normalize_visible_url(url: str) -> str:
                 return f"url:youtube:{video_id}"
 
         if domain or path:
-            return f"url:{domain}{path}"
+            query_pairs = [
+                (name, value)
+                for name, value in parse_qsl(parsed.query, keep_blank_values=True)
+                if not name.lower().startswith("utm_")
+                and name.lower() not in TRACKING_QUERY_PARAMS
+            ]
+            query = urlencode(sorted(query_pairs), doseq=True)
+            suffix = f"?{query}" if query else ""
+            return f"url:{domain}{path}{suffix}"
     except Exception:
         pass
 

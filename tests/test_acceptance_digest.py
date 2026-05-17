@@ -221,6 +221,33 @@ class TestVisibleArticleDedupe(unittest.TestCase):
             render_mod.article_dedupe_key(second),
         )
 
+    def test_article_dedupe_key_preserves_meaningful_query_parameters(self):
+        first = {"link": "https://news.ycombinator.com/item?id=1"}
+        second = {"link": "https://news.ycombinator.com/item?id=2"}
+
+        self.assertNotEqual(
+            render_mod.article_dedupe_key(first),
+            render_mod.article_dedupe_key(second),
+        )
+
+    def test_article_dedupe_key_drops_tracking_query_parameters(self):
+        first = {"link": "https://example.com/post?utm_source=rss&fbclid=x"}
+        second = {"link": "https://www.example.com/post?utm_medium=email"}
+
+        self.assertEqual(
+            render_mod.article_dedupe_key(first),
+            render_mod.article_dedupe_key(second),
+        )
+
+    def test_article_dedupe_key_keeps_meaningful_query_without_tracking_noise(self):
+        first = {"link": "https://example.com/post?id=1&utm_source=rss"}
+        second = {"link": "https://www.example.com/post?utm_medium=email&id=1"}
+
+        self.assertEqual(
+            render_mod.article_dedupe_key(first),
+            render_mod.article_dedupe_key(second),
+        )
+
     def test_article_dedupe_key_falls_back_to_normalized_title(self):
         first = {"title": "RT @user: OpenAI releases GPT-5!"}
         second = {"title": "OpenAI releases GPT-5"}
