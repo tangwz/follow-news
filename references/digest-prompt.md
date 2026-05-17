@@ -72,6 +72,18 @@ When `<TEMPLATE>` is `chat`, follow `references/templates/chat.md` exactly: each
 
 Select articles **purely by quality_score regardless of source type**. When an article has a `full_text` field, use it to write a richer 2-3 sentence summary instead of relying solely on the title/snippet. Articles in merged JSON are already sorted by quality_score descending within each topic — respect this order. For Reddit posts, append `*[Reddit r/xxx, {{score}}↑]*`.
 
+### Non-GitHub Summary Quality Contract
+
+This contract applies to KOL, topic, Blog Picks, Reddit, and Podcast items. It does not apply to GitHub Releases or GitHub Trending.
+
+Use a tendency-based structure, not a mandatory checklist: explain what happened, what object it happened to, and why it matters only when the available evidence supports those points. If evidence is thin, keep the summary shorter and preserve the most concrete fact instead of adding unsupported context.
+
+Use this evidence priority as weight, not exclusivity: `full_text > summary > snippet > title`. Prefer the highest-quality field as the main fact source. Lower-priority fields may provide supplemental context such as object names, source titles, or short background, but they must not override or contradict higher-priority fields.
+
+Non-GitHub summaries normally use 2-4 sentences. Chat can keep this target when space permits. Discord and email length limits take precedence over sentence-count targets. When space is tight, compress to 1-2 sentences while preserving the most specific evidence-backed fact.
+
+For KOL/Twitter fixed sections, always render the four metrics from `metrics.impression_count`, `metrics.reply_count`, `metrics.retweet_count`, and `metrics.like_count` in that order. Missing, null, empty, or unparsable metric values render as 0. A real value of 0 also renders as 0. Metrics are context for reach and discussion, not proof that a claim is true.
+
 For non-chat templates, each article line must include its quality score using 🔥 prefix. Format: `🔥{score} | {summary with link}`. This makes scoring transparent and helps readers identify the most important news at a glance. For chat, use `[score/10]` in the title line from `references/templates/chat.md`.
 
 ### Executive Summary

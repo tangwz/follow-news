@@ -179,6 +179,23 @@ class TestAcceptanceRenderer(unittest.TestCase):
                 lines[start],
             )
 
+    def test_digest_prompt_documents_non_github_summary_contract(self):
+        prompt = (ROOT_DIR / "references" / "digest-prompt.md").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("### Non-GitHub Summary Quality Contract", prompt)
+        self.assertIn("This contract applies to KOL, topic, Blog Picks, Reddit, and Podcast items.", prompt)
+        self.assertIn("It does not apply to GitHub Releases or GitHub Trending.", prompt)
+        self.assertIn("full_text > summary > snippet > title", prompt)
+        self.assertIn("Lower-priority fields may provide supplemental context", prompt)
+        self.assertIn("metrics.impression_count", prompt)
+        self.assertIn("metrics.reply_count", prompt)
+        self.assertIn("metrics.retweet_count", prompt)
+        self.assertIn("metrics.like_count", prompt)
+        self.assertIn("Missing, null, empty, or unparsable metric values render as 0.", prompt)
+        self.assertIn("Discord and email length limits take precedence over sentence-count targets.", prompt)
+
     def test_chat_digest_filters_linkless_items_and_empty_topics(self):
         data = {
             "input_sources": {},
@@ -432,8 +449,8 @@ class TestAcceptanceRenderer(unittest.TestCase):
         )
 
         self.assertIn("Example Lab shared a benchmark note.", text)
-        self.assertNotIn("12.5K", text)
-        self.assertNotIn("views", text.lower())
+        self.assertNotIn("12.5K", text.split("## 📢 KOL Updates")[0])
+        self.assertNotIn("views", text.split("## 📢 KOL Updates")[0].lower())
 
     def test_daily_digest_structure_contract(self):
         text = render_daily_digest()
