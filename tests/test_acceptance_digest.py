@@ -289,6 +289,43 @@ class TestVisibleArticleDedupe(unittest.TestCase):
             )
         )
 
+    def test_article_dedupe_key_keeps_versioned_titles_distinct(self):
+        registry = render_mod.VisibleArticleRegistry()
+        registry.mark(
+            {"title": "OpenAI releases GPT-5", "link": "https://example.com/gpt-5"}
+        )
+
+        self.assertFalse(
+            registry.is_seen(
+                {
+                    "title": "OpenAI releases GPT-4",
+                    "link": "https://example.com/gpt-4",
+                }
+            )
+        )
+
+    def test_article_dedupe_key_keeps_hyphenated_titles_intact(self):
+        self.assertEqual(
+            render_mod.normalize_visible_title("State-of-the-art agents"),
+            "stateoftheart agents",
+        )
+
+    def test_article_dedupe_key_strips_source_suffixes(self):
+        title = "OpenAI releases GPT-5"
+
+        self.assertEqual(
+            render_mod.normalize_visible_title(f"{title} | Example News"),
+            render_mod.normalize_visible_title(title),
+        )
+        self.assertEqual(
+            render_mod.normalize_visible_title(f"{title} - Example News"),
+            render_mod.normalize_visible_title(title),
+        )
+        self.assertEqual(
+            render_mod.normalize_visible_title(f"{title} – Example News"),
+            render_mod.normalize_visible_title(title),
+        )
+
     def test_article_dedupe_key_falls_back_to_normalized_title(self):
         first = {"title": "RT @user: OpenAI releases GPT-5!"}
         second = {"title": "OpenAI releases GPT-5"}

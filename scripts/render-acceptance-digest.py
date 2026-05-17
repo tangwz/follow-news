@@ -81,7 +81,8 @@ def normalize_visible_title(title: Any) -> str:
 
     value = str(title)
     value = re.sub(r"^(RT\s+@\w+:\s*)", "", value, flags=re.IGNORECASE)
-    value = re.sub(r"\s*[|\-–]\s*[^|]*$", "", value)
+    value = re.sub(r"\s+\|\s+[^|]*$", "", value)
+    value = re.sub(r"\s+[\-–]\s+[^|]*$", "", value)
     value = re.sub(r"\s+", " ", value).strip()
     value = re.sub(r"[^\w\s]", "", value.lower())
     return value
