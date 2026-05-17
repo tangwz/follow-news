@@ -64,6 +64,60 @@ def render_daily_chat_digest():
     )
 
 
+def duplicate_visible_fixture():
+    return {
+        "input_sources": {},
+        "output_stats": {"total_articles": 3},
+        "topics": {
+            "llm": {
+                "articles": [
+                    {
+                        "title": "Independent blog post about agent evals",
+                        "link": "https://example.com/blog/agent-evals?utm_source=rss",
+                        "quality_score": 12,
+                        "source_type": "rss",
+                        "source_name": "Example Blog",
+                        "author": "Example Author",
+                        "is_blog_pick": True,
+                        "summary": "The post explains a compact agent evaluation pattern.",
+                    },
+                    {
+                        "title": "Agent planning podcast episode",
+                        "link": "https://www.youtube.com/watch?v=abc123&utm_source=rss",
+                        "quality_score": 11,
+                        "source_type": "podcast",
+                        "source_name": "Training Data",
+                        "show_name": "Training Data",
+                        "transcript_status": "ok",
+                        "transcript": "The episode discusses planning, evaluation, and rollout checks.",
+                        "snippet": "A podcast episode about planning and evaluation.",
+                    },
+                ]
+            },
+            "ai-agent": {
+                "articles": [
+                    {
+                        "title": "KOL note about agent reliability",
+                        "link": "https://x.com/example/status/1?utm_source=rss",
+                        "quality_score": 10,
+                        "source_type": "twitter",
+                        "source_name": "Example Lab",
+                        "display_name": "Example Lab",
+                        "handle": "example",
+                        "summary": "Example Lab shared a note about agent reliability.",
+                        "metrics": {
+                            "impression_count": 1000,
+                            "reply_count": 2,
+                            "retweet_count": 3,
+                            "like_count": 4,
+                        },
+                    }
+                ]
+            },
+        },
+    }
+
+
 def extract_chat_summary(text, title_line):
     lines = text.splitlines()
     index = lines.index(title_line)
@@ -131,6 +185,35 @@ class TestAcceptanceFixture(unittest.TestCase):
                 for article in articles
             )
         )
+
+
+class TestVisibleArticleDedupe(unittest.TestCase):
+    def test_article_dedupe_key_normalizes_equivalent_urls(self):
+        first = {
+            "title": "First title",
+            "link": "https://www.youtube.com/watch?v=abc123&utm_source=rss",
+        }
+        second = {
+            "title": "Different title",
+            "link": "https://youtu.be/abc123",
+        }
+
+        self.assertEqual(
+            render_mod.article_dedupe_key(first),
+            render_mod.article_dedupe_key(second),
+        )
+
+    def test_article_dedupe_key_falls_back_to_normalized_title(self):
+        first = {"title": "RT @user: OpenAI releases GPT-5!"}
+        second = {"title": "OpenAI releases GPT-5"}
+
+        self.assertEqual(
+            render_mod.article_dedupe_key(first),
+            render_mod.article_dedupe_key(second),
+        )
+
+    def test_article_dedupe_key_returns_none_without_url_or_title(self):
+        self.assertIsNone(render_mod.article_dedupe_key({"source_type": "rss"}))
 
 
 class TestAcceptanceRenderer(unittest.TestCase):
@@ -723,6 +806,51 @@ class TestAcceptanceRenderer(unittest.TestCase):
             text,
         )
         self.assertTrue(text.endswith("\n"))
+
+    def test_discord_visible_dedupe_keeps_topic_sections_over_fixed_sections(self):
+        topic_defs = [
+            {"id": "llm", "emoji": "🧠", "label": "LLM / Large Models"},
+            {"id": "ai-agent", "emoji": "🤖", "label": "AI Agent"},
+        ]
+
+        text = render_mod.render_digest(
+            duplicate_visible_fixture(),
+            topic_defs,
+            report_date="2026-05-17",
+            version="3.17.0",
+        )
+
+        self.assertEqual(text.count("https://example.com/blog/agent-evals?utm_source=rss"), 1)
+        self.assertEqual(text.count("https://www.youtube.com/watch?v=abc123&utm_source=rss"), 1)
+        self.assertEqual(text.count("https://x.com/example/status/1?utm_source=rss"), 1)
+        self.assertIn("## 🧠 LLM / Large Models", text)
+        self.assertIn("## 🤖 AI Agent", text)
+        self.assertNotIn("## 📢 KOL Updates", text)
+        self.assertNotIn("## 📝 Blog Picks", text)
+        self.assertNotIn("## 🎙️ Podcast Remix", text)
+
+    def test_chat_visible_dedupe_keeps_topic_sections_over_fixed_sections(self):
+        topic_defs = [
+            {"id": "llm", "emoji": "🧠", "label": "LLM / Large Models"},
+            {"id": "ai-agent", "emoji": "🤖", "label": "AI Agent"},
+        ]
+
+        text = render_mod.render_digest(
+            duplicate_visible_fixture(),
+            topic_defs,
+            report_date="2026-05-17",
+            version="3.17.0",
+            template="chat",
+        )
+
+        self.assertEqual(text.count("https://example.com/blog/agent-evals?utm_source=rss"), 1)
+        self.assertEqual(text.count("https://www.youtube.com/watch?v=abc123&utm_source=rss"), 1)
+        self.assertEqual(text.count("https://x.com/example/status/1?utm_source=rss"), 1)
+        self.assertIn("## 🧠 LLM / Large Models", text)
+        self.assertIn("## 🤖 AI Agent", text)
+        self.assertNotIn("## 📢 KOL Updates", text)
+        self.assertNotIn("## 📝 Blog Picks", text)
+        self.assertNotIn("## 🎙️ Podcast Remix", text)
 
     def test_prepare_manual_codex_context(self):
         data = load_acceptance_fixture()
