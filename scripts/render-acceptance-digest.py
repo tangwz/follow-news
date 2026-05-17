@@ -252,6 +252,7 @@ def sorted_topic_articles(topic_data: Dict[str, Any]) -> List[Dict[str, Any]]:
 def render_topic_sections(
     data: Dict[str, Any],
     topic_defs: Sequence[Dict[str, Any]],
+    visible_registry: VisibleArticleRegistry,
 ) -> List[str]:
     sections = []
     topics = data.get("topics", {})
@@ -276,6 +277,7 @@ def render_topic_sections(
             lines.append(render_link(article_link(article)))
             if article.get("multi_source"):
                 lines.append(f"  *[{article.get('source_count', 2)} sources]*")
+            visible_registry.mark(article)
             lines.append("")
         sections.append("\n".join(lines).rstrip())
 
@@ -317,7 +319,10 @@ def render_chat_topic_sections(
     return sections
 
 
-def render_kol_updates(data: Dict[str, Any]) -> Optional[str]:
+def render_kol_updates(
+    data: Dict[str, Any],
+    visible_registry: VisibleArticleRegistry,
+) -> Optional[str]:
     tweets = [
         article
         for article in unique_articles(iter_articles(data), "twitter")
@@ -327,6 +332,10 @@ def render_kol_updates(data: Dict[str, Any]) -> Optional[str]:
         return None
 
     tweets = sorted(tweets, key=quality_score, reverse=True)
+    tweets = visible_registry.filter_unseen(tweets)
+    if not tweets:
+        return None
+
     lines = ["## 📢 KOL Updates", ""]
     for article in tweets:
         metric_text = format_kol_metric_text(article)
@@ -356,7 +365,10 @@ def format_kol_metric_text(article: Dict[str, Any]) -> str:
     )
 
 
-def render_github_releases(data: Dict[str, Any]) -> Optional[str]:
+def render_github_releases(
+    data: Dict[str, Any],
+    visible_registry: VisibleArticleRegistry,
+) -> Optional[str]:
     releases = [
         article
         for article in unique_articles(iter_articles(data), "github")
@@ -366,6 +378,10 @@ def render_github_releases(data: Dict[str, Any]) -> Optional[str]:
         return None
 
     releases = sorted(releases, key=quality_score, reverse=True)
+    releases = visible_registry.filter_unseen(releases)
+    if not releases:
+        return None
+
     lines = ["## 📦 GitHub Releases", ""]
     for article in releases:
         repo = article.get("repo") or article.get("source_name") or article.get(
@@ -382,7 +398,10 @@ def render_github_releases(data: Dict[str, Any]) -> Optional[str]:
     return "\n".join(lines).rstrip()
 
 
-def render_github_trending(data: Dict[str, Any]) -> Optional[str]:
+def render_github_trending(
+    data: Dict[str, Any],
+    visible_registry: VisibleArticleRegistry,
+) -> Optional[str]:
     repos = [
         article
         for article in unique_articles(iter_articles(data), "github_trending")
@@ -396,6 +415,10 @@ def render_github_trending(data: Dict[str, Any]) -> Optional[str]:
         key=lambda article: article.get("daily_stars_est", 0),
         reverse=True,
     )
+    repos = visible_registry.filter_unseen(repos)
+    if not repos:
+        return None
+
     lines = ["## 🐙 GitHub Trending", ""]
     for article in repos:
         repo = article.get("repo") or article.get("title", "?")
@@ -413,7 +436,10 @@ def render_github_trending(data: Dict[str, Any]) -> Optional[str]:
     return "\n".join(lines).rstrip()
 
 
-def render_blog_picks(data: Dict[str, Any]) -> Optional[str]:
+def render_blog_picks(
+    data: Dict[str, Any],
+    visible_registry: VisibleArticleRegistry,
+) -> Optional[str]:
     picks = [
         article
         for article in unique_articles(iter_articles(data))
@@ -423,6 +449,10 @@ def render_blog_picks(data: Dict[str, Any]) -> Optional[str]:
         return None
 
     picks = sorted(picks, key=quality_score, reverse=True)
+    picks = visible_registry.filter_unseen(picks)
+    if not picks:
+        return None
+
     lines = ["## 📝 Blog Picks", ""]
     for article in picks:
         author = article.get("author") or article.get("source_name") or "Unknown"
@@ -439,7 +469,10 @@ def render_blog_picks(data: Dict[str, Any]) -> Optional[str]:
     return "\n".join(lines).rstrip()
 
 
-def render_podcast_remix(data: Dict[str, Any]) -> Optional[str]:
+def render_podcast_remix(
+    data: Dict[str, Any],
+    visible_registry: VisibleArticleRegistry,
+) -> Optional[str]:
     episodes = [
         article
         for article in unique_articles(iter_articles(data), "podcast")
@@ -451,6 +484,10 @@ def render_podcast_remix(data: Dict[str, Any]) -> Optional[str]:
         return None
 
     episodes = sorted(episodes, key=quality_score, reverse=True)
+    episodes = visible_registry.filter_unseen(episodes)
+    if not episodes:
+        return None
+
     lines = ["## 🎙️ Podcast Remix", ""]
     for article in episodes:
         show_name = article.get("show_name") or article.get("source_name") or "Unknown"
@@ -597,7 +634,8 @@ def render_digest(
         raise ValueError(f"Unsupported template: {template}")
 
     sections = [f"# 🚀 Tech Digest - {report_date}"]
-    sections.extend(render_topic_sections(data, topic_defs))
+    visible_registry = VisibleArticleRegistry()
+    sections.extend(render_topic_sections(data, topic_defs, visible_registry))
 
     for renderer in (
         render_kol_updates,
@@ -606,7 +644,7 @@ def render_digest(
         render_blog_picks,
         render_podcast_remix,
     ):
-        section = renderer(data)
+        section = renderer(data, visible_registry)
         if section:
             sections.append(section)
 
