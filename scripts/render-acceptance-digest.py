@@ -88,17 +88,23 @@ def normalize_visible_title(title: Any) -> str:
 
 
 def article_dedupe_key(article: Dict[str, Any]) -> Optional[str]:
+    keys = article_dedupe_keys(article)
+    return keys[0] if keys else None
+
+
+def article_dedupe_keys(article: Dict[str, Any]) -> List[str]:
+    keys = []
     url = article_link(article)
     if url:
         normalized_url = normalize_visible_url(url)
         if normalized_url:
-            return normalized_url
+            keys.append(normalized_url)
 
     normalized_title = normalize_visible_title(article.get("title"))
     if normalized_title:
-        return f"title:{normalized_title}"
+        keys.append(f"title:{normalized_title}")
 
-    return None
+    return keys
 
 
 class VisibleArticleRegistry:
@@ -106,12 +112,10 @@ class VisibleArticleRegistry:
         self.seen_keys = set()
 
     def is_seen(self, article: Dict[str, Any]) -> bool:
-        key = article_dedupe_key(article)
-        return bool(key and key in self.seen_keys)
+        return any(key in self.seen_keys for key in article_dedupe_keys(article))
 
     def mark(self, article: Dict[str, Any]) -> None:
-        key = article_dedupe_key(article)
-        if key:
+        for key in article_dedupe_keys(article):
             self.seen_keys.add(key)
 
     def filter_unseen(self, articles: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:

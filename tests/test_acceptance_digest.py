@@ -136,6 +136,37 @@ def topic_topic_duplicate_fixture():
     }
 
 
+def same_title_duplicate_fixture():
+    return {
+        "input_sources": {},
+        "output_stats": {"total_articles": 2},
+        "topics": {
+            "llm": {
+                "articles": [
+                    {
+                        "title": "Same Story",
+                        "link": "https://example.com/a",
+                        "quality_score": 12,
+                        "source_type": "rss",
+                        "summary": "The first visible instance of the story.",
+                    }
+                ]
+            },
+            "ai-agent": {
+                "articles": [
+                    {
+                        "title": "Same Story!",
+                        "link": "https://other.example/b",
+                        "quality_score": 11,
+                        "source_type": "rss",
+                        "summary": "The duplicate story with a different URL.",
+                    }
+                ]
+            },
+        },
+    }
+
+
 def extract_chat_summary(text, title_line):
     lines = text.splitlines()
     index = lines.index(title_line)
@@ -246,6 +277,16 @@ class TestVisibleArticleDedupe(unittest.TestCase):
         self.assertEqual(
             render_mod.article_dedupe_key(first),
             render_mod.article_dedupe_key(second),
+        )
+
+    def test_visible_registry_matches_same_title_with_different_urls(self):
+        registry = render_mod.VisibleArticleRegistry()
+        registry.mark({"title": "Same Story", "link": "https://example.com/a"})
+
+        self.assertTrue(
+            registry.is_seen(
+                {"title": "Same Story!", "link": "https://other.example/b"}
+            )
         )
 
     def test_article_dedupe_key_falls_back_to_normalized_title(self):
@@ -973,6 +1014,24 @@ class TestAcceptanceRenderer(unittest.TestCase):
         self.assertIn("## 🧠 LLM / Large Models", text)
         self.assertNotIn("## 🤖 AI Agent", text)
 
+    def test_discord_visible_dedupe_skips_same_title_different_url_topic(self):
+        topic_defs = [
+            {"id": "llm", "emoji": "🧠", "label": "LLM / Large Models"},
+            {"id": "ai-agent", "emoji": "🤖", "label": "AI Agent"},
+        ]
+
+        text = render_mod.render_digest(
+            same_title_duplicate_fixture(),
+            topic_defs,
+            report_date="2026-05-17",
+            version="3.17.0",
+        )
+
+        self.assertEqual(text.count("https://example.com/a"), 1)
+        self.assertNotIn("https://other.example/b", text)
+        self.assertIn("## 🧠 LLM / Large Models", text)
+        self.assertNotIn("## 🤖 AI Agent", text)
+
     def test_chat_visible_dedupe_keeps_topic_sections_over_fixed_sections(self):
         topic_defs = [
             {"id": "llm", "emoji": "🧠", "label": "LLM / Large Models"},
@@ -1011,6 +1070,25 @@ class TestAcceptanceRenderer(unittest.TestCase):
         )
 
         self.assertEqual(text.count("https://example.com/shared/agent-evals"), 1)
+        self.assertIn("## 🧠 LLM / Large Models", text)
+        self.assertNotIn("## 🤖 AI Agent", text)
+
+    def test_chat_visible_dedupe_skips_same_title_different_url_topic(self):
+        topic_defs = [
+            {"id": "llm", "emoji": "🧠", "label": "LLM / Large Models"},
+            {"id": "ai-agent", "emoji": "🤖", "label": "AI Agent"},
+        ]
+
+        text = render_mod.render_digest(
+            same_title_duplicate_fixture(),
+            topic_defs,
+            report_date="2026-05-17",
+            version="3.17.0",
+            template="chat",
+        )
+
+        self.assertEqual(text.count("https://example.com/a"), 1)
+        self.assertNotIn("https://other.example/b", text)
         self.assertIn("## 🧠 LLM / Large Models", text)
         self.assertNotIn("## 🤖 AI Agent", text)
 
