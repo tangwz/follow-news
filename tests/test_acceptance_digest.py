@@ -167,6 +167,46 @@ def same_title_duplicate_fixture():
     }
 
 
+def cross_fixed_bridge_fixture():
+    return {
+        "input_sources": {},
+        "output_stats": {"total_articles": 3},
+        "topics": {
+            "supplemental": {
+                "articles": [
+                    {
+                        "title": "Canonical",
+                        "link": "https://x.com/example/status/a",
+                        "quality_score": 12,
+                        "source_type": "twitter",
+                        "display_name": "Example Lab",
+                        "handle": "example",
+                        "summary": "The first fixed-section item.",
+                    },
+                    {
+                        "title": "Bridge",
+                        "link": "https://github.com/example/bridge/releases/tag/v1.0.0",
+                        "quality_score": 11,
+                        "source_type": "github",
+                        "repo": "example/bridge",
+                        "tag_name": "v1.0.0",
+                        "summary": "This earlier fixed renderer item is connected later.",
+                    },
+                    {
+                        "title": "Bridge",
+                        "link": "https://x.com/example/status/a",
+                        "quality_score": 10,
+                        "source_type": "rss",
+                        "is_blog_pick": True,
+                        "author": "Example Author",
+                        "full_text": "The late bridge that connects the prior fixed items.",
+                    },
+                ]
+            }
+        },
+    }
+
+
 def extract_chat_summary(text, title_line):
     lines = text.splitlines()
     index = lines.index(title_line)
@@ -320,6 +360,12 @@ class TestVisibleArticleDedupe(unittest.TestCase):
         )
 
         self.assertEqual(visible, [])
+
+    def test_visible_registry_passes_no_key_articles_without_dedupe(self):
+        registry = render_mod.VisibleArticleRegistry()
+        articles = [{"source_type": "rss"}, {"source_type": "web"}]
+
+        self.assertEqual(registry.filter_unseen(articles), articles)
 
     def test_article_dedupe_key_only_strips_leading_www(self):
         self.assertEqual(
@@ -1197,6 +1243,41 @@ class TestAcceptanceRenderer(unittest.TestCase):
             text.count("https://www.youtube.com/watch?v=unseenpodcast"),
             1,
         )
+
+    def test_discord_visible_dedupe_resolves_cross_fixed_late_bridge(self):
+        text = render_mod.render_digest(
+            cross_fixed_bridge_fixture(),
+            topic_defs=[],
+            report_date="2026-05-17",
+            version="3.17.0",
+        )
+
+        self.assertEqual(text.count("https://x.com/example/status/a"), 1)
+        self.assertNotIn(
+            "https://github.com/example/bridge/releases/tag/v1.0.0",
+            text,
+        )
+        self.assertIn("## 📢 KOL Updates", text)
+        self.assertNotIn("## 📦 GitHub Releases", text)
+        self.assertNotIn("## 📝 Blog Picks", text)
+
+    def test_chat_visible_dedupe_resolves_cross_fixed_late_bridge(self):
+        text = render_mod.render_digest(
+            cross_fixed_bridge_fixture(),
+            topic_defs=[],
+            report_date="2026-05-17",
+            version="3.17.0",
+            template="chat",
+        )
+
+        self.assertEqual(text.count("https://x.com/example/status/a"), 1)
+        self.assertNotIn(
+            "https://github.com/example/bridge/releases/tag/v1.0.0",
+            text,
+        )
+        self.assertIn("## 📢 KOL Updates", text)
+        self.assertNotIn("## 📦 GitHub Releases", text)
+        self.assertNotIn("## 📝 Blog Picks", text)
 
     def test_discord_visible_dedupe_keeps_topic_sections_over_fixed_sections(self):
         topic_defs = [
