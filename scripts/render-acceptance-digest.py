@@ -42,10 +42,17 @@ def article_link(article: Dict[str, Any]) -> str:
     )
 
 
+def normalize_visible_domain(domain: str) -> str:
+    domain = domain.lower()
+    if domain.startswith("www."):
+        return domain[4:]
+    return domain
+
+
 def normalize_visible_url(url: str) -> str:
     try:
         parsed = urlparse(url)
-        domain = parsed.netloc.lower().replace("www.", "")
+        domain = normalize_visible_domain(parsed.netloc)
         path = parsed.path.rstrip("/")
 
         if domain in {"youtube.com", "m.youtube.com"} and path == "/watch":
@@ -123,6 +130,7 @@ class VisibleArticleRegistry:
         visible = []
         for article in articles:
             if self.is_seen(article):
+                self.mark(article)
                 continue
             self.mark(article)
             visible.append(article)

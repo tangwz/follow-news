@@ -279,6 +279,35 @@ class TestVisibleArticleDedupe(unittest.TestCase):
             render_mod.article_dedupe_key(second),
         )
 
+    def test_visible_registry_propagates_aliases_from_skipped_duplicates(self):
+        registry = render_mod.VisibleArticleRegistry()
+        registry.mark({"title": "Same Story", "link": "https://example.com/a"})
+
+        visible = registry.filter_unseen(
+            [
+                {"title": "Same Story!", "link": "https://example.com/b"},
+                {"title": "Different Label", "link": "https://example.com/b"},
+            ]
+        )
+
+        self.assertEqual(visible, [])
+
+    def test_article_dedupe_key_only_strips_leading_www(self):
+        self.assertEqual(
+            render_mod.article_dedupe_key(
+                {"link": "https://www.example.com/post"}
+            ),
+            render_mod.article_dedupe_key({"link": "https://example.com/post"}),
+        )
+        self.assertNotEqual(
+            render_mod.article_dedupe_key(
+                {"link": "https://api.www.example.com/post"}
+            ),
+            render_mod.article_dedupe_key(
+                {"link": "https://api.example.com/post"}
+            ),
+        )
+
     def test_visible_registry_matches_same_title_with_different_urls(self):
         registry = render_mod.VisibleArticleRegistry()
         registry.mark({"title": "Same Story", "link": "https://example.com/a"})
