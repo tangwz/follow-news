@@ -88,27 +88,27 @@ def normalize_visible_title(title: Any) -> str:
 
     value = str(title)
     value = re.sub(r"^(RT\s+@\w+:\s*)", "", value, flags=re.IGNORECASE)
-    value = re.sub(r"\s+\|\s+[^|]*$", "", value)
-    value = strip_source_dash_suffix(value)
     value = re.sub(r"\s+", " ", value).strip()
     value = re.sub(r"[^\w\s]", "", value.lower())
     return value
 
 
-def looks_like_source_suffix(value: str) -> bool:
-    words = value.split()
-    if not 1 <= len(words) <= 4:
-        return False
-    return all(word[:1].isupper() or word.isupper() for word in words)
+def article_source_suffixes(article: Dict[str, Any]) -> List[str]:
+    candidates = []
+    for field in ("source_name", "show_name", "display_name"):
+        value = compact_text(article.get(field))
+        if value:
+            candidates.append(value)
+    return candidates
 
 
-def strip_source_dash_suffix(value: str) -> str:
-    for separator in (" - ", " – "):
-        if separator not in value:
-            continue
-        title, suffix = value.rsplit(separator, 1)
-        if looks_like_source_suffix(suffix):
-            return title
+def strip_matching_source_suffix(title: Any, article: Dict[str, Any]) -> str:
+    value = compact_text(title)
+    for suffix in article_source_suffixes(article):
+        for separator in (" | ", " - ", " – "):
+            expected = f"{separator}{suffix}"
+            if value.lower().endswith(expected.lower()):
+                return value[: -len(expected)].strip()
     return value
 
 
@@ -125,7 +125,8 @@ def article_dedupe_keys(article: Dict[str, Any]) -> List[str]:
         if normalized_url:
             keys.append(normalized_url)
 
-    normalized_title = normalize_visible_title(article.get("title"))
+    title = strip_matching_source_suffix(article.get("title"), article)
+    normalized_title = normalize_visible_title(title)
     if normalized_title:
         keys.append(f"title:{normalized_title}")
 

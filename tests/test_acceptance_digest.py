@@ -351,6 +351,42 @@ class TestVisibleArticleDedupe(unittest.TestCase):
             )
         )
 
+    def test_article_dedupe_key_keeps_title_case_dash_subtitles_distinct(self):
+        registry = render_mod.VisibleArticleRegistry()
+        registry.mark(
+            {
+                "title": "Claude Code - Runtime Internals",
+                "link": "https://example.com/runtime",
+            }
+        )
+
+        self.assertFalse(
+            registry.is_seen(
+                {
+                    "title": "Claude Code - Deployment Guide",
+                    "link": "https://example.com/deploy",
+                }
+            )
+        )
+
+    def test_article_dedupe_key_keeps_pipe_subtitles_distinct(self):
+        registry = render_mod.VisibleArticleRegistry()
+        registry.mark(
+            {
+                "title": "Claude Code | Runtime Internals",
+                "link": "https://example.com/runtime",
+            }
+        )
+
+        self.assertFalse(
+            registry.is_seen(
+                {
+                    "title": "Claude Code | Deployment Guide",
+                    "link": "https://example.com/deploy",
+                }
+            )
+        )
+
     def test_fixed_sections_propagate_aliases_before_unique_collapse(self):
         data = {
             "input_sources": {},
@@ -406,20 +442,45 @@ class TestVisibleArticleDedupe(unittest.TestCase):
             "stateoftheart agents",
         )
 
-    def test_article_dedupe_key_strips_source_suffixes(self):
+    def test_article_dedupe_key_strips_matching_source_suffixes(self):
         title = "OpenAI releases GPT-5"
 
         self.assertEqual(
-            render_mod.normalize_visible_title(f"{title} | Example News"),
-            render_mod.normalize_visible_title(title),
+            render_mod.article_dedupe_keys(
+                {"title": f"{title} | Example News", "source_name": "Example News"}
+            )[-1],
+            render_mod.article_dedupe_keys(
+                {"title": title, "source_name": "Example News"}
+            )[-1],
         )
         self.assertEqual(
-            render_mod.normalize_visible_title(f"{title} - Example News"),
-            render_mod.normalize_visible_title(title),
+            render_mod.article_dedupe_keys(
+                {"title": f"{title} - Example News", "source_name": "Example News"}
+            )[-1],
+            render_mod.article_dedupe_keys(
+                {"title": title, "source_name": "Example News"}
+            )[-1],
         )
         self.assertEqual(
-            render_mod.normalize_visible_title(f"{title} – Example News"),
-            render_mod.normalize_visible_title(title),
+            render_mod.article_dedupe_keys(
+                {"title": f"{title} – Example News", "source_name": "Example News"}
+            )[-1],
+            render_mod.article_dedupe_keys(
+                {"title": title, "source_name": "Example News"}
+            )[-1],
+        )
+
+    def test_article_dedupe_key_keeps_non_matching_source_suffixes(self):
+        self.assertNotEqual(
+            render_mod.article_dedupe_keys(
+                {
+                    "title": "Claude Code | Runtime Internals",
+                    "source_name": "Example News",
+                }
+            )[-1],
+            render_mod.article_dedupe_keys(
+                {"title": "Claude Code", "source_name": "Example News"}
+            )[-1],
         )
 
     def test_article_dedupe_key_falls_back_to_normalized_title(self):
