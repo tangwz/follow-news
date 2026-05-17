@@ -471,6 +471,45 @@ class TestAcceptanceRenderer(unittest.TestCase):
         self.assertNotIn("12.5K", text)
         self.assertNotIn("views", text.lower())
 
+    def test_chat_kol_metrics_render_zero_for_missing_values(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 1},
+            "topics": {
+                "ai-agent": {
+                    "articles": [
+                        {
+                            "title": "Sparse KOL post",
+                            "link": "https://x.com/example/status/2",
+                            "quality_score": 11,
+                            "source_type": "twitter",
+                            "display_name": "Example Lab",
+                            "handle": "example",
+                            "summary": "Example Lab shared a sparse benchmark note.",
+                            "metrics": {
+                                "impression_count": None,
+                                "reply_count": "",
+                                "retweet_count": "not-a-number",
+                                "like_count": 0,
+                            },
+                        }
+                    ]
+                }
+            },
+        }
+        topic_defs = [{"id": "ai-agent", "emoji": "🤖", "label": "AI Agent"}]
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs,
+            report_date="2026-02-27",
+            version="3.17.0",
+            template="chat",
+        )
+
+        kol_text = text.split("## 📢 KOL Updates", 1)[1]
+        self.assertIn("`👁 0 | 💬 0 | 🔁 0 | ❤️ 0`", kol_text)
+
     def test_daily_digest_structure_contract(self):
         text = render_daily_digest()
         lines = text.splitlines()
