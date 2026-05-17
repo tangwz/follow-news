@@ -795,17 +795,101 @@ class TestAcceptanceRenderer(unittest.TestCase):
         self.assertIn("  🔗 https://openai.com/research/agent-evals", text)
         self.assertIn("  *[3 sources]*", text)
         self.assertNotIn("Low scoring model rumor should not render", text)
-        self.assertIn("## 📢 KOL Updates", text)
-        self.assertIn("`👁 12.5K | 💬 45 | 🔁 230 | ❤️ 1.8K`", text)
-        self.assertIn("## 📦 GitHub Releases", text)
-        self.assertIn("## 🐙 GitHub Trending", text)
-        self.assertIn("## 📝 Blog Picks", text)
-        self.assertIn("## 🎙️ Podcast Remix", text)
+        self.assertNotIn("## 📢 KOL Updates", text)
+        self.assertNotIn("## 📦 GitHub Releases", text)
+        self.assertNotIn("## 🐙 GitHub Trending", text)
+        self.assertNotIn("## 📝 Blog Picks", text)
+        self.assertNotIn("## 🎙️ Podcast Remix", text)
         self.assertIn(
             "📊 Data Sources: RSS 3 | Twitter 1 | Reddit 1 | Web 1 | GitHub 1 releases + 1 trending | Podcast 1 episodes | Dedup: 9 articles",
             text,
         )
         self.assertTrue(text.endswith("\n"))
+
+    def test_discord_fixed_sections_render_unseen_items(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 5},
+            "topics": {
+                "supplemental": {
+                    "articles": [
+                        {
+                            "title": "Unseen KOL update",
+                            "link": "https://x.com/example/status/unseen",
+                            "source_type": "twitter",
+                            "display_name": "Example Lab",
+                            "handle": "example",
+                            "summary": "Example Lab shared an unseen update.",
+                            "metrics": {
+                                "impression_count": 1200,
+                                "reply_count": 3,
+                                "retweet_count": 4,
+                                "like_count": 50,
+                            },
+                        },
+                        {
+                            "title": "Example Tool v1.0.0",
+                            "link": "https://github.com/example/tool/releases/tag/v1.0.0",
+                            "source_type": "github",
+                            "repo": "example/tool",
+                            "tag_name": "v1.0.0",
+                            "summary": "The release ships a stable API.",
+                        },
+                        {
+                            "title": "example/trending-tool",
+                            "link": "https://github.com/example/trending-tool",
+                            "source_type": "github_trending",
+                            "repo": "example/trending-tool",
+                            "stars": 2500,
+                            "daily_stars_est": 125,
+                            "language": "TypeScript",
+                            "description": "A trending tool for builders.",
+                        },
+                        {
+                            "title": "Unseen blog pick",
+                            "link": "https://example.com/unseen-blog",
+                            "source_type": "rss",
+                            "is_blog_pick": True,
+                            "author": "Example Author",
+                            "full_text": "A detailed unseen blog post.",
+                        },
+                        {
+                            "title": "Unseen podcast episode",
+                            "link": "https://www.youtube.com/watch?v=unseenpodcast",
+                            "source_type": "podcast",
+                            "transcript_status": "ok",
+                            "transcript": "Host | 00:00 - 00:05 This is an unseen podcast.",
+                            "show_name": "Example Show",
+                            "snippet": "An unseen podcast episode.",
+                        },
+                    ]
+                }
+            },
+        }
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=[],
+            report_date="2026-05-17",
+            version="3.17.0",
+        )
+
+        self.assertIn("## 📢 KOL Updates", text)
+        self.assertIn("## 📦 GitHub Releases", text)
+        self.assertIn("## 🐙 GitHub Trending", text)
+        self.assertIn("## 📝 Blog Picks", text)
+        self.assertIn("## 🎙️ Podcast Remix", text)
+        self.assertEqual(text.count("https://x.com/example/status/unseen"), 1)
+        self.assertEqual(
+            text.count("https://github.com/example/tool/releases/tag/v1.0.0"),
+            1,
+        )
+        self.assertEqual(text.count("https://github.com/example/trending-tool"), 1)
+        self.assertEqual(text.count("https://example.com/unseen-blog"), 1)
+        self.assertEqual(
+            text.count("https://www.youtube.com/watch?v=unseenpodcast"),
+            1,
+        )
 
     def test_discord_visible_dedupe_keeps_topic_sections_over_fixed_sections(self):
         topic_defs = [
