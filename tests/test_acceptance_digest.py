@@ -333,6 +333,73 @@ class TestVisibleArticleDedupe(unittest.TestCase):
             )
         )
 
+    def test_article_dedupe_key_keeps_dash_subtitles_distinct(self):
+        registry = render_mod.VisibleArticleRegistry()
+        registry.mark(
+            {
+                "title": "Claude Code - repository-wide planning mode",
+                "link": "https://example.com/planning",
+            }
+        )
+
+        self.assertFalse(
+            registry.is_seen(
+                {
+                    "title": "Claude Code - terminal UI refresh",
+                    "link": "https://example.com/ui",
+                }
+            )
+        )
+
+    def test_fixed_sections_propagate_aliases_before_unique_collapse(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 3},
+            "topics": {
+                "ai-agent": {
+                    "articles": [
+                        {
+                            "title": "Same Story",
+                            "link": "https://x.com/example/status/a",
+                            "quality_score": 12,
+                            "source_type": "twitter",
+                            "display_name": "Example Lab",
+                            "handle": "example",
+                            "summary": "The first visible item.",
+                        },
+                        {
+                            "title": "Bridge Title",
+                            "link": "https://x.com/example/status/a",
+                            "quality_score": 11,
+                            "source_type": "twitter",
+                            "display_name": "Example Lab",
+                            "handle": "example",
+                            "summary": "A duplicate raw URL that carries a title alias.",
+                        },
+                        {
+                            "title": "Bridge Title!",
+                            "link": "https://x.com/example/status/b",
+                            "quality_score": 10,
+                            "source_type": "twitter",
+                            "display_name": "Example Lab",
+                            "handle": "example",
+                            "summary": "This later alias URL must not render.",
+                        },
+                    ]
+                }
+            },
+        }
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=[],
+            report_date="2026-05-17",
+            version="3.17.0",
+        )
+
+        self.assertEqual(text.count("https://x.com/example/status/a"), 1)
+        self.assertNotIn("https://x.com/example/status/b", text)
+
     def test_article_dedupe_key_keeps_hyphenated_titles_intact(self):
         self.assertEqual(
             render_mod.normalize_visible_title("State-of-the-art agents"),

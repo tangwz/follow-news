@@ -89,9 +89,26 @@ def normalize_visible_title(title: Any) -> str:
     value = str(title)
     value = re.sub(r"^(RT\s+@\w+:\s*)", "", value, flags=re.IGNORECASE)
     value = re.sub(r"\s+\|\s+[^|]*$", "", value)
-    value = re.sub(r"\s+[\-–]\s+[^|]*$", "", value)
+    value = strip_source_dash_suffix(value)
     value = re.sub(r"\s+", " ", value).strip()
     value = re.sub(r"[^\w\s]", "", value.lower())
+    return value
+
+
+def looks_like_source_suffix(value: str) -> bool:
+    words = value.split()
+    if not 1 <= len(words) <= 4:
+        return False
+    return all(word[:1].isupper() or word.isupper() for word in words)
+
+
+def strip_source_dash_suffix(value: str) -> str:
+    for separator in (" - ", " – "):
+        if separator not in value:
+            continue
+        title, suffix = value.rsplit(separator, 1)
+        if looks_like_source_suffix(suffix):
+            return title
     return value
 
 
@@ -357,8 +374,8 @@ def render_kol_updates(
 ) -> Optional[str]:
     tweets = [
         article
-        for article in unique_articles(iter_articles(data), "twitter")
-        if article_link(article)
+        for article in iter_articles(data)
+        if article.get("source_type") == "twitter" and article_link(article)
     ]
     if not tweets:
         return None
@@ -403,8 +420,8 @@ def render_github_releases(
 ) -> Optional[str]:
     releases = [
         article
-        for article in unique_articles(iter_articles(data), "github")
-        if article_link(article)
+        for article in iter_articles(data)
+        if article.get("source_type") == "github" and article_link(article)
     ]
     if not releases:
         return None
@@ -436,8 +453,8 @@ def render_github_trending(
 ) -> Optional[str]:
     repos = [
         article
-        for article in unique_articles(iter_articles(data), "github_trending")
-        if article_link(article)
+        for article in iter_articles(data)
+        if article.get("source_type") == "github_trending" and article_link(article)
     ]
     if not repos:
         return None
@@ -474,7 +491,7 @@ def render_blog_picks(
 ) -> Optional[str]:
     picks = [
         article
-        for article in unique_articles(iter_articles(data))
+        for article in iter_articles(data)
         if article.get("is_blog_pick") and article_link(article)
     ]
     if not picks:
@@ -507,9 +524,10 @@ def render_podcast_remix(
 ) -> Optional[str]:
     episodes = [
         article
-        for article in unique_articles(iter_articles(data), "podcast")
+        for article in iter_articles(data)
         if article.get("transcript_status") == "ok"
         and article.get("transcript")
+        and article.get("source_type") == "podcast"
         and article_link(article)
     ]
     if not episodes:
@@ -557,8 +575,8 @@ def render_chat_kol_updates(
 ) -> Optional[str]:
     tweets = [
         article
-        for article in unique_articles(iter_articles(data), "twitter")
-        if article_link(article)
+        for article in iter_articles(data)
+        if article.get("source_type") == "twitter" and article_link(article)
     ]
     if not tweets:
         return None
@@ -586,8 +604,8 @@ def render_chat_github_releases(
 ) -> Optional[str]:
     releases = [
         article
-        for article in unique_articles(iter_articles(data), "github")
-        if article_link(article)
+        for article in iter_articles(data)
+        if article.get("source_type") == "github" and article_link(article)
     ]
     releases = sorted(releases, key=quality_score, reverse=True)
     releases = visible_registry.filter_unseen(releases)
@@ -600,8 +618,8 @@ def render_chat_github_trending(
 ) -> Optional[str]:
     repos = [
         article
-        for article in unique_articles(iter_articles(data), "github_trending")
-        if article_link(article)
+        for article in iter_articles(data)
+        if article.get("source_type") == "github_trending" and article_link(article)
     ]
     repos = sorted(
         repos,
@@ -618,7 +636,7 @@ def render_chat_blog_picks(
 ) -> Optional[str]:
     picks = [
         article
-        for article in unique_articles(iter_articles(data))
+        for article in iter_articles(data)
         if article.get("is_blog_pick") and article_link(article)
     ]
     picks = sorted(picks, key=quality_score, reverse=True)
@@ -632,9 +650,10 @@ def render_chat_podcast_remix(
 ) -> Optional[str]:
     episodes = [
         article
-        for article in unique_articles(iter_articles(data), "podcast")
+        for article in iter_articles(data)
         if article.get("transcript_status") == "ok"
         and article.get("transcript")
+        and article.get("source_type") == "podcast"
         and article_link(article)
     ]
     episodes = sorted(episodes, key=quality_score, reverse=True)
