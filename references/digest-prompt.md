@@ -74,7 +74,7 @@ Select articles **purely by quality_score regardless of source type**. When an a
 
 ### Non-GitHub Summary Quality Contract
 
-This contract applies to KOL, topic, Blog Picks, Reddit, and Podcast items. It does not apply to GitHub Releases or GitHub Trending.
+This contract applies to KOL, non-GitHub topic, Blog Picks, Reddit, and Podcast items. It does not apply to GitHub Releases or GitHub Trending.
 
 Use a tendency-based structure, not a mandatory checklist: explain what happened, what object it happened to, and why it matters only when the available evidence supports those points. If evidence is thin, keep the summary shorter and preserve the most concrete fact instead of adding unsupported context.
 

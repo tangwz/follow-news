@@ -185,7 +185,7 @@ class TestAcceptanceRenderer(unittest.TestCase):
         )
 
         self.assertIn("### Non-GitHub Summary Quality Contract", prompt)
-        self.assertIn("This contract applies to KOL, topic, Blog Picks, Reddit, and Podcast items.", prompt)
+        self.assertIn("This contract applies to KOL, non-GitHub topic, Blog Picks, Reddit, and Podcast items.", prompt)
         self.assertIn("It does not apply to GitHub Releases or GitHub Trending.", prompt)
         self.assertIn("Use a tendency-based structure", prompt)
         self.assertIn("full_text > summary > snippet > title", prompt)
