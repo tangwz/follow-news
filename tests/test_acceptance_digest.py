@@ -428,6 +428,42 @@ class TestAcceptanceRenderer(unittest.TestCase):
         self.assertNotIn("2026", summary)
         self.assertNotIn("CEO", summary)
 
+    def test_chat_summary_prefers_full_text_over_lower_priority_fields(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 1},
+            "topics": {
+                "builder": {
+                    "articles": [
+                        {
+                            "title": "Title-level fallback only",
+                            "link": "https://example.com/priority",
+                            "quality_score": 10,
+                            "source_type": "rss",
+                            "full_text": "Full text evidence should win.",
+                            "summary": "Summary evidence should not win.",
+                            "snippet": "Snippet evidence should not win.",
+                        }
+                    ]
+                }
+            },
+        }
+        topic_defs = [{"id": "builder", "emoji": "🏗️", "label": "Builder"}]
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs,
+            report_date="2026-02-27",
+            version="3.17.0",
+            template="chat",
+        )
+        summary = extract_chat_summary(
+            text,
+            "1. 🏗️ [5/10] Title-level fallback only",
+        )
+
+        self.assertEqual(summary, "Full text evidence should win.")
+
     def test_chat_podcast_without_transcript_does_not_create_transcript_insight(self):
         data = {
             "input_sources": {},
@@ -539,6 +575,71 @@ class TestAcceptanceRenderer(unittest.TestCase):
 
         kol_text = text.split("## 📢 KOL Updates", 1)[1]
         self.assertIn("`👁 0 | 💬 0 | 🔁 0 | ❤️ 0`", kol_text)
+
+    def test_chat_kol_metrics_render_zero_for_invalid_metrics_container(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 1},
+            "topics": {
+                "ai-agent": {
+                    "articles": [
+                        {
+                            "title": "Invalid metrics container",
+                            "link": "https://x.com/example/status/3",
+                            "quality_score": 11,
+                            "source_type": "twitter",
+                            "display_name": "Example Lab",
+                            "handle": "example",
+                            "summary": "Example Lab shared another benchmark note.",
+                            "metrics": None,
+                        }
+                    ]
+                }
+            },
+        }
+        topic_defs = [{"id": "ai-agent", "emoji": "🤖", "label": "AI Agent"}]
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs,
+            report_date="2026-02-27",
+            version="3.17.0",
+            template="chat",
+        )
+
+        kol_text = text.split("## 📢 KOL Updates", 1)[1]
+        self.assertIn("`👁 0 | 💬 0 | 🔁 0 | ❤️ 0`", kol_text)
+
+    def test_chat_kol_updates_skips_empty_section(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 1},
+            "topics": {
+                "builder": {
+                    "articles": [
+                        {
+                            "title": "Builder article",
+                            "link": "https://example.com/builder",
+                            "quality_score": 10,
+                            "source_type": "rss",
+                            "chat_summary": "Builder evidence remains visible.",
+                        }
+                    ]
+                }
+            },
+        }
+        topic_defs = [{"id": "builder", "emoji": "🏗️", "label": "Builder"}]
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs,
+            report_date="2026-02-27",
+            version="3.17.0",
+            template="chat",
+        )
+
+        self.assertIn("## 🏗️ Builder", text)
+        self.assertNotIn("## 📢 KOL Updates", text)
 
     def test_daily_digest_structure_contract(self):
         text = render_daily_digest()

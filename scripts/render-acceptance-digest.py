@@ -98,9 +98,9 @@ def compact_text(value: Any) -> str:
 def chat_summary(article: Dict[str, Any]) -> str:
     for field in (
         "chat_summary",
+        "full_text",
         "summary",
         "snippet",
-        "full_text",
         "description",
         "transcript",
         "title",
@@ -270,6 +270,8 @@ def render_kol_updates(data: Dict[str, Any]) -> Optional[str]:
 
 def format_kol_metric_text(article: Dict[str, Any]) -> str:
     metrics = article.get("metrics", {})
+    if not isinstance(metrics, dict):
+        metrics = {}
     return (
         f"👁 {format_count(metrics.get('impression_count'))} | "
         f"💬 {format_count(metrics.get('reply_count'))} | "
@@ -350,8 +352,8 @@ def render_blog_picks(data: Dict[str, Any]) -> Optional[str]:
         author = article.get("author") or article.get("source_name") or "Unknown"
         summary = (
             article.get("full_text")
-            or article.get("snippet")
             or article.get("summary")
+            or article.get("snippet")
             or ""
         )
         lines.append(f"• **{article.get('title', '?')}** — {author} | {summary}")
@@ -410,6 +412,9 @@ def render_chat_kol_updates(data: Dict[str, Any]) -> Optional[str]:
         for article in unique_articles(iter_articles(data), "twitter")
         if article_link(article)
     ]
+    if not tweets:
+        return None
+
     tweets = sorted(tweets, key=quality_score, reverse=True)
     lines = ["## 📢 KOL Updates", ""]
     for index, article in enumerate(tweets, 1):
