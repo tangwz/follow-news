@@ -4,9 +4,11 @@
 import argparse
 import json
 import math
+import re
 import shutil
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence
+from urllib.parse import parse_qs, urlparse
 
 
 MIN_QUALITY_SCORE = 5
@@ -29,6 +31,80 @@ def article_link(article: Dict[str, Any]) -> str:
         or article.get("reddit_url")
         or ""
     )
+
+
+def normalize_visible_url(url: str) -> str:
+    try:
+        parsed = urlparse(url)
+        domain = parsed.netloc.lower().replace("www.", "")
+        path = parsed.path.rstrip("/")
+
+        if domain in {"youtube.com", "m.youtube.com"} and path == "/watch":
+            video_id = parse_qs(parsed.query).get("v", [""])[0]
+            if video_id:
+                return f"url:youtube:{video_id}"
+
+        if domain == "youtu.be" and path:
+            video_id = path.lstrip("/")
+            if video_id:
+                return f"url:youtube:{video_id}"
+
+        if domain or path:
+            return f"url:{domain}{path}"
+    except Exception:
+        pass
+
+    compact = " ".join(str(url).split())
+    return f"url:{compact}" if compact else ""
+
+
+def normalize_visible_title(title: Any) -> str:
+    if not title:
+        return ""
+
+    value = str(title)
+    value = re.sub(r"^(RT\s+@\w+:\s*)", "", value, flags=re.IGNORECASE)
+    value = re.sub(r"\s*[|\-–]\s*[^|]*$", "", value)
+    value = re.sub(r"\s+", " ", value).strip()
+    value = re.sub(r"[^\w\s]", "", value.lower())
+    return value
+
+
+def article_dedupe_key(article: Dict[str, Any]) -> Optional[str]:
+    url = article_link(article)
+    if url:
+        normalized_url = normalize_visible_url(url)
+        if normalized_url:
+            return normalized_url
+
+    normalized_title = normalize_visible_title(article.get("title"))
+    if normalized_title:
+        return f"title:{normalized_title}"
+
+    return None
+
+
+class VisibleArticleRegistry:
+    def __init__(self) -> None:
+        self.seen_keys = set()
+
+    def is_seen(self, article: Dict[str, Any]) -> bool:
+        key = article_dedupe_key(article)
+        return bool(key and key in self.seen_keys)
+
+    def mark(self, article: Dict[str, Any]) -> None:
+        key = article_dedupe_key(article)
+        if key:
+            self.seen_keys.add(key)
+
+    def filter_unseen(self, articles: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        visible = []
+        for article in articles:
+            if self.is_seen(article):
+                continue
+            self.mark(article)
+            visible.append(article)
+        return visible
 
 
 def render_link(url: str) -> str:
