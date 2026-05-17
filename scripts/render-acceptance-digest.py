@@ -18,7 +18,6 @@ TRACKING_QUERY_PARAMS = {
     "igshid",
     "mc_cid",
     "mc_eid",
-    "ref",
     "ref_src",
 }
 

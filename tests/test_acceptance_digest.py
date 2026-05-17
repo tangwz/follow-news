@@ -301,6 +301,15 @@ class TestVisibleArticleDedupe(unittest.TestCase):
             render_mod.article_dedupe_key(second),
         )
 
+    def test_article_dedupe_key_preserves_ref_query_parameters(self):
+        first = {"link": "https://example.com/post?ref=a"}
+        second = {"link": "https://example.com/post?ref=b"}
+
+        self.assertNotEqual(
+            render_mod.article_dedupe_key(first),
+            render_mod.article_dedupe_key(second),
+        )
+
     def test_article_dedupe_key_drops_tracking_query_parameters(self):
         first = {"link": "https://example.com/post?utm_source=rss&fbclid=x"}
         second = {"link": "https://www.example.com/post?utm_medium=email"}
