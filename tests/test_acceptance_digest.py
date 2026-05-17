@@ -210,6 +210,7 @@ class TestAcceptanceRenderer(unittest.TestCase):
                 self.assertIn("Non-GitHub Summary Quality", text)
                 self.assertIn("KOL, non-GitHub topic, Blog Picks, Reddit, and Podcast", text)
                 self.assertIn("GitHub Releases and GitHub Trending keep their existing concise style.", text)
+                self.assertIn("Use a tendency-based structure", text)
                 self.assertIn("full_text > summary > snippet > title", text)
                 self.assertIn("Lower-priority fields may provide supplemental context", text)
                 self.assertIn("length limits take precedence over sentence-count targets", text)

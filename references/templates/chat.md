@@ -56,7 +56,7 @@ Chat summaries normally use 2-4 sentences in one compact paragraph. Platform len
 
 ## Source Rules
 
-- Twitter/X and KOL: identify display name, handle, or known identity only when present in evidence. Always include interaction metrics from merged JSON (`impression_count`, `reply_count`, `retweet_count`, `like_count`) as `👁 views | 💬 replies | 🔁 reposts | ❤️ likes` in fixed KOL sections. Never omit these metrics when an item appears in the section.
+- Twitter/X and KOL: identify display name, handle, or known identity only when present in evidence. In fixed KOL sections, always include interaction metrics from merged JSON fields `metrics.impression_count`, `metrics.reply_count`, `metrics.retweet_count`, and `metrics.like_count` as `👁 views | 💬 replies | 🔁 reposts | ❤️ likes`. Missing, null, empty, or unparsable metric values render as `0`. Never omit these metrics when an item appears in the section.
 - RSS and Web: prefer concrete product, model, version, company, person, metric, and publication-time details when present.
 - Reddit: distinguish the linked item from subreddit discussion. Treat score, comments, and controversy as discussion signals, not factual proof.
 - Podcast: use transcript-backed insight only when transcript text is available. Without transcript, summarize only title, show name, snippet, duration, and source metadata.
