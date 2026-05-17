@@ -253,13 +253,7 @@ def render_kol_updates(data: Dict[str, Any]) -> Optional[str]:
     tweets = sorted(tweets, key=quality_score, reverse=True)
     lines = ["## 📢 KOL Updates", ""]
     for article in tweets:
-        metrics = article.get("metrics", {})
-        metric_text = (
-            f"👁 {format_count(metrics.get('impression_count'))} | "
-            f"💬 {format_count(metrics.get('reply_count'))} | "
-            f"🔁 {format_count(metrics.get('retweet_count'))} | "
-            f"❤️ {format_count(metrics.get('like_count'))}"
-        )
+        metric_text = format_kol_metric_text(article)
         display_name = (
             article.get("display_name") or article.get("source_name") or "Unknown"
         )
@@ -272,6 +266,16 @@ def render_kol_updates(data: Dict[str, Any]) -> Optional[str]:
         lines.append("")
 
     return "\n".join(lines).rstrip()
+
+
+def format_kol_metric_text(article: Dict[str, Any]) -> str:
+    metrics = article.get("metrics", {})
+    return (
+        f"👁 {format_count(metrics.get('impression_count'))} | "
+        f"💬 {format_count(metrics.get('reply_count'))} | "
+        f"🔁 {format_count(metrics.get('retweet_count'))} | "
+        f"❤️ {format_count(metrics.get('like_count'))}"
+    )
 
 
 def render_github_releases(data: Dict[str, Any]) -> Optional[str]:
@@ -407,7 +411,16 @@ def render_chat_kol_updates(data: Dict[str, Any]) -> Optional[str]:
         if article_link(article)
     ]
     tweets = sorted(tweets, key=quality_score, reverse=True)
-    return render_chat_article_section("## 📢 KOL Updates", "📢", tweets)
+    lines = ["## 📢 KOL Updates", ""]
+    for index, article in enumerate(tweets, 1):
+        metric_text = format_kol_metric_text(article)
+        lines.append(chat_title_line(article, index, "📢"))
+        lines.append("")
+        lines.append(f"{chat_summary(article)} `{metric_text}`")
+        lines.append("")
+        lines.append(f"🔗 {article_link(article)}")
+        lines.append("")
+    return "\n".join(lines).rstrip()
 
 
 def render_chat_github_releases(data: Dict[str, Any]) -> Optional[str]:

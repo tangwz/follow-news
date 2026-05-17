@@ -497,8 +497,9 @@ class TestAcceptanceRenderer(unittest.TestCase):
         )
 
         self.assertIn("Example Lab shared a benchmark note.", text)
-        self.assertNotIn("12.5K", text)
-        self.assertNotIn("views", text.lower())
+        topic_text = text.split("## 📢 KOL Updates", 1)[0]
+        self.assertNotIn("12.5K", topic_text)
+        self.assertNotIn("views", topic_text.lower())
 
     def test_chat_kol_metrics_render_zero_for_missing_values(self):
         data = {
