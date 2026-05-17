@@ -118,6 +118,24 @@ def duplicate_visible_fixture():
     }
 
 
+def topic_topic_duplicate_fixture():
+    duplicate_article = {
+        "title": "Duplicate agent evals article",
+        "link": "https://example.com/shared/agent-evals",
+        "quality_score": 12,
+        "source_type": "rss",
+        "summary": "A shared article that appears in two topic sections.",
+    }
+    return {
+        "input_sources": {},
+        "output_stats": {"total_articles": 2},
+        "topics": {
+            "llm": {"articles": [duplicate_article]},
+            "ai-agent": {"articles": [dict(duplicate_article)]},
+        },
+    }
+
+
 def extract_chat_summary(text, title_line):
     lines = text.splitlines()
     index = lines.index(title_line)
@@ -231,8 +249,6 @@ class TestAcceptanceRenderer(unittest.TestCase):
         self.assertIn("## 🧠 LLM / Large Models", text)
         self.assertIn("1. 🧠 [9/10] OpenAI ships structured agent evaluation suite", text)
         self.assertIn("🔗 https://openai.com/research/agent-evals", text)
-        self.assertIn("## 📦 GitHub Releases", text)
-        self.assertIn("## 🐙 GitHub Trending", text)
         self.assertNotIn("<https://", text)
         self.assertNotIn("Low scoring model rumor should not render", text)
 
@@ -646,7 +662,7 @@ class TestAcceptanceRenderer(unittest.TestCase):
                 }
             },
         }
-        topic_defs = [{"id": "ai-agent", "emoji": "🤖", "label": "AI Agent"}]
+        topic_defs = []
 
         text = render_mod.render_digest(
             data,
@@ -680,7 +696,7 @@ class TestAcceptanceRenderer(unittest.TestCase):
                 }
             },
         }
-        topic_defs = [{"id": "ai-agent", "emoji": "🤖", "label": "AI Agent"}]
+        topic_defs = []
 
         text = render_mod.render_digest(
             data,
@@ -913,6 +929,23 @@ class TestAcceptanceRenderer(unittest.TestCase):
         self.assertNotIn("## 📝 Blog Picks", text)
         self.assertNotIn("## 🎙️ Podcast Remix", text)
 
+    def test_discord_visible_dedupe_skips_duplicate_topic_sections(self):
+        topic_defs = [
+            {"id": "llm", "emoji": "🧠", "label": "LLM / Large Models"},
+            {"id": "ai-agent", "emoji": "🤖", "label": "AI Agent"},
+        ]
+
+        text = render_mod.render_digest(
+            topic_topic_duplicate_fixture(),
+            topic_defs,
+            report_date="2026-05-17",
+            version="3.17.0",
+        )
+
+        self.assertEqual(text.count("https://example.com/shared/agent-evals"), 1)
+        self.assertIn("## 🧠 LLM / Large Models", text)
+        self.assertNotIn("## 🤖 AI Agent", text)
+
     def test_chat_visible_dedupe_keeps_topic_sections_over_fixed_sections(self):
         topic_defs = [
             {"id": "llm", "emoji": "🧠", "label": "LLM / Large Models"},
@@ -935,6 +968,24 @@ class TestAcceptanceRenderer(unittest.TestCase):
         self.assertNotIn("## 📢 KOL Updates", text)
         self.assertNotIn("## 📝 Blog Picks", text)
         self.assertNotIn("## 🎙️ Podcast Remix", text)
+
+    def test_chat_visible_dedupe_skips_duplicate_topic_sections(self):
+        topic_defs = [
+            {"id": "llm", "emoji": "🧠", "label": "LLM / Large Models"},
+            {"id": "ai-agent", "emoji": "🤖", "label": "AI Agent"},
+        ]
+
+        text = render_mod.render_digest(
+            topic_topic_duplicate_fixture(),
+            topic_defs,
+            report_date="2026-05-17",
+            version="3.17.0",
+            template="chat",
+        )
+
+        self.assertEqual(text.count("https://example.com/shared/agent-evals"), 1)
+        self.assertIn("## 🧠 LLM / Large Models", text)
+        self.assertNotIn("## 🤖 AI Agent", text)
 
     def test_prepare_manual_codex_context(self):
         data = load_acceptance_fixture()

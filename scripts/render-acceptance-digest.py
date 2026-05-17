@@ -264,6 +264,7 @@ def render_topic_sections(
             continue
 
         articles = sorted_topic_articles(topic_data)
+        articles = visible_registry.filter_unseen(articles)
         if not articles:
             continue
 
@@ -277,7 +278,6 @@ def render_topic_sections(
             lines.append(render_link(article_link(article)))
             if article.get("multi_source"):
                 lines.append(f"  *[{article.get('source_count', 2)} sources]*")
-            visible_registry.mark(article)
             lines.append("")
         sections.append("\n".join(lines).rstrip())
 
@@ -304,6 +304,7 @@ def render_chat_topic_sections(
             if isinstance(article, dict) and should_render_chat_topic_article(article)
         ]
         articles = sorted(articles, key=quality_score, reverse=True)
+        articles = visible_registry.filter_unseen(articles)
         if not articles:
             continue
 
@@ -314,7 +315,6 @@ def render_chat_topic_sections(
         ]
         for index, article in enumerate(articles, 1):
             lines.append(render_chat_item(article, index, emoji))
-            visible_registry.mark(article)
             lines.append("")
         sections.append("\n".join(lines).rstrip())
 
