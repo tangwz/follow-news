@@ -287,6 +287,7 @@ def render_topic_sections(
 def render_chat_topic_sections(
     data: Dict[str, Any],
     topic_defs: Sequence[Dict[str, Any]],
+    visible_registry: VisibleArticleRegistry,
 ) -> List[str]:
     sections = []
     topics = data.get("topics", {})
@@ -313,6 +314,7 @@ def render_chat_topic_sections(
         ]
         for index, article in enumerate(articles, 1):
             lines.append(render_chat_item(article, index, emoji))
+            visible_registry.mark(article)
             lines.append("")
         sections.append("\n".join(lines).rstrip())
 
@@ -519,7 +521,10 @@ def render_chat_article_section(
     return "\n".join(lines).rstrip()
 
 
-def render_chat_kol_updates(data: Dict[str, Any]) -> Optional[str]:
+def render_chat_kol_updates(
+    data: Dict[str, Any],
+    visible_registry: VisibleArticleRegistry,
+) -> Optional[str]:
     tweets = [
         article
         for article in unique_articles(iter_articles(data), "twitter")
@@ -529,6 +534,10 @@ def render_chat_kol_updates(data: Dict[str, Any]) -> Optional[str]:
         return None
 
     tweets = sorted(tweets, key=quality_score, reverse=True)
+    tweets = visible_registry.filter_unseen(tweets)
+    if not tweets:
+        return None
+
     lines = ["## 📢 KOL Updates", ""]
     for index, article in enumerate(tweets, 1):
         metric_text = format_kol_metric_text(article)
@@ -541,17 +550,24 @@ def render_chat_kol_updates(data: Dict[str, Any]) -> Optional[str]:
     return "\n".join(lines).rstrip()
 
 
-def render_chat_github_releases(data: Dict[str, Any]) -> Optional[str]:
+def render_chat_github_releases(
+    data: Dict[str, Any],
+    visible_registry: VisibleArticleRegistry,
+) -> Optional[str]:
     releases = [
         article
         for article in unique_articles(iter_articles(data), "github")
         if article_link(article)
     ]
     releases = sorted(releases, key=quality_score, reverse=True)
+    releases = visible_registry.filter_unseen(releases)
     return render_chat_article_section("## 📦 GitHub Releases", "📦", releases)
 
 
-def render_chat_github_trending(data: Dict[str, Any]) -> Optional[str]:
+def render_chat_github_trending(
+    data: Dict[str, Any],
+    visible_registry: VisibleArticleRegistry,
+) -> Optional[str]:
     repos = [
         article
         for article in unique_articles(iter_articles(data), "github_trending")
@@ -562,20 +578,28 @@ def render_chat_github_trending(data: Dict[str, Any]) -> Optional[str]:
         key=lambda article: article.get("daily_stars_est", 0),
         reverse=True,
     )
+    repos = visible_registry.filter_unseen(repos)
     return render_chat_article_section("## 🐙 GitHub Trending", "🐙", repos)
 
 
-def render_chat_blog_picks(data: Dict[str, Any]) -> Optional[str]:
+def render_chat_blog_picks(
+    data: Dict[str, Any],
+    visible_registry: VisibleArticleRegistry,
+) -> Optional[str]:
     picks = [
         article
         for article in unique_articles(iter_articles(data))
         if article.get("is_blog_pick") and article_link(article)
     ]
     picks = sorted(picks, key=quality_score, reverse=True)
+    picks = visible_registry.filter_unseen(picks)
     return render_chat_article_section("## 📝 Blog Picks", "📝", picks)
 
 
-def render_chat_podcast_remix(data: Dict[str, Any]) -> Optional[str]:
+def render_chat_podcast_remix(
+    data: Dict[str, Any],
+    visible_registry: VisibleArticleRegistry,
+) -> Optional[str]:
     episodes = [
         article
         for article in unique_articles(iter_articles(data), "podcast")
@@ -584,6 +608,7 @@ def render_chat_podcast_remix(data: Dict[str, Any]) -> Optional[str]:
         and article_link(article)
     ]
     episodes = sorted(episodes, key=quality_score, reverse=True)
+    episodes = visible_registry.filter_unseen(episodes)
     return render_chat_article_section("## 🎙️ Podcast Remix", "🎙️", episodes)
 
 
@@ -658,8 +683,9 @@ def render_chat_digest(
     report_date: str,
     version: str,
 ) -> str:
+    visible_registry = VisibleArticleRegistry()
     sections = [f"# 🚀 Tech Digest - {report_date}"]
-    sections.extend(render_chat_topic_sections(data, topic_defs))
+    sections.extend(render_chat_topic_sections(data, topic_defs, visible_registry))
 
     for renderer in (
         render_chat_kol_updates,
@@ -668,7 +694,7 @@ def render_chat_digest(
         render_chat_blog_picks,
         render_chat_podcast_remix,
     ):
-        section = renderer(data)
+        section = renderer(data, visible_registry)
         if section:
             sections.append(section)
 
