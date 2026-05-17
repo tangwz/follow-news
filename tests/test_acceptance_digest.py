@@ -64,6 +64,149 @@ def render_daily_chat_digest():
     )
 
 
+def duplicate_visible_fixture():
+    return {
+        "input_sources": {},
+        "output_stats": {"total_articles": 3},
+        "topics": {
+            "llm": {
+                "articles": [
+                    {
+                        "title": "Independent blog post about agent evals",
+                        "link": "https://example.com/blog/agent-evals?utm_source=rss",
+                        "quality_score": 12,
+                        "source_type": "rss",
+                        "source_name": "Example Blog",
+                        "author": "Example Author",
+                        "is_blog_pick": True,
+                        "summary": "The post explains a compact agent evaluation pattern.",
+                    },
+                    {
+                        "title": "Agent planning podcast episode",
+                        "link": "https://www.youtube.com/watch?v=abc123&utm_source=rss",
+                        "quality_score": 11,
+                        "source_type": "podcast",
+                        "source_name": "Training Data",
+                        "show_name": "Training Data",
+                        "transcript_status": "ok",
+                        "transcript": "The episode discusses planning, evaluation, and rollout checks.",
+                        "snippet": "A podcast episode about planning and evaluation.",
+                    },
+                ]
+            },
+            "ai-agent": {
+                "articles": [
+                    {
+                        "title": "KOL note about agent reliability",
+                        "link": "https://x.com/example/status/1?utm_source=rss",
+                        "quality_score": 10,
+                        "source_type": "twitter",
+                        "source_name": "Example Lab",
+                        "display_name": "Example Lab",
+                        "handle": "example",
+                        "summary": "Example Lab shared a note about agent reliability.",
+                        "metrics": {
+                            "impression_count": 1000,
+                            "reply_count": 2,
+                            "retweet_count": 3,
+                            "like_count": 4,
+                        },
+                    }
+                ]
+            },
+        },
+    }
+
+
+def topic_topic_duplicate_fixture():
+    duplicate_article = {
+        "title": "Duplicate agent evals article",
+        "link": "https://example.com/shared/agent-evals",
+        "quality_score": 12,
+        "source_type": "rss",
+        "summary": "A shared article that appears in two topic sections.",
+    }
+    return {
+        "input_sources": {},
+        "output_stats": {"total_articles": 2},
+        "topics": {
+            "llm": {"articles": [duplicate_article]},
+            "ai-agent": {"articles": [dict(duplicate_article)]},
+        },
+    }
+
+
+def same_title_duplicate_fixture():
+    return {
+        "input_sources": {},
+        "output_stats": {"total_articles": 2},
+        "topics": {
+            "llm": {
+                "articles": [
+                    {
+                        "title": "Same Story",
+                        "link": "https://example.com/a",
+                        "quality_score": 12,
+                        "source_type": "rss",
+                        "summary": "The first visible instance of the story.",
+                    }
+                ]
+            },
+            "ai-agent": {
+                "articles": [
+                    {
+                        "title": "Same Story!",
+                        "link": "https://other.example/b",
+                        "quality_score": 11,
+                        "source_type": "rss",
+                        "summary": "The duplicate story with a different URL.",
+                    }
+                ]
+            },
+        },
+    }
+
+
+def cross_fixed_bridge_fixture():
+    return {
+        "input_sources": {},
+        "output_stats": {"total_articles": 3},
+        "topics": {
+            "supplemental": {
+                "articles": [
+                    {
+                        "title": "Canonical",
+                        "link": "https://x.com/example/status/a",
+                        "quality_score": 12,
+                        "source_type": "twitter",
+                        "display_name": "Example Lab",
+                        "handle": "example",
+                        "summary": "The first fixed-section item.",
+                    },
+                    {
+                        "title": "Bridge",
+                        "link": "https://github.com/example/bridge/releases/tag/v1.0.0",
+                        "quality_score": 11,
+                        "source_type": "github",
+                        "repo": "example/bridge",
+                        "tag_name": "v1.0.0",
+                        "summary": "This earlier fixed renderer item is connected later.",
+                    },
+                    {
+                        "title": "Bridge",
+                        "link": "https://x.com/example/status/a",
+                        "quality_score": 10,
+                        "source_type": "rss",
+                        "is_blog_pick": True,
+                        "author": "Example Author",
+                        "full_text": "The late bridge that connects the prior fixed items.",
+                    },
+                ]
+            }
+        },
+    }
+
+
 def extract_chat_summary(text, title_line):
     lines = text.splitlines()
     index = lines.index(title_line)
@@ -133,6 +276,342 @@ class TestAcceptanceFixture(unittest.TestCase):
         )
 
 
+class TestVisibleArticleDedupe(unittest.TestCase):
+    def test_article_dedupe_key_normalizes_equivalent_urls(self):
+        first = {
+            "title": "First title",
+            "link": "https://www.youtube.com/watch?v=abc123&utm_source=rss",
+        }
+        second = {
+            "title": "Different title",
+            "link": "https://youtu.be/abc123",
+        }
+
+        self.assertEqual(
+            render_mod.article_dedupe_key(first),
+            render_mod.article_dedupe_key(second),
+        )
+
+    def test_article_dedupe_key_preserves_meaningful_query_parameters(self):
+        first = {"link": "https://news.ycombinator.com/item?id=1"}
+        second = {"link": "https://news.ycombinator.com/item?id=2"}
+
+        self.assertNotEqual(
+            render_mod.article_dedupe_key(first),
+            render_mod.article_dedupe_key(second),
+        )
+
+    def test_article_dedupe_key_preserves_ref_query_parameters(self):
+        first = {"link": "https://example.com/post?ref=a"}
+        second = {"link": "https://example.com/post?ref=b"}
+
+        self.assertNotEqual(
+            render_mod.article_dedupe_key(first),
+            render_mod.article_dedupe_key(second),
+        )
+
+    def test_article_dedupe_key_preserves_path_parameters(self):
+        first = {"link": "https://example.com/post;v=1"}
+        second = {"link": "https://example.com/post;v=2"}
+
+        self.assertNotEqual(
+            render_mod.article_dedupe_key(first),
+            render_mod.article_dedupe_key(second),
+        )
+
+    def test_article_dedupe_key_drops_tracking_query_parameters(self):
+        first = {"link": "https://example.com/post?utm_source=rss&fbclid=x"}
+        second = {"link": "https://www.example.com/post?utm_medium=email"}
+
+        self.assertEqual(
+            render_mod.article_dedupe_key(first),
+            render_mod.article_dedupe_key(second),
+        )
+
+    def test_article_dedupe_key_keeps_meaningful_query_without_tracking_noise(self):
+        first = {"link": "https://example.com/post?id=1&utm_source=rss"}
+        second = {"link": "https://www.example.com/post?utm_medium=email&id=1"}
+
+        self.assertEqual(
+            render_mod.article_dedupe_key(first),
+            render_mod.article_dedupe_key(second),
+        )
+
+    def test_visible_registry_propagates_aliases_from_skipped_duplicates(self):
+        registry = render_mod.VisibleArticleRegistry()
+        registry.mark({"title": "Same Story", "link": "https://example.com/a"})
+
+        visible = registry.filter_unseen(
+            [
+                {"title": "Same Story!", "link": "https://example.com/b"},
+                {"title": "Different Label", "link": "https://example.com/b"},
+            ]
+        )
+
+        self.assertEqual(visible, [])
+
+    def test_visible_registry_propagates_late_bridge_aliases_before_rendering(self):
+        registry = render_mod.VisibleArticleRegistry()
+
+        visible = registry.filter_unseen(
+            [
+                {"title": "Canonical", "link": "https://example.com/a"},
+                {"title": "Bridge", "link": "https://example.com/b"},
+                {"title": "Bridge", "link": "https://example.com/a"},
+            ]
+        )
+
+        self.assertEqual(
+            [article["link"] for article in visible],
+            ["https://example.com/a"],
+        )
+
+    def test_visible_registry_applies_prior_seen_late_bridge_aliases(self):
+        registry = render_mod.VisibleArticleRegistry()
+        registry.mark({"title": "Canonical", "link": "https://example.com/a"})
+
+        visible = registry.filter_unseen(
+            [
+                {"title": "Bridge", "link": "https://example.com/b"},
+                {"title": "Bridge", "link": "https://example.com/a"},
+            ]
+        )
+
+        self.assertEqual(visible, [])
+
+    def test_visible_registry_passes_no_key_articles_without_dedupe(self):
+        registry = render_mod.VisibleArticleRegistry()
+        articles = [{"source_type": "rss"}, {"source_type": "web"}]
+
+        self.assertEqual(registry.filter_unseen(articles), articles)
+
+    def test_visible_registry_handles_deep_alias_chains(self):
+        registry = render_mod.VisibleArticleRegistry()
+        articles = [
+            {
+                "title": "Shared release title",
+                "link": f"https://example.com/releases/{index}",
+            }
+            for index in range(1200)
+        ]
+
+        visible = registry.filter_unseen(articles)
+
+        self.assertEqual(visible, articles[:1])
+
+    def test_article_dedupe_key_only_strips_leading_www(self):
+        self.assertEqual(
+            render_mod.article_dedupe_key(
+                {"link": "https://www.example.com/post"}
+            ),
+            render_mod.article_dedupe_key({"link": "https://example.com/post"}),
+        )
+        self.assertNotEqual(
+            render_mod.article_dedupe_key(
+                {"link": "https://api.www.example.com/post"}
+            ),
+            render_mod.article_dedupe_key(
+                {"link": "https://api.example.com/post"}
+            ),
+        )
+
+    def test_visible_registry_matches_same_title_with_different_urls(self):
+        registry = render_mod.VisibleArticleRegistry()
+        registry.mark({"title": "Same Story", "link": "https://example.com/a"})
+
+        self.assertTrue(
+            registry.is_seen(
+                {"title": "Same Story!", "link": "https://other.example/b"}
+            )
+        )
+
+    def test_article_dedupe_key_keeps_versioned_titles_distinct(self):
+        registry = render_mod.VisibleArticleRegistry()
+        registry.mark(
+            {"title": "OpenAI releases GPT-5", "link": "https://example.com/gpt-5"}
+        )
+
+        self.assertFalse(
+            registry.is_seen(
+                {
+                    "title": "OpenAI releases GPT-4",
+                    "link": "https://example.com/gpt-4",
+                }
+            )
+        )
+
+    def test_article_dedupe_key_keeps_punctuation_version_titles_distinct(self):
+        first = {"title": "OpenAI releases GPT-4.1"}
+        second = {"title": "OpenAI releases GPT-41"}
+
+        self.assertNotEqual(
+            render_mod.article_dedupe_key(first),
+            render_mod.article_dedupe_key(second),
+        )
+
+    def test_article_dedupe_key_keeps_dash_subtitles_distinct(self):
+        registry = render_mod.VisibleArticleRegistry()
+        registry.mark(
+            {
+                "title": "Claude Code - repository-wide planning mode",
+                "link": "https://example.com/planning",
+            }
+        )
+
+        self.assertFalse(
+            registry.is_seen(
+                {
+                    "title": "Claude Code - terminal UI refresh",
+                    "link": "https://example.com/ui",
+                }
+            )
+        )
+
+    def test_article_dedupe_key_keeps_title_case_dash_subtitles_distinct(self):
+        registry = render_mod.VisibleArticleRegistry()
+        registry.mark(
+            {
+                "title": "Claude Code - Runtime Internals",
+                "link": "https://example.com/runtime",
+            }
+        )
+
+        self.assertFalse(
+            registry.is_seen(
+                {
+                    "title": "Claude Code - Deployment Guide",
+                    "link": "https://example.com/deploy",
+                }
+            )
+        )
+
+    def test_article_dedupe_key_keeps_pipe_subtitles_distinct(self):
+        registry = render_mod.VisibleArticleRegistry()
+        registry.mark(
+            {
+                "title": "Claude Code | Runtime Internals",
+                "link": "https://example.com/runtime",
+            }
+        )
+
+        self.assertFalse(
+            registry.is_seen(
+                {
+                    "title": "Claude Code | Deployment Guide",
+                    "link": "https://example.com/deploy",
+                }
+            )
+        )
+
+    def test_fixed_sections_propagate_aliases_before_unique_collapse(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 3},
+            "topics": {
+                "ai-agent": {
+                    "articles": [
+                        {
+                            "title": "Same Story",
+                            "link": "https://x.com/example/status/a",
+                            "quality_score": 12,
+                            "source_type": "twitter",
+                            "display_name": "Example Lab",
+                            "handle": "example",
+                            "summary": "The first visible item.",
+                        },
+                        {
+                            "title": "Bridge Title",
+                            "link": "https://x.com/example/status/a",
+                            "quality_score": 11,
+                            "source_type": "twitter",
+                            "display_name": "Example Lab",
+                            "handle": "example",
+                            "summary": "A duplicate raw URL that carries a title alias.",
+                        },
+                        {
+                            "title": "Bridge Title!",
+                            "link": "https://x.com/example/status/b",
+                            "quality_score": 10,
+                            "source_type": "twitter",
+                            "display_name": "Example Lab",
+                            "handle": "example",
+                            "summary": "This later alias URL must not render.",
+                        },
+                    ]
+                }
+            },
+        }
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=[],
+            report_date="2026-05-17",
+            version="3.17.0",
+        )
+
+        self.assertEqual(text.count("https://x.com/example/status/a"), 1)
+        self.assertNotIn("https://x.com/example/status/b", text)
+
+    def test_article_dedupe_key_keeps_hyphenated_titles_intact(self):
+        self.assertEqual(
+            render_mod.normalize_visible_title("State-of-the-art agents"),
+            "stateoftheart agents",
+        )
+
+    def test_article_dedupe_key_strips_matching_source_suffixes(self):
+        title = "OpenAI releases GPT-5"
+
+        self.assertEqual(
+            render_mod.article_dedupe_keys(
+                {"title": f"{title} | Example News", "source_name": "Example News"}
+            )[-1],
+            render_mod.article_dedupe_keys(
+                {"title": title, "source_name": "Example News"}
+            )[-1],
+        )
+        self.assertEqual(
+            render_mod.article_dedupe_keys(
+                {"title": f"{title} - Example News", "source_name": "Example News"}
+            )[-1],
+            render_mod.article_dedupe_keys(
+                {"title": title, "source_name": "Example News"}
+            )[-1],
+        )
+        self.assertEqual(
+            render_mod.article_dedupe_keys(
+                {"title": f"{title} – Example News", "source_name": "Example News"}
+            )[-1],
+            render_mod.article_dedupe_keys(
+                {"title": title, "source_name": "Example News"}
+            )[-1],
+        )
+
+    def test_article_dedupe_key_keeps_non_matching_source_suffixes(self):
+        self.assertNotEqual(
+            render_mod.article_dedupe_keys(
+                {
+                    "title": "Claude Code | Runtime Internals",
+                    "source_name": "Example News",
+                }
+            )[-1],
+            render_mod.article_dedupe_keys(
+                {"title": "Claude Code", "source_name": "Example News"}
+            )[-1],
+        )
+
+    def test_article_dedupe_key_falls_back_to_normalized_title(self):
+        first = {"title": "RT @user: OpenAI releases GPT-5!"}
+        second = {"title": "OpenAI releases GPT-5"}
+
+        self.assertEqual(
+            render_mod.article_dedupe_key(first),
+            render_mod.article_dedupe_key(second),
+        )
+
+    def test_article_dedupe_key_returns_none_without_url_or_title(self):
+        self.assertIsNone(render_mod.article_dedupe_key({"source_type": "rss"}))
+
+
 class TestAcceptanceRenderer(unittest.TestCase):
     def test_daily_digest_matches_golden(self):
         assert_or_update_golden(self, DAILY_GOLDEN, render_daily_digest())
@@ -148,8 +627,6 @@ class TestAcceptanceRenderer(unittest.TestCase):
         self.assertIn("## 🧠 LLM / Large Models", text)
         self.assertIn("1. 🧠 [9/10] OpenAI ships structured agent evaluation suite", text)
         self.assertIn("🔗 https://openai.com/research/agent-evals", text)
-        self.assertIn("## 📦 GitHub Releases", text)
-        self.assertIn("## 🐙 GitHub Trending", text)
         self.assertNotIn("<https://", text)
         self.assertNotIn("Low scoring model rumor should not render", text)
 
@@ -563,7 +1040,7 @@ class TestAcceptanceRenderer(unittest.TestCase):
                 }
             },
         }
-        topic_defs = [{"id": "ai-agent", "emoji": "🤖", "label": "AI Agent"}]
+        topic_defs = []
 
         text = render_mod.render_digest(
             data,
@@ -597,7 +1074,7 @@ class TestAcceptanceRenderer(unittest.TestCase):
                 }
             },
         }
-        topic_defs = [{"id": "ai-agent", "emoji": "🤖", "label": "AI Agent"}]
+        topic_defs = []
 
         text = render_mod.render_digest(
             data,
@@ -712,17 +1189,253 @@ class TestAcceptanceRenderer(unittest.TestCase):
         self.assertIn("  🔗 https://openai.com/research/agent-evals", text)
         self.assertIn("  *[3 sources]*", text)
         self.assertNotIn("Low scoring model rumor should not render", text)
-        self.assertIn("## 📢 KOL Updates", text)
-        self.assertIn("`👁 12.5K | 💬 45 | 🔁 230 | ❤️ 1.8K`", text)
-        self.assertIn("## 📦 GitHub Releases", text)
-        self.assertIn("## 🐙 GitHub Trending", text)
-        self.assertIn("## 📝 Blog Picks", text)
-        self.assertIn("## 🎙️ Podcast Remix", text)
+        self.assertNotIn("## 📢 KOL Updates", text)
+        self.assertNotIn("## 📦 GitHub Releases", text)
+        self.assertNotIn("## 🐙 GitHub Trending", text)
+        self.assertNotIn("## 📝 Blog Picks", text)
+        self.assertNotIn("## 🎙️ Podcast Remix", text)
         self.assertIn(
             "📊 Data Sources: RSS 3 | Twitter 1 | Reddit 1 | Web 1 | GitHub 1 releases + 1 trending | Podcast 1 episodes | Dedup: 9 articles",
             text,
         )
         self.assertTrue(text.endswith("\n"))
+
+    def test_discord_fixed_sections_render_unseen_items(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 5},
+            "topics": {
+                "supplemental": {
+                    "articles": [
+                        {
+                            "title": "Unseen KOL update",
+                            "link": "https://x.com/example/status/unseen",
+                            "source_type": "twitter",
+                            "display_name": "Example Lab",
+                            "handle": "example",
+                            "summary": "Example Lab shared an unseen update.",
+                            "metrics": {
+                                "impression_count": 1200,
+                                "reply_count": 3,
+                                "retweet_count": 4,
+                                "like_count": 50,
+                            },
+                        },
+                        {
+                            "title": "Example Tool v1.0.0",
+                            "link": "https://github.com/example/tool/releases/tag/v1.0.0",
+                            "source_type": "github",
+                            "repo": "example/tool",
+                            "tag_name": "v1.0.0",
+                            "summary": "The release ships a stable API.",
+                        },
+                        {
+                            "title": "example/trending-tool",
+                            "link": "https://github.com/example/trending-tool",
+                            "source_type": "github_trending",
+                            "repo": "example/trending-tool",
+                            "stars": 2500,
+                            "daily_stars_est": 125,
+                            "language": "TypeScript",
+                            "description": "A trending tool for builders.",
+                        },
+                        {
+                            "title": "Unseen blog pick",
+                            "link": "https://example.com/unseen-blog",
+                            "source_type": "rss",
+                            "is_blog_pick": True,
+                            "author": "Example Author",
+                            "full_text": "A detailed unseen blog post.",
+                        },
+                        {
+                            "title": "Unseen podcast episode",
+                            "link": "https://www.youtube.com/watch?v=unseenpodcast",
+                            "source_type": "podcast",
+                            "transcript_status": "ok",
+                            "transcript": "Host | 00:00 - 00:05 This is an unseen podcast.",
+                            "show_name": "Example Show",
+                            "snippet": "An unseen podcast episode.",
+                        },
+                    ]
+                }
+            },
+        }
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=[],
+            report_date="2026-05-17",
+            version="3.17.0",
+        )
+
+        self.assertIn("## 📢 KOL Updates", text)
+        self.assertIn("## 📦 GitHub Releases", text)
+        self.assertIn("## 🐙 GitHub Trending", text)
+        self.assertIn("## 📝 Blog Picks", text)
+        self.assertIn("## 🎙️ Podcast Remix", text)
+        self.assertEqual(text.count("https://x.com/example/status/unseen"), 1)
+        self.assertEqual(
+            text.count("https://github.com/example/tool/releases/tag/v1.0.0"),
+            1,
+        )
+        self.assertEqual(text.count("https://github.com/example/trending-tool"), 1)
+        self.assertEqual(text.count("https://example.com/unseen-blog"), 1)
+        self.assertEqual(
+            text.count("https://www.youtube.com/watch?v=unseenpodcast"),
+            1,
+        )
+
+    def test_discord_visible_dedupe_resolves_cross_fixed_late_bridge(self):
+        text = render_mod.render_digest(
+            cross_fixed_bridge_fixture(),
+            topic_defs=[],
+            report_date="2026-05-17",
+            version="3.17.0",
+        )
+
+        self.assertEqual(text.count("https://x.com/example/status/a"), 1)
+        self.assertNotIn(
+            "https://github.com/example/bridge/releases/tag/v1.0.0",
+            text,
+        )
+        self.assertIn("## 📢 KOL Updates", text)
+        self.assertNotIn("## 📦 GitHub Releases", text)
+        self.assertNotIn("## 📝 Blog Picks", text)
+
+    def test_chat_visible_dedupe_resolves_cross_fixed_late_bridge(self):
+        text = render_mod.render_digest(
+            cross_fixed_bridge_fixture(),
+            topic_defs=[],
+            report_date="2026-05-17",
+            version="3.17.0",
+            template="chat",
+        )
+
+        self.assertEqual(text.count("https://x.com/example/status/a"), 1)
+        self.assertNotIn(
+            "https://github.com/example/bridge/releases/tag/v1.0.0",
+            text,
+        )
+        self.assertIn("## 📢 KOL Updates", text)
+        self.assertNotIn("## 📦 GitHub Releases", text)
+        self.assertNotIn("## 📝 Blog Picks", text)
+
+    def test_discord_visible_dedupe_keeps_topic_sections_over_fixed_sections(self):
+        topic_defs = [
+            {"id": "llm", "emoji": "🧠", "label": "LLM / Large Models"},
+            {"id": "ai-agent", "emoji": "🤖", "label": "AI Agent"},
+        ]
+
+        text = render_mod.render_digest(
+            duplicate_visible_fixture(),
+            topic_defs,
+            report_date="2026-05-17",
+            version="3.17.0",
+        )
+
+        self.assertEqual(text.count("https://example.com/blog/agent-evals?utm_source=rss"), 1)
+        self.assertEqual(text.count("https://www.youtube.com/watch?v=abc123&utm_source=rss"), 1)
+        self.assertEqual(text.count("https://x.com/example/status/1?utm_source=rss"), 1)
+        self.assertIn("## 🧠 LLM / Large Models", text)
+        self.assertIn("## 🤖 AI Agent", text)
+        self.assertNotIn("## 📢 KOL Updates", text)
+        self.assertNotIn("## 📝 Blog Picks", text)
+        self.assertNotIn("## 🎙️ Podcast Remix", text)
+
+    def test_discord_visible_dedupe_skips_duplicate_topic_sections(self):
+        topic_defs = [
+            {"id": "llm", "emoji": "🧠", "label": "LLM / Large Models"},
+            {"id": "ai-agent", "emoji": "🤖", "label": "AI Agent"},
+        ]
+
+        text = render_mod.render_digest(
+            topic_topic_duplicate_fixture(),
+            topic_defs,
+            report_date="2026-05-17",
+            version="3.17.0",
+        )
+
+        self.assertEqual(text.count("https://example.com/shared/agent-evals"), 1)
+        self.assertIn("## 🧠 LLM / Large Models", text)
+        self.assertNotIn("## 🤖 AI Agent", text)
+
+    def test_discord_visible_dedupe_skips_same_title_different_url_topic(self):
+        topic_defs = [
+            {"id": "llm", "emoji": "🧠", "label": "LLM / Large Models"},
+            {"id": "ai-agent", "emoji": "🤖", "label": "AI Agent"},
+        ]
+
+        text = render_mod.render_digest(
+            same_title_duplicate_fixture(),
+            topic_defs,
+            report_date="2026-05-17",
+            version="3.17.0",
+        )
+
+        self.assertEqual(text.count("https://example.com/a"), 1)
+        self.assertNotIn("https://other.example/b", text)
+        self.assertIn("## 🧠 LLM / Large Models", text)
+        self.assertNotIn("## 🤖 AI Agent", text)
+
+    def test_chat_visible_dedupe_keeps_topic_sections_over_fixed_sections(self):
+        topic_defs = [
+            {"id": "llm", "emoji": "🧠", "label": "LLM / Large Models"},
+            {"id": "ai-agent", "emoji": "🤖", "label": "AI Agent"},
+        ]
+
+        text = render_mod.render_digest(
+            duplicate_visible_fixture(),
+            topic_defs,
+            report_date="2026-05-17",
+            version="3.17.0",
+            template="chat",
+        )
+
+        self.assertEqual(text.count("https://example.com/blog/agent-evals?utm_source=rss"), 1)
+        self.assertEqual(text.count("https://www.youtube.com/watch?v=abc123&utm_source=rss"), 1)
+        self.assertEqual(text.count("https://x.com/example/status/1?utm_source=rss"), 1)
+        self.assertIn("## 🧠 LLM / Large Models", text)
+        self.assertIn("## 🤖 AI Agent", text)
+        self.assertNotIn("## 📢 KOL Updates", text)
+        self.assertNotIn("## 📝 Blog Picks", text)
+        self.assertNotIn("## 🎙️ Podcast Remix", text)
+
+    def test_chat_visible_dedupe_skips_duplicate_topic_sections(self):
+        topic_defs = [
+            {"id": "llm", "emoji": "🧠", "label": "LLM / Large Models"},
+            {"id": "ai-agent", "emoji": "🤖", "label": "AI Agent"},
+        ]
+
+        text = render_mod.render_digest(
+            topic_topic_duplicate_fixture(),
+            topic_defs,
+            report_date="2026-05-17",
+            version="3.17.0",
+            template="chat",
+        )
+
+        self.assertEqual(text.count("https://example.com/shared/agent-evals"), 1)
+        self.assertIn("## 🧠 LLM / Large Models", text)
+        self.assertNotIn("## 🤖 AI Agent", text)
+
+    def test_chat_visible_dedupe_skips_same_title_different_url_topic(self):
+        topic_defs = [
+            {"id": "llm", "emoji": "🧠", "label": "LLM / Large Models"},
+            {"id": "ai-agent", "emoji": "🤖", "label": "AI Agent"},
+        ]
+
+        text = render_mod.render_digest(
+            same_title_duplicate_fixture(),
+            topic_defs,
+            report_date="2026-05-17",
+            version="3.17.0",
+            template="chat",
+        )
+
+        self.assertEqual(text.count("https://example.com/a"), 1)
+        self.assertNotIn("https://other.example/b", text)
+        self.assertIn("## 🧠 LLM / Large Models", text)
+        self.assertNotIn("## 🤖 AI Agent", text)
 
     def test_prepare_manual_codex_context(self):
         data = load_acceptance_fixture()

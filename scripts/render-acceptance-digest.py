@@ -4,12 +4,22 @@
 import argparse
 import json
 import math
+import re
 import shutil
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Sequence
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Set
+from urllib.parse import parse_qsl, parse_qs, urlencode, urlparse
 
 
 MIN_QUALITY_SCORE = 5
+TRACKING_QUERY_PARAMS = {
+    "fbclid",
+    "gclid",
+    "igshid",
+    "mc_cid",
+    "mc_eid",
+    "ref_src",
+}
 
 
 def load_json(path: Path) -> Dict[str, Any]:
@@ -29,6 +39,171 @@ def article_link(article: Dict[str, Any]) -> str:
         or article.get("reddit_url")
         or ""
     )
+
+
+def normalize_visible_domain(domain: str) -> str:
+    domain = domain.lower()
+    if domain.startswith("www."):
+        return domain[4:]
+    return domain
+
+
+def normalize_visible_url(url: str) -> str:
+    try:
+        parsed = urlparse(url)
+        domain = normalize_visible_domain(parsed.netloc)
+        path = parsed.path.rstrip("/")
+        if parsed.params:
+            path = f"{path};{parsed.params}"
+
+        if domain in {"youtube.com", "m.youtube.com"} and path == "/watch":
+            video_id = parse_qs(parsed.query).get("v", [""])[0]
+            if video_id:
+                return f"url:youtube:{video_id}"
+
+        if domain == "youtu.be" and path:
+            video_id = path.lstrip("/")
+            if video_id:
+                return f"url:youtube:{video_id}"
+
+        if domain or path:
+            query_pairs = [
+                (name, value)
+                for name, value in parse_qsl(parsed.query, keep_blank_values=True)
+                if not name.lower().startswith("utm_")
+                and name.lower() not in TRACKING_QUERY_PARAMS
+            ]
+            query = urlencode(sorted(query_pairs), doseq=True)
+            suffix = f"?{query}" if query else ""
+            return f"url:{domain}{path}{suffix}"
+    except Exception:
+        pass
+
+    compact = " ".join(str(url).split())
+    return f"url:{compact}" if compact else ""
+
+
+def normalize_visible_title(title: Any) -> str:
+    if not title:
+        return ""
+
+    value = str(title)
+    value = re.sub(r"^(RT\s+@\w+:\s*)", "", value, flags=re.IGNORECASE)
+    value = re.sub(r"\s+", " ", value).strip()
+    value = re.sub(r"(?<=\d)\.(?=\d)", " ", value)
+    value = re.sub(r"[^\w\s]", "", value.lower())
+    return value
+
+
+def article_source_suffixes(article: Dict[str, Any]) -> List[str]:
+    candidates = []
+    for field in ("source_name", "show_name", "display_name"):
+        value = compact_text(article.get(field))
+        if value:
+            candidates.append(value)
+    return candidates
+
+
+def strip_matching_source_suffix(title: Any, article: Dict[str, Any]) -> str:
+    value = compact_text(title)
+    for suffix in article_source_suffixes(article):
+        for separator in (" | ", " - ", " – "):
+            expected = f"{separator}{suffix}"
+            if value.lower().endswith(expected.lower()):
+                return value[: -len(expected)].strip()
+    return value
+
+
+def article_dedupe_key(article: Dict[str, Any]) -> Optional[str]:
+    keys = article_dedupe_keys(article)
+    return keys[0] if keys else None
+
+
+def article_dedupe_keys(article: Dict[str, Any]) -> List[str]:
+    keys = []
+    url = article_link(article)
+    if url:
+        normalized_url = normalize_visible_url(url)
+        if normalized_url:
+            keys.append(normalized_url)
+
+    title = strip_matching_source_suffix(article.get("title"), article)
+    normalized_title = normalize_visible_title(title)
+    if normalized_title:
+        keys.append(f"title:{normalized_title}")
+
+    return keys
+
+
+class VisibleArticleRegistry:
+    def __init__(self) -> None:
+        self.seen_keys = set()
+        self.parent: Dict[str, str] = {}
+
+    def is_seen(self, article: Dict[str, Any]) -> bool:
+        keys = article_dedupe_keys(article)
+        if not keys:
+            return False
+        self.register_aliases([article])
+        return bool(self._component_keys(keys) & self.seen_keys)
+
+    def mark(self, article: Dict[str, Any]) -> None:
+        keys = article_dedupe_keys(article)
+        if not keys:
+            return
+        self.register_aliases([article])
+        self.seen_keys.update(self._component_keys(keys))
+
+    def filter_unseen(self, articles: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        candidates = [(article, article_dedupe_keys(article)) for article in articles]
+        self.register_aliases(article for article, _ in candidates)
+        visible = []
+        for article, keys in candidates:
+            if not keys:
+                visible.append(article)
+                continue
+
+            component_keys = self._component_keys(keys)
+            if component_keys & self.seen_keys:
+                self.seen_keys.update(component_keys)
+                continue
+
+            self.seen_keys.update(component_keys)
+            visible.append(article)
+        return visible
+
+    def register_aliases(self, articles: Iterable[Dict[str, Any]]) -> None:
+        for article in articles:
+            keys = article_dedupe_keys(article)
+            if not keys:
+                continue
+            first = keys[0]
+            self._find(first)
+            for key in keys[1:]:
+                self._union(first, key)
+
+    def _find(self, key: str) -> str:
+        self.parent.setdefault(key, key)
+        root = key
+        while self.parent[root] != root:
+            root = self.parent[root]
+
+        while self.parent[key] != key:
+            parent = self.parent[key]
+            self.parent[key] = root
+            key = parent
+
+        return root
+
+    def _union(self, first: str, second: str) -> None:
+        first_root = self._find(first)
+        second_root = self._find(second)
+        if first_root != second_root:
+            self.parent[second_root] = first_root
+
+    def _component_keys(self, keys: List[str]) -> Set[str]:
+        roots = {self._find(key) for key in keys}
+        return {key for key in self.parent if self._find(key) in roots}
 
 
 def render_link(url: str) -> str:
@@ -145,21 +320,83 @@ def iter_articles(data: Dict[str, Any]) -> Iterable[Dict[str, Any]]:
                 yield article
 
 
-def unique_articles(
-    articles: Iterable[Dict[str, Any]],
-    source_type: Optional[str] = None,
+def fixed_kol_articles(data: Dict[str, Any]) -> List[Dict[str, Any]]:
+    return [
+        article
+        for article in iter_articles(data)
+        if article.get("source_type") == "twitter" and article_link(article)
+    ]
+
+
+def fixed_github_release_articles(data: Dict[str, Any]) -> List[Dict[str, Any]]:
+    return [
+        article
+        for article in iter_articles(data)
+        if article.get("source_type") == "github" and article_link(article)
+    ]
+
+
+def fixed_github_trending_articles(data: Dict[str, Any]) -> List[Dict[str, Any]]:
+    return [
+        article
+        for article in iter_articles(data)
+        if article.get("source_type") == "github_trending" and article_link(article)
+    ]
+
+
+def fixed_blog_pick_articles(data: Dict[str, Any]) -> List[Dict[str, Any]]:
+    return [
+        article
+        for article in iter_articles(data)
+        if article.get("is_blog_pick") and article_link(article)
+    ]
+
+
+def fixed_podcast_articles(data: Dict[str, Any]) -> List[Dict[str, Any]]:
+    return [
+        article
+        for article in iter_articles(data)
+        if article.get("transcript_status") == "ok"
+        and article.get("transcript")
+        and article.get("source_type") == "podcast"
+        and article_link(article)
+    ]
+
+
+def chat_topic_articles(topic_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+    articles = [
+        article
+        for article in topic_data.get("articles", [])
+        if isinstance(article, dict) and should_render_chat_topic_article(article)
+    ]
+    return sorted(articles, key=quality_score, reverse=True)
+
+
+def visible_alias_candidates(
+    data: Dict[str, Any],
+    topic_defs: Sequence[Dict[str, Any]],
+    template: str,
 ) -> List[Dict[str, Any]]:
-    seen = set()
-    result = []
-    for article in articles:
-        if source_type and article.get("source_type") != source_type:
+    candidates = []
+    topics = data.get("topics", {})
+
+    for topic_def in topic_defs:
+        topic_id = topic_def.get("id")
+        topic_data = topics.get(topic_id)
+        if not isinstance(topic_data, dict):
             continue
-        key = article_link(article) or article.get("title") or id(article)
-        if key in seen:
-            continue
-        seen.add(key)
-        result.append(article)
-    return result
+
+        if template == "chat":
+            candidates.extend(chat_topic_articles(topic_data))
+        else:
+            candidates.extend(sorted_topic_articles(topic_data))
+
+    candidates.extend(fixed_kol_articles(data))
+    candidates.extend(fixed_github_release_articles(data))
+    candidates.extend(fixed_github_trending_articles(data))
+    candidates.extend(fixed_blog_pick_articles(data))
+    candidates.extend(fixed_podcast_articles(data))
+    return candidates
 
 
 def sorted_topic_articles(topic_data: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -176,6 +413,7 @@ def sorted_topic_articles(topic_data: Dict[str, Any]) -> List[Dict[str, Any]]:
 def render_topic_sections(
     data: Dict[str, Any],
     topic_defs: Sequence[Dict[str, Any]],
+    visible_registry: VisibleArticleRegistry,
 ) -> List[str]:
     sections = []
     topics = data.get("topics", {})
@@ -187,6 +425,7 @@ def render_topic_sections(
             continue
 
         articles = sorted_topic_articles(topic_data)
+        articles = visible_registry.filter_unseen(articles)
         if not articles:
             continue
 
@@ -209,6 +448,7 @@ def render_topic_sections(
 def render_chat_topic_sections(
     data: Dict[str, Any],
     topic_defs: Sequence[Dict[str, Any]],
+    visible_registry: VisibleArticleRegistry,
 ) -> List[str]:
     sections = []
     topics = data.get("topics", {})
@@ -219,12 +459,8 @@ def render_chat_topic_sections(
         if not isinstance(topic_data, dict):
             continue
 
-        articles = [
-            article
-            for article in topic_data.get("articles", [])
-            if isinstance(article, dict) and should_render_chat_topic_article(article)
-        ]
-        articles = sorted(articles, key=quality_score, reverse=True)
+        articles = chat_topic_articles(topic_data)
+        articles = visible_registry.filter_unseen(articles)
         if not articles:
             continue
 
@@ -241,16 +477,19 @@ def render_chat_topic_sections(
     return sections
 
 
-def render_kol_updates(data: Dict[str, Any]) -> Optional[str]:
-    tweets = [
-        article
-        for article in unique_articles(iter_articles(data), "twitter")
-        if article_link(article)
-    ]
+def render_kol_updates(
+    data: Dict[str, Any],
+    visible_registry: VisibleArticleRegistry,
+) -> Optional[str]:
+    tweets = fixed_kol_articles(data)
     if not tweets:
         return None
 
     tweets = sorted(tweets, key=quality_score, reverse=True)
+    tweets = visible_registry.filter_unseen(tweets)
+    if not tweets:
+        return None
+
     lines = ["## 📢 KOL Updates", ""]
     for article in tweets:
         metric_text = format_kol_metric_text(article)
@@ -280,16 +519,19 @@ def format_kol_metric_text(article: Dict[str, Any]) -> str:
     )
 
 
-def render_github_releases(data: Dict[str, Any]) -> Optional[str]:
-    releases = [
-        article
-        for article in unique_articles(iter_articles(data), "github")
-        if article_link(article)
-    ]
+def render_github_releases(
+    data: Dict[str, Any],
+    visible_registry: VisibleArticleRegistry,
+) -> Optional[str]:
+    releases = fixed_github_release_articles(data)
     if not releases:
         return None
 
     releases = sorted(releases, key=quality_score, reverse=True)
+    releases = visible_registry.filter_unseen(releases)
+    if not releases:
+        return None
+
     lines = ["## 📦 GitHub Releases", ""]
     for article in releases:
         repo = article.get("repo") or article.get("source_name") or article.get(
@@ -306,12 +548,11 @@ def render_github_releases(data: Dict[str, Any]) -> Optional[str]:
     return "\n".join(lines).rstrip()
 
 
-def render_github_trending(data: Dict[str, Any]) -> Optional[str]:
-    repos = [
-        article
-        for article in unique_articles(iter_articles(data), "github_trending")
-        if article_link(article)
-    ]
+def render_github_trending(
+    data: Dict[str, Any],
+    visible_registry: VisibleArticleRegistry,
+) -> Optional[str]:
+    repos = fixed_github_trending_articles(data)
     if not repos:
         return None
 
@@ -320,6 +561,10 @@ def render_github_trending(data: Dict[str, Any]) -> Optional[str]:
         key=lambda article: article.get("daily_stars_est", 0),
         reverse=True,
     )
+    repos = visible_registry.filter_unseen(repos)
+    if not repos:
+        return None
+
     lines = ["## 🐙 GitHub Trending", ""]
     for article in repos:
         repo = article.get("repo") or article.get("title", "?")
@@ -337,16 +582,19 @@ def render_github_trending(data: Dict[str, Any]) -> Optional[str]:
     return "\n".join(lines).rstrip()
 
 
-def render_blog_picks(data: Dict[str, Any]) -> Optional[str]:
-    picks = [
-        article
-        for article in unique_articles(iter_articles(data))
-        if article.get("is_blog_pick") and article_link(article)
-    ]
+def render_blog_picks(
+    data: Dict[str, Any],
+    visible_registry: VisibleArticleRegistry,
+) -> Optional[str]:
+    picks = fixed_blog_pick_articles(data)
     if not picks:
         return None
 
     picks = sorted(picks, key=quality_score, reverse=True)
+    picks = visible_registry.filter_unseen(picks)
+    if not picks:
+        return None
+
     lines = ["## 📝 Blog Picks", ""]
     for article in picks:
         author = article.get("author") or article.get("source_name") or "Unknown"
@@ -363,18 +611,19 @@ def render_blog_picks(data: Dict[str, Any]) -> Optional[str]:
     return "\n".join(lines).rstrip()
 
 
-def render_podcast_remix(data: Dict[str, Any]) -> Optional[str]:
-    episodes = [
-        article
-        for article in unique_articles(iter_articles(data), "podcast")
-        if article.get("transcript_status") == "ok"
-        and article.get("transcript")
-        and article_link(article)
-    ]
+def render_podcast_remix(
+    data: Dict[str, Any],
+    visible_registry: VisibleArticleRegistry,
+) -> Optional[str]:
+    episodes = fixed_podcast_articles(data)
     if not episodes:
         return None
 
     episodes = sorted(episodes, key=quality_score, reverse=True)
+    episodes = visible_registry.filter_unseen(episodes)
+    if not episodes:
+        return None
+
     lines = ["## 🎙️ Podcast Remix", ""]
     for article in episodes:
         show_name = article.get("show_name") or article.get("source_name") or "Unknown"
@@ -406,16 +655,19 @@ def render_chat_article_section(
     return "\n".join(lines).rstrip()
 
 
-def render_chat_kol_updates(data: Dict[str, Any]) -> Optional[str]:
-    tweets = [
-        article
-        for article in unique_articles(iter_articles(data), "twitter")
-        if article_link(article)
-    ]
+def render_chat_kol_updates(
+    data: Dict[str, Any],
+    visible_registry: VisibleArticleRegistry,
+) -> Optional[str]:
+    tweets = fixed_kol_articles(data)
     if not tweets:
         return None
 
     tweets = sorted(tweets, key=quality_score, reverse=True)
+    tweets = visible_registry.filter_unseen(tweets)
+    if not tweets:
+        return None
+
     lines = ["## 📢 KOL Updates", ""]
     for index, article in enumerate(tweets, 1):
         metric_text = format_kol_metric_text(article)
@@ -428,49 +680,47 @@ def render_chat_kol_updates(data: Dict[str, Any]) -> Optional[str]:
     return "\n".join(lines).rstrip()
 
 
-def render_chat_github_releases(data: Dict[str, Any]) -> Optional[str]:
-    releases = [
-        article
-        for article in unique_articles(iter_articles(data), "github")
-        if article_link(article)
-    ]
+def render_chat_github_releases(
+    data: Dict[str, Any],
+    visible_registry: VisibleArticleRegistry,
+) -> Optional[str]:
+    releases = fixed_github_release_articles(data)
     releases = sorted(releases, key=quality_score, reverse=True)
+    releases = visible_registry.filter_unseen(releases)
     return render_chat_article_section("## 📦 GitHub Releases", "📦", releases)
 
 
-def render_chat_github_trending(data: Dict[str, Any]) -> Optional[str]:
-    repos = [
-        article
-        for article in unique_articles(iter_articles(data), "github_trending")
-        if article_link(article)
-    ]
+def render_chat_github_trending(
+    data: Dict[str, Any],
+    visible_registry: VisibleArticleRegistry,
+) -> Optional[str]:
+    repos = fixed_github_trending_articles(data)
     repos = sorted(
         repos,
         key=lambda article: article.get("daily_stars_est", 0),
         reverse=True,
     )
+    repos = visible_registry.filter_unseen(repos)
     return render_chat_article_section("## 🐙 GitHub Trending", "🐙", repos)
 
 
-def render_chat_blog_picks(data: Dict[str, Any]) -> Optional[str]:
-    picks = [
-        article
-        for article in unique_articles(iter_articles(data))
-        if article.get("is_blog_pick") and article_link(article)
-    ]
+def render_chat_blog_picks(
+    data: Dict[str, Any],
+    visible_registry: VisibleArticleRegistry,
+) -> Optional[str]:
+    picks = fixed_blog_pick_articles(data)
     picks = sorted(picks, key=quality_score, reverse=True)
+    picks = visible_registry.filter_unseen(picks)
     return render_chat_article_section("## 📝 Blog Picks", "📝", picks)
 
 
-def render_chat_podcast_remix(data: Dict[str, Any]) -> Optional[str]:
-    episodes = [
-        article
-        for article in unique_articles(iter_articles(data), "podcast")
-        if article.get("transcript_status") == "ok"
-        and article.get("transcript")
-        and article_link(article)
-    ]
+def render_chat_podcast_remix(
+    data: Dict[str, Any],
+    visible_registry: VisibleArticleRegistry,
+) -> Optional[str]:
+    episodes = fixed_podcast_articles(data)
     episodes = sorted(episodes, key=quality_score, reverse=True)
+    episodes = visible_registry.filter_unseen(episodes)
     return render_chat_article_section("## 🎙️ Podcast Remix", "🎙️", episodes)
 
 
@@ -521,7 +771,11 @@ def render_digest(
         raise ValueError(f"Unsupported template: {template}")
 
     sections = [f"# 🚀 Tech Digest - {report_date}"]
-    sections.extend(render_topic_sections(data, topic_defs))
+    visible_registry = VisibleArticleRegistry()
+    visible_registry.register_aliases(
+        visible_alias_candidates(data, topic_defs, template="discord")
+    )
+    sections.extend(render_topic_sections(data, topic_defs, visible_registry))
 
     for renderer in (
         render_kol_updates,
@@ -530,7 +784,7 @@ def render_digest(
         render_blog_picks,
         render_podcast_remix,
     ):
-        section = renderer(data)
+        section = renderer(data, visible_registry)
         if section:
             sections.append(section)
 
@@ -544,8 +798,12 @@ def render_chat_digest(
     report_date: str,
     version: str,
 ) -> str:
+    visible_registry = VisibleArticleRegistry()
+    visible_registry.register_aliases(
+        visible_alias_candidates(data, topic_defs, template="chat")
+    )
     sections = [f"# 🚀 Tech Digest - {report_date}"]
-    sections.extend(render_chat_topic_sections(data, topic_defs))
+    sections.extend(render_chat_topic_sections(data, topic_defs, visible_registry))
 
     for renderer in (
         render_chat_kol_updates,
@@ -554,7 +812,7 @@ def render_chat_digest(
         render_chat_blog_picks,
         render_chat_podcast_remix,
     ):
-        section = renderer(data)
+        section = renderer(data, visible_registry)
         if section:
             sections.append(section)
 
