@@ -1,61 +1,76 @@
 # 🚀 Tech Digest - 2026-02-27
 
-## 🧠 LLM / Large Models
+评分说明：相关性 + 新鲜度 + 影响面。
 
-1. 🧠 [9/10] OpenAI ships structured agent evaluation suite
+今日看点
+• OpenAI 发布了一套面向 Agent 可靠性的结构化评测，用来覆盖工具调用和长周期任务等场景。
+• 这期 Training Data 播客围绕 product taste、evaluation loops 和 Agent reliability 展开。
+• LangGraph 新增 checkpoint 和可恢复编排能力，目标是让多 Agent 工作流更适合生产环境。
+
+## 🧠 LLM / 大模型
+
+1. [9/10] OpenAI ships structured agent evaluation suite
 
 OpenAI 发布了一套面向 Agent 可靠性的结构化评测，用来覆盖工具调用和长周期任务等场景。这个条目同时来自 OpenAI Blog、Hacker News 和 r/OpenAI，说明它既有官方信息源，也引发了开发者社区关注。
 
+来源：openai.com
 🔗 https://openai.com/research/agent-evals
 
-2. 🧠 [6/10] Claude Code adds repository-wide planning mode
+2. [6/10] Claude Code adds repository-wide planning mode
 
 Anthropic 为 Claude Code 增加了仓库级 planning mode，让开发者在真正改代码前先审阅跨文件计划。这个变化更偏向工程工作流治理，适合需要控制大规模代码修改风险的团队关注。
 
+来源：anthropic.com
 🔗 https://www.anthropic.com/news/claude-code-planning
 
-## 🤖 AI Agent
+## 🤖 AI Agent / 智能体
 
-1. 🤖 [7/10] LangGraph releases durable multi-agent workflows
+1. [7/10] LangGraph releases durable multi-agent workflows
 
 LangGraph 新增 checkpoint 和可恢复编排能力，目标是让多 Agent 工作流更适合生产环境。它解决的是长任务中断、恢复和状态管理问题，属于 Agent 工程化基础设施的一部分。
 
+来源：blog.langchain.dev
 🔗 https://blog.langchain.dev/durable-multi-agent-workflows
 
-2. 🤖 [5.5/10] SWE-agent benchmark report
+2. [5.5/10] SWE-agent benchmark report
 
 SWE-bench 分享了一份关于仓库级 coding agent 的 benchmark report，重点是评估 Agent 在真实代码库中的修复能力。该条目只基于账号名称、原始摘要和链接，不额外推断账号背景或行业地位。
 
+来源：x.com
 🔗 https://x.com/swebench/status/1234567890
 
-## 🏗️ Builder
+## 🏗️ Builder / 构建者
 
-1. 🏗️ [6.5/10] Simon Willison explains practical prompt injection defenses
+1. [6.5/10] Simon Willison explains practical prompt injection defenses
 
 Simon Willison 讨论了 prompt injection 的实际防护策略，核心是降低检索内容权限、隔离工具执行，并向用户暴露清晰审计线索。文章适合正在构建 RAG、Agent 或工具调用系统的开发者参考。
 
+来源：simonwillison.net
 🔗 https://simonwillison.net/2026/Feb/27/prompt-injection-defenses/
 
-## 🔬 Frontier Tech
+## 🔬 Tech Industry / 产业动态
 
-1. 🔬 [5/10] vLLM ships v1.0 scheduler improvements
+1. [5/10] vLLM ships v1.0 scheduler improvements
 
 vLLM v1.0.0 改进了 scheduler fairness 和生产 serving 稳定性。对依赖 vLLM 部署推理服务的团队来说，这类调度层变化会直接影响吞吐、公平性和线上可靠性。
 
+来源：github.com
 🔗 https://github.com/vllm-project/vllm/releases/tag/v1.0.0
 
-2. 🔬 [4.5/10] browser-use/web-ui
+2. [4.5/10] browser-use/web-ui
 
 browser-use/web-ui 是一个 TypeScript 项目，用本地 Web UI 运行 browser agents。它在 GitHub Trending 中增长到 1.2K stars，并估算有 76 stars/day 的新增速度。
 
+来源：github.com
 🔗 https://github.com/browser-use/web-ui
 
-## 🎧 Podcast
+## 🎧 Podcast / 播客
 
-1. 🎧 [7.5/10] Why agents need product taste
+1. [7.5/10] Why agents need product taste
 
 这期 Training Data 播客围绕 product taste、evaluation loops 和 Agent reliability 展开。Transcript 中提到，taste 是一个工具从 demo 好看走向每天被使用的关键差异。
 
+来源：youtube.com
 🔗 https://www.youtube.com/watch?v=agenttaste
 
 ---

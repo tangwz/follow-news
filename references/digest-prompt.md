@@ -68,9 +68,13 @@ python3 <SKILL_DIR>/scripts/summarize-merged.py --input /tmp/td-merged.json --to
 
 Use this output to select articles — **do NOT write ad-hoc Python to parse the JSON**. Apply the template from `<SKILL_DIR>/references/templates/<TEMPLATE>.md`.
 
-When `<TEMPLATE>` is `chat`, follow `references/templates/chat.md` exactly: each visible item uses title line, one compact summary paragraph in `<LANGUAGE>`, and `🔗 URL`. Keep source titles and URLs unchanged. Do not use `<URL>`, Markdown inline links, or HTML links. Skip linkless items; skip sections that have no visible items after filtering. For chat, this template overrides the global article line, bullet-list, score-prefix, fixed-section example, and link-format rules below.
+When `<TEMPLATE>` is `chat`, follow `references/templates/chat.md` exactly: each visible item uses title line, one compact summary paragraph in `<LANGUAGE>`, `来源：domain`, and `🔗 URL`. Keep source titles and URLs unchanged. Do not use `<URL>`, Markdown inline links, or HTML links. Skip linkless items; skip sections that have no visible items after filtering. Do not repeat the section emoji inside item title lines. For chat, this template overrides the global article line, bullet-list, score-prefix, fixed-section example, and link-format rules below.
 
 Select articles **purely by quality_score regardless of source type**. When an article has a `full_text` field, use it to write a richer 2-3 sentence summary instead of relying solely on the title/snippet. Articles in merged JSON are already sorted by quality_score descending within each topic — respect this order. For Reddit posts, append `*[Reddit r/xxx, {{score}}↑]*`.
+
+Visible deduplication applies across the whole digest. If a URL or equivalent title is already visible in a topic section, do not repeat it in KOL Updates, GitHub Releases, GitHub Trending, Blog Picks, or Podcast Remix. Topic sections take precedence over fixed sections.
+
+When an item has multiple candidate topics, prefer the topic supported by the item title, snippet, summary, or full text over the source's broad default topic list. Policy, public-sector technology, open-source governance, security-operations, or industry-adoption stories should not be placed under LLM unless the item itself is about language models, model capabilities, model releases, inference, or benchmarks.
 
 ### Non-GitHub Summary Quality Contract
 
@@ -84,10 +88,12 @@ Non-GitHub summaries normally use 2-4 sentences. Chat can keep this target when 
 
 For KOL/Twitter fixed sections, always render the four metrics from `metrics.impression_count`, `metrics.reply_count`, `metrics.retweet_count`, and `metrics.like_count` in that order. Missing, null, empty, or unparsable metric values render as 0. A real value of 0 also renders as 0. Metrics are context for reach and discussion, not proof that a claim is true.
 
+Avoid unsupported significance words such as "major", "landmark", "strategic", "long-term impact", or "rare sober voice" unless the evidence explicitly supports that judgment. Prefer concrete facts and restrained reader impact.
+
 For non-chat templates, each article line must include its quality score using 🔥 prefix. Format: `🔥{score} | {summary with link}`. This makes scoring transparent and helps readers identify the most important news at a glance. For chat, use `[score/10]` in the title line from `references/templates/chat.md`.
 
 ### Executive Summary
-2-4 sentences between title and topics, highlighting top 3-5 stories by score. Concise and punchy, no links. Discord: `> ` blockquote. Email: gray background. Telegram: `<i>`. Chat: omit the executive summary unless `references/templates/chat.md` is explicitly extended with one later.
+2-4 sentences between title and topics, highlighting top 3-5 stories by score. Concise and punchy, no links. Discord: `> ` blockquote. Email: gray background. Telegram: `<i>`. Chat: use the `references/templates/chat.md` score note plus `今日看点` block instead of a paragraph executive summary.
 
 ### Topic Sections
 From `topics.json`: `emoji` + `label` headers, `<ITEMS_PER_SECTION>` items each.
@@ -115,6 +121,7 @@ Read `display_name` and `metrics` (impression_count→👁, reply_count→💬, 
   <https://github.com/owner/repo/releases/tag/vX.Y.Z>
 ```
 Filter for `source_type == "github"` from merged JSON. **Show ALL releases — do not filter or reduce.** No 🔥 score prefix for this section. Skip section if no releases in time window.
+For chat, filter out nightly builds, alpha/prerelease tags, and dependency-only updates from this fixed section unless the same release already appeared as a high-scoring topic article. This keeps low-signal build noise out of the bottom release list.
 
 **🐙 GitHub Trending** — Top trending repos from the past 24-48h. Format:
 ```
@@ -129,6 +136,7 @@ No 🔥 score prefix for this section. Filter for `source_type == "github_trendi
   <https://blog.example.com/post>
 ```
 If `full_text` is available, write summary from full text; otherwise use title + snippet. Summary should highlight unique insights or technical depth — do not just translate the title.
+For chat, this section is mandatory only when there are unseen blog picks after visible deduplication. Do not repeat posts already shown in topic sections.
 
 **🎙️ Podcast Remix** — Top 1-3 podcast episodes with usable transcripts. Filter for `source_type == "podcast"`, `transcript_status == "ok"`, and non-empty `transcript` from merged JSON. Skip this section if no podcast transcript is available. Use `transcript` as remixable thought material, not as ordinary news copy. Format:
 ```

@@ -12,6 +12,7 @@ from urllib.parse import parse_qsl, parse_qs, urlencode, urlparse
 
 
 MIN_QUALITY_SCORE = 5
+CHAT_SCORE_NOTE = "评分说明：相关性 + 新鲜度 + 影响面。"
 TRACKING_QUERY_PARAMS = {
     "fbclid",
     "gclid",
@@ -292,7 +293,20 @@ def chat_title_line(
     emoji: str,
 ) -> str:
     title = article.get("title") or article.get("repo") or "Untitled"
-    return f"{index}. {emoji} [{format_chat_score(article)}/10] {title}"
+    return f"{index}. [{format_chat_score(article)}/10] {title}"
+
+
+def visible_source_label(article: Dict[str, Any]) -> str:
+    url = article_link(article)
+    if url:
+        try:
+            domain = normalize_visible_domain(urlparse(url).netloc)
+            if domain:
+                return domain
+        except Exception:
+            pass
+
+    return compact_text(article.get("source_name")) or "unknown"
 
 
 def render_chat_item(
@@ -306,6 +320,7 @@ def render_chat_item(
             "",
             chat_summary(article),
             "",
+            f"来源：{visible_source_label(article)}",
             f"🔗 {article_link(article)}",
         ]
     )
@@ -332,7 +347,9 @@ def fixed_github_release_articles(data: Dict[str, Any]) -> List[Dict[str, Any]]:
     return [
         article
         for article in iter_articles(data)
-        if article.get("source_type") == "github" and article_link(article)
+        if article.get("source_type") == "github"
+        and article_link(article)
+        and not is_low_signal_github_release(article)
     ]
 
 
@@ -519,6 +536,45 @@ def format_kol_metric_text(article: Dict[str, Any]) -> str:
     )
 
 
+def is_low_signal_github_release(article: Dict[str, Any]) -> bool:
+    title = compact_text(article.get("title")).lower()
+    tag = compact_text(article.get("tag_name") or article.get("version")).lower()
+    summary = compact_text(article.get("summary") or article.get("snippet")).lower()
+    combined = " ".join([title, tag, summary])
+
+    if article.get("prerelease") is True:
+        return True
+
+    low_signal_tokens = ("nightly", "snapshot", "alpha", "canary")
+    if any(token in combined for token in low_signal_tokens):
+        return True
+
+    if re.search(r"(?:^|[._-])a\d+$", tag):
+        return True
+
+    dependency_terms = (
+        "dependency",
+        "dependencies",
+        "package",
+        "packages",
+        "bump",
+        "deps",
+    )
+    signal_terms = (
+        "api",
+        "feature",
+        "security",
+        "performance",
+        "stable",
+        "support",
+        "breaking",
+        "fix",
+    )
+    has_dependency_update = any(term in combined for term in dependency_terms)
+    has_product_signal = any(term in combined for term in signal_terms)
+    return has_dependency_update and not has_product_signal
+
+
 def render_github_releases(
     data: Dict[str, Any],
     visible_registry: VisibleArticleRegistry,
@@ -668,13 +724,14 @@ def render_chat_kol_updates(
     if not tweets:
         return None
 
-    lines = ["## 📢 KOL Updates", ""]
+    lines = ["## 📢 KOL Updates / 观点动态", ""]
     for index, article in enumerate(tweets, 1):
         metric_text = format_kol_metric_text(article)
         lines.append(chat_title_line(article, index, "📢"))
         lines.append("")
         lines.append(f"{chat_summary(article)} `{metric_text}`")
         lines.append("")
+        lines.append(f"来源：{visible_source_label(article)}")
         lines.append(f"🔗 {article_link(article)}")
         lines.append("")
     return "\n".join(lines).rstrip()
@@ -687,7 +744,7 @@ def render_chat_github_releases(
     releases = fixed_github_release_articles(data)
     releases = sorted(releases, key=quality_score, reverse=True)
     releases = visible_registry.filter_unseen(releases)
-    return render_chat_article_section("## 📦 GitHub Releases", "📦", releases)
+    return render_chat_article_section("## 📦 GitHub Releases / 发布", "📦", releases)
 
 
 def render_chat_github_trending(
@@ -701,7 +758,7 @@ def render_chat_github_trending(
         reverse=True,
     )
     repos = visible_registry.filter_unseen(repos)
-    return render_chat_article_section("## 🐙 GitHub Trending", "🐙", repos)
+    return render_chat_article_section("## 🐙 GitHub Trending / 趋势", "🐙", repos)
 
 
 def render_chat_blog_picks(
@@ -711,7 +768,7 @@ def render_chat_blog_picks(
     picks = fixed_blog_pick_articles(data)
     picks = sorted(picks, key=quality_score, reverse=True)
     picks = visible_registry.filter_unseen(picks)
-    return render_chat_article_section("## 📝 Blog Picks", "📝", picks)
+    return render_chat_article_section("## 📝 Blog Picks / 博客精选", "📝", picks)
 
 
 def render_chat_podcast_remix(
@@ -721,7 +778,41 @@ def render_chat_podcast_remix(
     episodes = fixed_podcast_articles(data)
     episodes = sorted(episodes, key=quality_score, reverse=True)
     episodes = visible_registry.filter_unseen(episodes)
-    return render_chat_article_section("## 🎙️ Podcast Remix", "🎙️", episodes)
+    return render_chat_article_section("## 🎙️ Podcast Remix / 播客精选", "🎙️", episodes)
+
+
+def first_sentence(text: str) -> str:
+    compact = compact_text(text)
+    for separator in ("。", ".", "！", "!", "？", "?"):
+        if separator in compact:
+            return compact.split(separator, 1)[0] + separator
+    return compact
+
+
+def render_chat_intro(
+    data: Dict[str, Any],
+    topic_defs: Sequence[Dict[str, Any]],
+) -> Optional[str]:
+    candidates: List[Dict[str, Any]] = []
+    registry = VisibleArticleRegistry()
+    registry.register_aliases(visible_alias_candidates(data, topic_defs, template="chat"))
+
+    topics = data.get("topics", {})
+    for topic_def in topic_defs:
+        topic_data = topics.get(topic_def.get("id"))
+        if not isinstance(topic_data, dict):
+            continue
+        candidates.extend(registry.filter_unseen(chat_topic_articles(topic_data)))
+
+    lines = [CHAT_SCORE_NOTE]
+    highlights = sorted(candidates, key=quality_score, reverse=True)[:3]
+    if highlights:
+        lines.extend(["", "今日看点"])
+        for article in highlights:
+            summary = first_sentence(chat_summary(article))
+            lines.append(f"• {summary}")
+
+    return "\n".join(lines)
 
 
 def source_count(data: Dict[str, Any], key: str) -> int:
@@ -803,6 +894,9 @@ def render_chat_digest(
         visible_alias_candidates(data, topic_defs, template="chat")
     )
     sections = [f"# 🚀 Tech Digest - {report_date}"]
+    intro = render_chat_intro(data, topic_defs)
+    if intro:
+        sections.append(intro)
     sections.extend(render_chat_topic_sections(data, topic_defs, visible_registry))
 
     for renderer in (

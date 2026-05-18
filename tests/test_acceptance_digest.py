@@ -36,6 +36,13 @@ spec = importlib.util.spec_from_file_location(
 render_mod = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(render_mod)
 
+merge_spec = importlib.util.spec_from_file_location(
+    "merge_sources",
+    SCRIPTS_DIR / "merge-sources.py",
+)
+merge_mod = importlib.util.module_from_spec(merge_spec)
+merge_spec.loader.exec_module(merge_mod)
+
 
 def load_acceptance_fixture():
     return json.loads(ACCEPTANCE_FIXTURE.read_text(encoding="utf-8"))
@@ -624,8 +631,12 @@ class TestAcceptanceRenderer(unittest.TestCase):
         lines = text.splitlines()
 
         self.assertTrue(text.startswith("# 🚀 Tech Digest - 2026-02-27\n"))
-        self.assertIn("## 🧠 LLM / Large Models", text)
-        self.assertIn("1. 🧠 [9/10] OpenAI ships structured agent evaluation suite", text)
+        self.assertIn("评分说明：相关性 + 新鲜度 + 影响面。", text)
+        self.assertIn("今日看点", text)
+        self.assertIn("## 🧠 LLM / 大模型", text)
+        self.assertIn("1. [9/10] OpenAI ships structured agent evaluation suite", text)
+        self.assertNotIn("1. 🧠 [9/10]", text)
+        self.assertIn("来源：openai.com", text)
         self.assertIn("🔗 https://openai.com/research/agent-evals", text)
         self.assertNotIn("<https://", text)
         self.assertNotIn("Low scoring model rumor should not render", text)
@@ -633,18 +644,19 @@ class TestAcceptanceRenderer(unittest.TestCase):
         title_lines = [
             line
             for line in lines
-            if re.match(r"^[0-9]+\. .+ \[[0-9]+(?:\.[0-9]+)?/10\] .+", line)
+            if re.match(r"^[0-9]+\. \[[0-9]+(?:\.[0-9]+)?/10\] .+", line)
         ]
         self.assertGreater(len(title_lines), 0)
 
         for index, line in enumerate(lines):
-            if not re.match(r"^[0-9]+\. .+ \[[0-9]+(?:\.[0-9]+)?/10\] .+", line):
+            if not re.match(r"^[0-9]+\. \[[0-9]+(?:\.[0-9]+)?/10\] .+", line):
                 continue
-            self.assertLess(index + 4, len(lines))
+            self.assertLess(index + 5, len(lines))
             self.assertEqual(lines[index + 1], "")
             self.assertNotEqual(lines[index + 2], "")
             self.assertEqual(lines[index + 3], "")
-            self.assertRegex(lines[index + 4], r"^🔗 https?://.+$")
+            self.assertRegex(lines[index + 4], r"^来源：.+$")
+            self.assertRegex(lines[index + 5], r"^🔗 https?://.+$")
 
         section_starts = [
             index for index, line in enumerate(lines) if line.startswith("## ")
@@ -658,9 +670,120 @@ class TestAcceptanceRenderer(unittest.TestCase):
             section_text = "\n".join(lines[start:end])
             self.assertRegex(
                 section_text,
-                r"(?m)^[0-9]+\. .+ \[[0-9]+(?:\.[0-9]+)?/10\] .+",
+                r"(?m)^[0-9]+\. \[[0-9]+(?:\.[0-9]+)?/10\] .+",
                 lines[start],
             )
+
+    def test_chat_fixed_sections_use_consistent_numbered_item_shape(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 2},
+            "topics": {
+                "supplemental": {
+                    "articles": [
+                        {
+                            "title": "Example Tool v1.0.0",
+                            "link": "https://github.com/example/tool/releases/tag/v1.0.0",
+                            "source_type": "github",
+                            "repo": "example/tool",
+                            "tag_name": "v1.0.0",
+                            "summary": "The release ships a stable API.",
+                            "quality_score": 10,
+                        },
+                        {
+                            "title": "Example Blog Pick",
+                            "link": "https://example.com/blog",
+                            "source_type": "rss",
+                            "is_blog_pick": True,
+                            "author": "Example Author",
+                            "full_text": "The post explains a concise engineering pattern.",
+                            "quality_score": 9,
+                        },
+                    ]
+                }
+            },
+        }
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=[],
+            report_date="2026-05-18",
+            version="3.17.0",
+            template="chat",
+        )
+
+        self.assertIn("## 📦 GitHub Releases / 发布", text)
+        self.assertIn("## 📝 Blog Picks / 博客精选", text)
+        fixed_text = text.split("## 📦 GitHub Releases / 发布", 1)[1]
+        self.assertIn("1. [5/10] Example Tool v1.0.0", fixed_text)
+        self.assertIn("来源：github.com", fixed_text)
+        self.assertNotRegex(fixed_text, r"(?m)^• ")
+
+    def test_chat_github_releases_filter_low_signal_prereleases(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 2},
+            "topics": {
+                "supplemental": {
+                    "articles": [
+                        {
+                            "title": "picoclaw nightly",
+                            "link": "https://github.com/sipeed/picoclaw/releases/tag/nightly",
+                            "source_type": "github",
+                            "repo": "sipeed/picoclaw",
+                            "tag_name": "nightly",
+                            "summary": "Nightly build.",
+                            "quality_score": 10,
+                        },
+                        {
+                            "title": "crewAI 1.14.5a7",
+                            "link": "https://github.com/crewAIInc/crewAI/releases/tag/1.14.5a7",
+                            "source_type": "github",
+                            "repo": "crewAIInc/crewAI",
+                            "tag_name": "1.14.5a7",
+                            "summary": "Alpha pre-release.",
+                            "quality_score": 10,
+                            "prerelease": True,
+                        },
+                    ]
+                }
+            },
+        }
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=[],
+            report_date="2026-05-18",
+            version="3.17.0",
+            template="chat",
+        )
+
+        self.assertNotIn("## 📦 GitHub Releases", text)
+        self.assertNotIn("picoclaw nightly", text)
+        self.assertNotIn("crewAI 1.14.5a7", text)
+
+    def test_group_by_topics_prefers_content_keyword_match_over_topic_order(self):
+        articles = [
+            {
+                "title": "GDS weighs in on the NHS open source decision",
+                "snippet": "Government Digital Service discussed public sector open source policy.",
+                "topics": ["llm", "frontier-tech"],
+            }
+        ]
+        topic_priority = {"llm": 0, "frontier-tech": 1, "uncategorized": 2}
+        topic_keywords = {
+            "llm": ["large language model", "foundation model", "大模型"],
+            "frontier-tech": ["open source", "public sector", "policy"],
+        }
+
+        groups = merge_mod.group_by_topics(
+            articles,
+            topic_priority=topic_priority,
+            topic_keywords=topic_keywords,
+        )
+
+        self.assertNotIn("llm", groups)
+        self.assertIn("frontier-tech", groups)
 
     def test_chat_non_github_summaries_keep_stable_evidence_phrases(self):
         text = render_daily_chat_digest()
@@ -757,7 +880,7 @@ class TestAcceptanceRenderer(unittest.TestCase):
         self.assertNotIn("## 🧠 LLM / Large Models", text)
         self.assertNotIn("No link item", text)
         self.assertIn("## 🤖 AI Agent", text)
-        self.assertIn("1. 🤖 [5/10] Visible agent item", text)
+        self.assertIn("1. [5/10] Visible agent item", text)
         self.assertIn("🔗 https://example.com/agent", text)
 
     def test_chat_digest_invalid_score_uses_zero_fallback(self):
@@ -788,7 +911,7 @@ class TestAcceptanceRenderer(unittest.TestCase):
             template="chat",
         )
 
-        self.assertIn("1. 🤖 [0/10] Invalid score item", text)
+        self.assertIn("1. [0/10] Invalid score item", text)
 
     def test_default_discord_digest_filters_invalid_score_items(self):
         data = {
@@ -896,7 +1019,7 @@ class TestAcceptanceRenderer(unittest.TestCase):
         )
         summary = extract_chat_summary(
             text,
-            "1. 🧠 [5/10] Snippet-only model note",
+            "1. [5/10] Snippet-only model note",
         )
 
         self.assertEqual(summary, "Only this snippet is available.")
@@ -936,7 +1059,7 @@ class TestAcceptanceRenderer(unittest.TestCase):
         )
         summary = extract_chat_summary(
             text,
-            "1. 🏗️ [5/10] Title-level fallback only",
+            "1. [5/10] Title-level fallback only",
         )
 
         self.assertEqual(summary, "Full text evidence should win.")
@@ -1123,7 +1246,7 @@ class TestAcceptanceRenderer(unittest.TestCase):
         lines = text.splitlines()
 
         self.assertTrue(text.startswith("# 🚀 Tech Digest - 2026-02-27\n"))
-        self.assertIn("## 🧠 LLM / Large Models", text)
+        self.assertIn("## 🧠 LLM / 大模型", text)
         self.assertIn("---\n", text)
         self.assertIn("Powered by OpenClaw", text)
 
@@ -1184,7 +1307,7 @@ class TestAcceptanceRenderer(unittest.TestCase):
         )
 
         self.assertIn("# 🚀 Tech Digest - 2026-02-27", text)
-        self.assertIn("## 🧠 LLM / Large Models", text)
+        self.assertIn("## 🧠 LLM / 大模型", text)
         self.assertIn("• 🔥18 | OpenAI ships structured agent evaluation suite", text)
         self.assertIn("  🔗 https://openai.com/research/agent-evals", text)
         self.assertIn("  *[3 sources]*", text)
@@ -1551,7 +1674,7 @@ class TestAcceptanceRenderer(unittest.TestCase):
 
             self.assertEqual(result.returncode, 0, result.stderr)
             text = output_path.read_text(encoding="utf-8")
-            self.assertIn("1. 🧠 [9/10] OpenAI ships structured agent evaluation suite", text)
+            self.assertIn("1. [9/10] OpenAI ships structured agent evaluation suite", text)
             self.assertIn("🔗 https://openai.com/research/agent-evals", text)
             self.assertNotIn("<https://", text)
 

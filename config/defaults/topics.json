@@ -6,12 +6,12 @@
     {
       "id": "llm",
       "emoji": "🧠",
-      "label": "LLM / Large Models",
-      "description": "Large Language Models, foundation models, model releases, benchmarks, and breakthroughs in generative AI",
+      "label": "LLM / 大模型",
+      "description": "Large language models, foundation models, model releases, benchmarks, inference, and model capability changes",
       "search": {
         "queries": ["LLM latest news", "large language model breakthroughs", "大模型最新动态", "GPT Claude Gemini updates"],
         "twitter_queries": ["GPT-5", "Claude", "大模型"],
-        "must_include": ["LLM", "large language model", "foundation model", "language model", "大模型"],
+        "must_include": ["LLM", "large language model", "foundation model", "language model", "model release", "benchmark", "inference", "大模型"],
         "exclude": ["tutorial", "how to use", "beginner guide"]
       },
       "display": {
@@ -22,12 +22,12 @@
     {
       "id": "ai-agent",
       "emoji": "🤖",
-      "label": "AI Agent",
+      "label": "AI Agent / 智能体",
       "description": "Autonomous agents, agent frameworks, AI assistants, and agentic AI systems",
       "search": {
         "queries": ["AI Agent latest developments", "autonomous agent framework", "AI assistant breakthrough"],
         "twitter_queries": ["AI agent", "autonomous agent", "AI 智能体"],
-        "must_include": ["AI agent", "autonomous agent", "agent framework", "agentic", "multi-agent"],
+        "must_include": ["AI agent", "autonomous agent", "agent framework", "agentic", "multi-agent", "OpenClaw", "coding agent", "desktop agent", "智能体"],
         "exclude": ["game agent", "travel agent"]
       },
       "display": {
@@ -38,7 +38,7 @@
     {
       "id": "builder",
       "emoji": "🏗️",
-      "label": "Builder",
+      "label": "Builder / 构建者",
       "description": "Founders, operators, and practical execution leaders in AI and software engineering",
       "search": {
         "queries": ["AI startup founding", "product launch", "builder mindset", "创业者观点", "AI公司动态"],
@@ -54,7 +54,7 @@
     {
       "id": "kol",
       "emoji": "🎤",
-      "label": "KOL",
+      "label": "KOL / 观点",
       "description": "Opinion leaders, keynote speakers, and influential commentators in technology",
       "search": {
         "queries": ["AI opinion leader", "tech keynote", "industry voice", "KOL", "行业观点"],
@@ -70,12 +70,12 @@
     {
       "id": "frontier-tech",
       "emoji": "🔬",
-      "label": "Frontier Tech",
-      "description": "Cutting-edge technology, research breakthroughs, quantum computing, biotech, and emerging technologies",
+      "label": "Tech Industry / 产业动态",
+      "description": "Technology industry, AI policy, public-sector technology choices, security operations, governance, and emerging technology adoption",
       "search": {
-        "queries": ["artificial intelligence breakthroughs", "frontier technology latest", "quantum computing progress", "biotech breakthrough"],
-        "twitter_queries": ["AI breakthrough", "量子计算", "机器人"],
-        "must_include": ["breakthrough", "research", "technology", "innovation", "quantum", "biotech", "robotics"],
+        "queries": ["AI industry news", "technology policy latest", "AI governance", "frontier technology latest"],
+        "twitter_queries": ["AI industry", "AI policy", "AI governance", "技术产业"],
+        "must_include": ["policy", "governance", "open source", "public sector", "industry", "security", "technology", "innovation", "quantum", "biotech", "robotics", "AI adoption"],
         "exclude": ["rumor", "speculation", "unverified"]
       },
       "display": {
@@ -86,7 +86,7 @@
     {
       "id": "podcast",
       "emoji": "🎧",
-      "label": "Podcast",
+      "label": "Podcast / 播客",
       "description": "Podcast episodes from configured podcast feeds and YouTube sources",
       "search": {
         "queries": [],
