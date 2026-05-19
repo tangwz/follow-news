@@ -7,11 +7,18 @@ Universal IM format for Telegram, Feishu, WeChat, WeCom, and similar chat surfac
 ```markdown
 # 🚀 Tech Digest - {{DATE}}
 
+评分说明：相关性 + 新鲜度 + 影响面。
+
+今日看点
+• {{highlight_1}}
+• {{highlight_2}}
+• {{highlight_3}}
+
 {{#topics}}
 ## {{emoji}} {{label}}
 
 {{#articles}}
-{{index}}. {{emoji}} [{{score}}/10] {{title}}
+{{index}}. [{{score}}/10] {{title}}
 
 {{summary}}
 
@@ -27,15 +34,19 @@ Universal IM format for Telegram, Feishu, WeChat, WeCom, and similar chat surfac
 
 ## Format Rules
 
-- Use one fixed item shape: title line, blank line, compact summary, blank line, `🔗 URL`.
+- Use one fixed item shape: title line, blank line, compact summary, blank line, then `🔗 URL`.
 - Use bare URLs only. Do not use `<URL>`, Markdown inline links, or HTML links.
 - Reset `{{index}}` to `1` inside each section.
+- Do not repeat the section emoji in item title lines; the section heading already carries the visual marker.
 - Use the source title unchanged in `{{title}}`.
 - Write `{{summary}}` in `<LANGUAGE>` as one compact paragraph, normally 2-4 sentences. Chinese is the default configured language.
 - Do not force a `理由：` label. Include significance naturally when the evidence supports it.
 - Skip items without a usable link.
 - Skip sections that have no visible items after filtering.
 - Use valid numeric `quality_score` as the `[score/10]` title-line value. Explicit invalid, non-finite, or non-numeric scores render as `[0/10]`. Missing, null, or empty scores are skipped from topic sections. Valid numeric scores below the configured threshold are skipped.
+- Use bilingual section labels consistently for chat output when a section has a stable Chinese name, for example `GitHub Releases / 发布`, `GitHub Trending / 趋势`, and `Blog Picks / 博客精选`.
+- Add the short score note shown above. It explains that scores combine relevance, freshness, and impact surface.
+- Add a short `今日看点` block with 2-3 linkless bullets before topic sections when there are enough visible items.
 
 ## Evidence Rules
 
@@ -54,10 +65,18 @@ Use `full_text > summary > snippet > title` as evidence weight. Lower-priority f
 
 Chat summaries normally use 2-4 sentences in one compact paragraph. Platform length limits take precedence over sentence-count targets when the output is sent through constrained channels.
 
+Avoid unsupported significance words such as "major", "landmark", "strategic", "long-term impact", or "rare sober voice" unless the evidence explicitly supports that judgment. Prefer concrete facts and restrained reader impact.
+
 ## Source Rules
 
 - Twitter/X and KOL: identify display name, handle, or known identity only when present in evidence. In fixed KOL sections, always include interaction metrics from merged JSON fields `metrics.impression_count`, `metrics.reply_count`, `metrics.retweet_count`, and `metrics.like_count` as `👁 views | 💬 replies | 🔁 reposts | ❤️ likes`. Missing, null, empty, or unparsable metric values render as `0`. Never omit these metrics when an item appears in the section.
 - RSS and Web: prefer concrete product, model, version, company, person, metric, and publication-time details when present.
 - Reddit: distinguish the linked item from subreddit discussion. Treat score, comments, and controversy as discussion signals, not factual proof.
 - Podcast: use transcript-backed insight only when transcript text is available. Without transcript, summarize only title, show name, snippet, duration, and source metadata.
-- GitHub Releases and GitHub Trending: keep summaries short. Prefer repo, version or trending status, language, stars, and core changes. Do not add industry judgment unless release notes or repo metadata support it.
+- GitHub Releases and GitHub Trending: keep summaries short. Prefer repo, version or trending status, language, stars, and core changes. Do not add industry judgment unless release notes or repo metadata support it. Filter out nightly builds, alpha/prerelease tags, and dependency-only updates from fixed GitHub Releases unless the item already appeared as a high-scoring topic article.
+
+## Dedup and Section Rules
+
+- A visible URL or equivalent title should appear at most once in the whole chat digest.
+- Topic sections win over fixed sections. If an item is already visible under a topic, skip it from GitHub Releases, GitHub Trending, Blog Picks, KOL Updates, and Podcast Remix.
+- Use content keyword matches to pick the best topic when a source is configured for multiple topics. Do not place a policy, open-source governance, or public-sector technology story under LLM unless the item itself is about language models or model capabilities.

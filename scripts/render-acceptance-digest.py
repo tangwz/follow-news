@@ -12,6 +12,7 @@ from urllib.parse import parse_qsl, parse_qs, urlencode, urlparse
 
 
 MIN_QUALITY_SCORE = 5
+CHAT_SCORE_NOTE = "评分说明：相关性 + 新鲜度 + 影响面。"
 TRACKING_QUERY_PARAMS = {
     "fbclid",
     "gclid",
@@ -292,7 +293,7 @@ def chat_title_line(
     emoji: str,
 ) -> str:
     title = article.get("title") or article.get("repo") or "Untitled"
-    return f"{index}. {emoji} [{format_chat_score(article)}/10] {title}"
+    return f"{index}. [{format_chat_score(article)}/10] {title}"
 
 
 def render_chat_item(
@@ -328,11 +329,19 @@ def fixed_kol_articles(data: Dict[str, Any]) -> List[Dict[str, Any]]:
     ]
 
 
-def fixed_github_release_articles(data: Dict[str, Any]) -> List[Dict[str, Any]]:
+def fixed_github_release_articles(
+    data: Dict[str, Any],
+    filter_low_signal: bool = False,
+) -> List[Dict[str, Any]]:
     return [
         article
         for article in iter_articles(data)
-        if article.get("source_type") == "github" and article_link(article)
+        if article.get("source_type") == "github"
+        and article_link(article)
+        and (
+            not filter_low_signal
+            or not is_low_signal_github_release(article)
+        )
     ]
 
 
@@ -392,7 +401,12 @@ def visible_alias_candidates(
             candidates.extend(sorted_topic_articles(topic_data))
 
     candidates.extend(fixed_kol_articles(data))
-    candidates.extend(fixed_github_release_articles(data))
+    candidates.extend(
+        fixed_github_release_articles(
+            data,
+            filter_low_signal=(template == "chat"),
+        )
+    )
     candidates.extend(fixed_github_trending_articles(data))
     candidates.extend(fixed_blog_pick_articles(data))
     candidates.extend(fixed_podcast_articles(data))
@@ -517,6 +531,70 @@ def format_kol_metric_text(article: Dict[str, Any]) -> str:
         f"🔁 {format_count(metrics.get('retweet_count'))} | "
         f"❤️ {format_count(metrics.get('like_count'))}"
     )
+
+
+def is_low_signal_github_release(article: Dict[str, Any]) -> bool:
+    title = compact_text(article.get("title")).lower()
+    tag = release_tag_text(article)
+    summary = compact_text(article.get("summary") or article.get("snippet")).lower()
+    dependency_text = " ".join([title, tag, summary])
+
+    if article.get("prerelease") is True:
+        return True
+
+    low_signal_tokens = ("nightly", "snapshot", "canary", "alpha", "beta")
+    if any(token in tag for token in low_signal_tokens):
+        return True
+
+    if re.search(
+        r"(?:^|[._-])(?:a|b|rc|pre)[._-]?\d+$|[0-9](?:a|b|rc|pre)\d+$",
+        tag,
+    ):
+        return True
+
+    dependency_patterns = (
+        r"\b(?:bump|update|upgrade|pin|vendor)\s+(?:deps?|dependencies|packages?)\b",
+        r"\b(?:bump|update|upgrade|pin|vendor)\s+[a-z0-9_.@/-]+\s+(?:from|to)\b",
+        r"\b(?:deps?|dependencies)\s+(?:bump|update|upgrade)\b",
+        r"\bdependency\s+(?:bump|update|upgrade)\b",
+        r"\bdependency\s+update\s*:",
+        r"\b(?:update|upgrade)\s+dependencies\s*:",
+        r"\b(?:update|upgrade)\s+dependency\s+[a-z0-9_.@/-]+\s+(?:from|to)\b",
+        r"\b(?:update|upgrade)\s+dependency\s+[a-z0-9_.@/-]+\s+v?\d",
+        r"\bdependabot\b",
+    )
+    signal_terms = (
+        "api",
+        "feature",
+        "security",
+        "performance",
+        "stable",
+        "support",
+        "breaking",
+        "fix",
+    )
+    has_dependency_update = any(
+        re.search(pattern, dependency_text)
+        for pattern in dependency_patterns
+    )
+    has_product_signal = any(
+        re.search(rf"\b{re.escape(term)}\b", summary)
+        for term in signal_terms
+    )
+    return has_dependency_update and not has_product_signal
+
+
+def release_tag_text(article: Dict[str, Any]) -> str:
+    explicit_tag = compact_text(article.get("tag_name") or article.get("version")).lower()
+    if explicit_tag:
+        return explicit_tag
+
+    title = compact_text(article.get("title")).lower()
+    matches = re.findall(
+        r"\b(?:v?\d+(?:[._-]\d+)*(?:[._-]?(?:a|b|rc|pre)[._-]?\d+|[._-]?(?:alpha|beta)\d*)?|nightly|snapshot|canary)\b",
+        title,
+    )
+    return " ".join(matches)
 
 
 def render_github_releases(
@@ -668,7 +746,7 @@ def render_chat_kol_updates(
     if not tweets:
         return None
 
-    lines = ["## 📢 KOL Updates", ""]
+    lines = ["## 📢 KOL Updates / 观点动态", ""]
     for index, article in enumerate(tweets, 1):
         metric_text = format_kol_metric_text(article)
         lines.append(chat_title_line(article, index, "📢"))
@@ -684,10 +762,10 @@ def render_chat_github_releases(
     data: Dict[str, Any],
     visible_registry: VisibleArticleRegistry,
 ) -> Optional[str]:
-    releases = fixed_github_release_articles(data)
+    releases = fixed_github_release_articles(data, filter_low_signal=True)
     releases = sorted(releases, key=quality_score, reverse=True)
     releases = visible_registry.filter_unseen(releases)
-    return render_chat_article_section("## 📦 GitHub Releases", "📦", releases)
+    return render_chat_article_section("## 📦 GitHub Releases / 发布", "📦", releases)
 
 
 def render_chat_github_trending(
@@ -701,7 +779,7 @@ def render_chat_github_trending(
         reverse=True,
     )
     repos = visible_registry.filter_unseen(repos)
-    return render_chat_article_section("## 🐙 GitHub Trending", "🐙", repos)
+    return render_chat_article_section("## 🐙 GitHub Trending / 趋势", "🐙", repos)
 
 
 def render_chat_blog_picks(
@@ -711,7 +789,7 @@ def render_chat_blog_picks(
     picks = fixed_blog_pick_articles(data)
     picks = sorted(picks, key=quality_score, reverse=True)
     picks = visible_registry.filter_unseen(picks)
-    return render_chat_article_section("## 📝 Blog Picks", "📝", picks)
+    return render_chat_article_section("## 📝 Blog Picks / 博客精选", "📝", picks)
 
 
 def render_chat_podcast_remix(
@@ -721,7 +799,91 @@ def render_chat_podcast_remix(
     episodes = fixed_podcast_articles(data)
     episodes = sorted(episodes, key=quality_score, reverse=True)
     episodes = visible_registry.filter_unseen(episodes)
-    return render_chat_article_section("## 🎙️ Podcast Remix", "🎙️", episodes)
+    return render_chat_article_section("## 🎙️ Podcast Remix / 播客精选", "🎙️", episodes)
+
+
+def first_sentence(text: str) -> str:
+    compact = compact_text(text)
+    for index, char in enumerate(compact):
+        if char not in ("。", ".", "！", "!", "？", "?"):
+            continue
+        if (
+            char == "."
+            and index > 0
+            and index + 1 < len(compact)
+            and compact[index - 1].isdigit()
+            and compact[index + 1].isdigit()
+        ):
+            continue
+        if (
+            char == "."
+            and index > 0
+            and index + 1 < len(compact)
+            and compact[index - 1].isupper()
+            and (
+                compact[index + 1].isupper()
+                or (
+                    index >= 2
+                    and compact[index - 2] == "."
+                )
+            )
+        ):
+            continue
+        if char == "." and is_known_sentence_abbreviation(compact, index):
+            continue
+        return compact[: index + 1]
+    return compact
+
+
+def is_known_sentence_abbreviation(text: str, period_index: int) -> bool:
+    start = period_index - 1
+    while start >= 0 and text[start].isalpha():
+        start -= 1
+    token = text[start + 1:period_index].lower()
+    if token in {
+        "dr",
+        "jr",
+        "mr",
+        "mrs",
+        "ms",
+        "prof",
+        "sr",
+    }:
+        return True
+
+    if token not in {"co", "corp", "inc", "ltd"}:
+        return False
+
+    next_start = period_index + 1
+    while next_start < len(text) and text[next_start].isspace():
+        next_start += 1
+    return next_start < len(text) and text[next_start].islower()
+
+
+def render_chat_intro(
+    data: Dict[str, Any],
+    topic_defs: Sequence[Dict[str, Any]],
+) -> Optional[str]:
+    candidates: List[Dict[str, Any]] = []
+    registry = VisibleArticleRegistry()
+    registry.register_aliases(visible_alias_candidates(data, topic_defs, template="chat"))
+
+    topics = data.get("topics", {})
+    for topic_def in topic_defs:
+        topic_data = topics.get(topic_def.get("id"))
+        if not isinstance(topic_data, dict):
+            continue
+        candidates.extend(registry.filter_unseen(chat_topic_articles(topic_data)))
+
+    lines = [CHAT_SCORE_NOTE]
+    highlights = sorted(candidates, key=quality_score, reverse=True)[:3]
+    if highlights:
+        lines.extend(["", "今日看点"])
+        for article in highlights:
+            summary = first_sentence(chat_summary(article))
+            lines.append(f"• {summary}")
+
+    return "\n".join(lines)
 
 
 def source_count(data: Dict[str, Any], key: str) -> int:
@@ -803,6 +965,9 @@ def render_chat_digest(
         visible_alias_candidates(data, topic_defs, template="chat")
     )
     sections = [f"# 🚀 Tech Digest - {report_date}"]
+    intro = render_chat_intro(data, topic_defs)
+    if intro:
+        sections.append(intro)
     sections.extend(render_chat_topic_sections(data, topic_defs, visible_registry))
 
     for renderer in (

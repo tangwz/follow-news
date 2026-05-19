@@ -426,6 +426,7 @@ def group_by_topics(
     dedup_across_topics: bool = True,
     allowed_topics: Optional[Set[str]] = None,
     topic_priority: Optional[Dict[str, int]] = None,
+    topic_keywords: Optional[Dict[str, List[str]]] = None,
 ) -> Dict[str, List[Dict[str, Any]]]:
     """Group articles by their topics.
     
@@ -473,15 +474,47 @@ def group_by_topics(
     # Sort topics by priority for deterministic assignment
     def get_topic_priority(topic: str) -> int:
         return topic_priority.get(topic, 99)
+
+    def canonical_keyword_topic(topic: str) -> str:
+        if topic == "ai_agent":
+            return "ai-agent"
+        return topic
+
+    def topic_keyword_score(article: Dict[str, Any], topic: str) -> int:
+        if not topic_keywords:
+            return 0
+
+        keywords = topic_keywords.get(topic, [])
+        if not keywords:
+            keywords = topic_keywords.get(canonical_keyword_topic(topic), [])
+        if not keywords:
+            return 0
+
+        haystack = " ".join(
+            str(article.get(field, ""))
+            for field in ("title", "snippet", "summary", "description", "full_text")
+        ).lower()
+        score = sum(1 for keyword in keywords if str(keyword).lower() in haystack)
+        if canonical_keyword_topic(topic) == "llm" and has_llm_model_signal(haystack):
+            score += 2
+        return score
+
+    def choose_primary_topic(article: Dict[str, Any], topics: List[str]) -> str:
+        scored_topics = [
+            (topic_keyword_score(article, topic), get_topic_priority(topic), topic)
+            for topic in topics
+        ]
+        matched_topics = [item for item in scored_topics if item[0] > 0]
+        if matched_topics:
+            selected = sorted(matched_topics, key=lambda item: (-item[0], item[1]))[0][2]
+            return canonical_keyword_topic(selected)
+        return canonical_keyword_topic(sorted(topics, key=get_topic_priority)[0])
     
     for article in articles:
         topics = article.get("topics", [])
         topics = [topic for topic in topics if allowed_topics is None or topic in allowed_topics]
         if not topics:
             topics = ["uncategorized"]
-        
-        # Sort topics by priority to pick the best one
-        sorted_topics = sorted(topics, key=get_topic_priority)
         
         # Create unique article ID for tracking
         article_id = normalize_title(article.get("title", ""))
@@ -493,8 +526,8 @@ def group_by_topics(
                 continue
             seen_article_ids.add(article_id)
         
-        # Assign to first (highest priority) topic
-        primary_topic = sorted_topics[0]
+        # Prefer concrete content matches, then fall back to configured priority.
+        primary_topic = choose_primary_topic(article, topics)
         
         if primary_topic not in topic_groups:
             topic_groups[primary_topic] = []
@@ -510,6 +543,41 @@ def group_by_topics(
         topic_groups[topic].sort(key=lambda x: x.get("quality_score", 0), reverse=True)
         
     return topic_groups
+
+
+def topic_keyword_map(topics: List[Dict[str, Any]]) -> Dict[str, List[str]]:
+    """Return content-match keywords by topic, including stable topic aliases."""
+    keyword_map: Dict[str, List[str]] = {}
+    for topic in topics:
+        if not isinstance(topic, dict) or not topic.get("id"):
+            continue
+
+        search = topic.get("search", {})
+        keywords = list(search.get("must_include", []))
+        topic_id = topic["id"]
+        if topic_id == "llm":
+            keywords.extend(["GPT", "Claude", "Gemini"])
+
+        keyword_map[topic_id] = keywords
+
+    return keyword_map
+
+
+def has_llm_model_signal(text: str) -> bool:
+    """Return true when text contains concrete LLM or model-family evidence."""
+    return any(
+        signal in text
+        for signal in (
+            "gpt",
+            "claude",
+            "gemini",
+            "chatgpt",
+            "llm",
+            "large language model",
+            "language model",
+            "foundation model",
+        )
+    )
 
 
 def main():
@@ -742,6 +810,7 @@ Examples:
         # Group by topics (with cross-topic deduplication)
         topic_ids: Optional[Set[str]] = None
         topic_priority = None
+        topic_keywords = None
         try:
             configured_topics = load_topics(args.defaults, args.config)
             ordered_topic_ids = [
@@ -752,6 +821,7 @@ Examples:
             topic_ids = {topic_id for topic_id in ordered_topic_ids}
             topic_priority = {topic_id: index for index, topic_id in enumerate(ordered_topic_ids)}
             topic_priority["uncategorized"] = len(topic_ids) + 1
+            topic_keywords = topic_keyword_map(configured_topics)
         except Exception as e:
             logger.warning(f"Failed to load configured topics from {args.defaults}: {e}")
 
@@ -760,6 +830,7 @@ Examples:
             dedup_across_topics=True,
             allowed_topics=topic_ids,
             topic_priority=topic_priority,
+            topic_keywords=topic_keywords,
         )
         
         # Apply per-topic domain limits (max 3 articles per domain per topic)

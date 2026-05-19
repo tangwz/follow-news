@@ -36,6 +36,20 @@ spec = importlib.util.spec_from_file_location(
 render_mod = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(render_mod)
 
+merge_spec = importlib.util.spec_from_file_location(
+    "merge_sources",
+    SCRIPTS_DIR / "merge-sources.py",
+)
+merge_mod = importlib.util.module_from_spec(merge_spec)
+merge_spec.loader.exec_module(merge_mod)
+
+fetch_github_spec = importlib.util.spec_from_file_location(
+    "fetch_github",
+    SCRIPTS_DIR / "fetch-github.py",
+)
+fetch_github_mod = importlib.util.module_from_spec(fetch_github_spec)
+fetch_github_spec.loader.exec_module(fetch_github_mod)
+
 
 def load_acceptance_fixture():
     return json.loads(ACCEPTANCE_FIXTURE.read_text(encoding="utf-8"))
@@ -624,8 +638,12 @@ class TestAcceptanceRenderer(unittest.TestCase):
         lines = text.splitlines()
 
         self.assertTrue(text.startswith("# 🚀 Tech Digest - 2026-02-27\n"))
-        self.assertIn("## 🧠 LLM / Large Models", text)
-        self.assertIn("1. 🧠 [9/10] OpenAI ships structured agent evaluation suite", text)
+        self.assertIn("评分说明：相关性 + 新鲜度 + 影响面。", text)
+        self.assertIn("今日看点", text)
+        self.assertIn("## 🧠 LLM / 大模型", text)
+        self.assertIn("1. [9/10] OpenAI ships structured agent evaluation suite", text)
+        self.assertNotIn("1. 🧠 [9/10]", text)
+        self.assertNotIn("来源：", text)
         self.assertIn("🔗 https://openai.com/research/agent-evals", text)
         self.assertNotIn("<https://", text)
         self.assertNotIn("Low scoring model rumor should not render", text)
@@ -633,12 +651,12 @@ class TestAcceptanceRenderer(unittest.TestCase):
         title_lines = [
             line
             for line in lines
-            if re.match(r"^[0-9]+\. .+ \[[0-9]+(?:\.[0-9]+)?/10\] .+", line)
+            if re.match(r"^[0-9]+\. \[[0-9]+(?:\.[0-9]+)?/10\] .+", line)
         ]
         self.assertGreater(len(title_lines), 0)
 
         for index, line in enumerate(lines):
-            if not re.match(r"^[0-9]+\. .+ \[[0-9]+(?:\.[0-9]+)?/10\] .+", line):
+            if not re.match(r"^[0-9]+\. \[[0-9]+(?:\.[0-9]+)?/10\] .+", line):
                 continue
             self.assertLess(index + 4, len(lines))
             self.assertEqual(lines[index + 1], "")
@@ -658,9 +676,795 @@ class TestAcceptanceRenderer(unittest.TestCase):
             section_text = "\n".join(lines[start:end])
             self.assertRegex(
                 section_text,
-                r"(?m)^[0-9]+\. .+ \[[0-9]+(?:\.[0-9]+)?/10\] .+",
+                r"(?m)^[0-9]+\. \[[0-9]+(?:\.[0-9]+)?/10\] .+",
                 lines[start],
             )
+
+    def test_chat_fixed_sections_use_consistent_numbered_item_shape(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 2},
+            "topics": {
+                "supplemental": {
+                    "articles": [
+                        {
+                            "title": "Example Tool v1.0.0",
+                            "link": "https://github.com/example/tool/releases/tag/v1.0.0",
+                            "source_type": "github",
+                            "repo": "example/tool",
+                            "tag_name": "v1.0.0",
+                            "summary": "The release ships a stable API.",
+                            "quality_score": 10,
+                        },
+                        {
+                            "title": "Example Blog Pick",
+                            "link": "https://example.com/blog",
+                            "source_type": "rss",
+                            "is_blog_pick": True,
+                            "author": "Example Author",
+                            "full_text": "The post explains a concise engineering pattern.",
+                            "quality_score": 9,
+                        },
+                    ]
+                }
+            },
+        }
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=[],
+            report_date="2026-05-18",
+            version="3.17.0",
+            template="chat",
+        )
+
+        self.assertIn("## 📦 GitHub Releases / 发布", text)
+        self.assertIn("## 📝 Blog Picks / 博客精选", text)
+        fixed_text = text.split("## 📦 GitHub Releases / 发布", 1)[1]
+        self.assertIn("1. [5/10] Example Tool v1.0.0", fixed_text)
+        self.assertNotIn("来源：", fixed_text)
+        self.assertNotRegex(fixed_text, r"(?m)^• ")
+
+    def test_chat_github_releases_filter_low_signal_prereleases(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 2},
+            "topics": {
+                "supplemental": {
+                    "articles": [
+                        {
+                            "title": "picoclaw nightly",
+                            "link": "https://github.com/sipeed/picoclaw/releases/tag/nightly",
+                            "source_type": "github",
+                            "repo": "sipeed/picoclaw",
+                            "tag_name": "nightly",
+                            "summary": "Nightly build.",
+                            "quality_score": 10,
+                        },
+                        {
+                            "title": "crewAI 1.14.5a7",
+                            "link": "https://github.com/crewAIInc/crewAI/releases/tag/1.14.5a7",
+                            "source_type": "github",
+                            "repo": "crewAIInc/crewAI",
+                            "tag_name": "1.14.5a7",
+                            "summary": "Alpha pre-release.",
+                            "quality_score": 10,
+                            "prerelease": True,
+                        },
+                    ]
+                }
+            },
+        }
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=[],
+            report_date="2026-05-18",
+            version="3.17.0",
+            template="chat",
+        )
+
+        self.assertNotIn("## 📦 GitHub Releases", text)
+        self.assertNotIn("picoclaw nightly", text)
+        self.assertNotIn("crewAI 1.14.5a7", text)
+
+    def test_discord_github_releases_keep_low_signal_releases(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 1},
+            "topics": {
+                "supplemental": {
+                    "articles": [
+                        {
+                            "title": "picoclaw nightly",
+                            "link": "https://github.com/sipeed/picoclaw/releases/tag/nightly",
+                            "source_type": "github",
+                            "repo": "sipeed/picoclaw",
+                            "tag_name": "nightly",
+                            "summary": "Nightly build.",
+                            "quality_score": 10,
+                        },
+                    ]
+                }
+            },
+        }
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=[],
+            report_date="2026-05-18",
+            version="3.17.0",
+            template="discord",
+        )
+
+        self.assertIn("## 📦 GitHub Releases", text)
+        self.assertIn("sipeed/picoclaw", text)
+        self.assertIn("`nightly`", text)
+
+    def test_chat_github_releases_keep_real_package_release(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 1},
+            "topics": {
+                "supplemental": {
+                    "articles": [
+                        {
+                            "title": "Example Tool v1.0.0",
+                            "link": "https://github.com/example/tool/releases/tag/v1.0.0",
+                            "source_type": "github",
+                            "repo": "example/tool",
+                            "tag_name": "v1.0.0",
+                            "summary": "Adds a Python package for CLI users.",
+                            "quality_score": 10,
+                        },
+                    ]
+                }
+            },
+        }
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=[],
+            report_date="2026-05-18",
+            version="3.17.0",
+            template="chat",
+        )
+
+        self.assertIn("## 📦 GitHub Releases / 发布", text)
+        self.assertIn("Example Tool v1.0.0", text)
+
+    def test_chat_github_releases_filter_named_dependency_bump(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 1},
+            "topics": {
+                "supplemental": {
+                    "articles": [
+                        {
+                            "title": "Example Tool v1.0.1",
+                            "link": "https://github.com/example/tool/releases/tag/v1.0.1",
+                            "source_type": "github",
+                            "repo": "example/tool",
+                            "tag_name": "v1.0.1",
+                            "summary": "Bump lodash from 4.17.20 to 4.17.21.",
+                            "quality_score": 10,
+                        },
+                    ]
+                }
+            },
+        }
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=[],
+            report_date="2026-05-18",
+            version="3.17.0",
+            template="chat",
+        )
+
+        self.assertNotIn("## 📦 GitHub Releases", text)
+        self.assertNotIn("Example Tool v1.0.1", text)
+
+    def test_chat_github_releases_filter_dependency_update_with_package_signal_word(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 1},
+            "topics": {
+                "supplemental": {
+                    "articles": [
+                        {
+                            "title": "Example Tool v1.0.2",
+                            "link": "https://github.com/example/tool/releases/tag/v1.0.2",
+                            "source_type": "github",
+                            "repo": "example/tool",
+                            "tag_name": "v1.0.2",
+                            "summary": "Update dependencies: fastapi and pydantic.",
+                            "quality_score": 10,
+                        },
+                    ]
+                }
+            },
+        }
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=[],
+            report_date="2026-05-18",
+            version="3.17.0",
+            template="chat",
+        )
+
+        self.assertNotIn("## 📦 GitHub Releases", text)
+        self.assertNotIn("Example Tool v1.0.2", text)
+
+    def test_chat_github_releases_filter_alpha_tag_from_title(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 1},
+            "topics": {
+                "supplemental": {
+                    "articles": [
+                        {
+                            "title": "crewAI 1.14.5a7",
+                            "link": "https://github.com/crewAIInc/crewAI/releases/tag/1.14.5a7",
+                            "source_type": "github",
+                            "repo": "crewAIInc/crewAI",
+                            "summary": "Release notes include minor changes.",
+                            "quality_score": 10,
+                        },
+                    ]
+                }
+            },
+        }
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=[],
+            report_date="2026-05-18",
+            version="3.17.0",
+            template="chat",
+        )
+
+        self.assertNotIn("## 📦 GitHub Releases", text)
+        self.assertNotIn("crewAI 1.14.5a7", text)
+
+    def test_chat_github_releases_keep_stable_project_with_alpha_in_name(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 1},
+            "topics": {
+                "supplemental": {
+                    "articles": [
+                        {
+                            "title": "AlphaFold v1.0.0",
+                            "link": "https://github.com/example/alphafold/releases/tag/v1.0.0",
+                            "source_type": "github",
+                            "repo": "example/alphafold",
+                            "tag_name": "v1.0.0",
+                            "summary": "Stable release.",
+                            "quality_score": 10,
+                        },
+                    ]
+                }
+            },
+        }
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=[],
+            report_date="2026-05-18",
+            version="3.17.0",
+            template="chat",
+        )
+
+        self.assertIn("## 📦 GitHub Releases / 发布", text)
+        self.assertIn("AlphaFold v1.0.0", text)
+
+    def test_chat_github_releases_filter_dotted_release_candidate_tag(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 1},
+            "topics": {
+                "supplemental": {
+                    "articles": [
+                        {
+                            "title": "Example Tool v1.0.0-rc.1",
+                            "link": "https://github.com/example/tool/releases/tag/v1.0.0-rc.1",
+                            "source_type": "github",
+                            "repo": "example/tool",
+                            "summary": "Release candidate notes.",
+                            "quality_score": 10,
+                        },
+                    ]
+                }
+            },
+        }
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=[],
+            report_date="2026-05-18",
+            version="3.17.0",
+            template="chat",
+        )
+
+        self.assertNotIn("## 📦 GitHub Releases", text)
+        self.assertNotIn("Example Tool v1.0.0-rc.1", text)
+
+    def test_chat_github_releases_filter_pre_release_tag_from_title(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 1},
+            "topics": {
+                "supplemental": {
+                    "articles": [
+                        {
+                            "title": "Example Tool v1.0.0-pre.1",
+                            "link": "https://github.com/example/tool/releases/tag/v1.0.0-pre.1",
+                            "source_type": "github",
+                            "repo": "example/tool",
+                            "summary": "Pre-release notes.",
+                            "quality_score": 10,
+                        },
+                    ]
+                }
+            },
+        }
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=[],
+            report_date="2026-05-18",
+            version="3.17.0",
+            template="chat",
+        )
+
+        self.assertNotIn("## 📦 GitHub Releases", text)
+        self.assertNotIn("Example Tool v1.0.0-pre.1", text)
+
+    def test_chat_github_releases_filter_attached_release_candidate_tag(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 1},
+            "topics": {
+                "supplemental": {
+                    "articles": [
+                        {
+                            "title": "Example Tool v1.2.0rc1",
+                            "link": "https://github.com/example/tool/releases/tag/v1.2.0rc1",
+                            "source_type": "github",
+                            "repo": "example/tool",
+                            "summary": "Release candidate notes.",
+                            "quality_score": 10,
+                        },
+                    ]
+                }
+            },
+        }
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=[],
+            report_date="2026-05-18",
+            version="3.17.0",
+            template="chat",
+        )
+
+        self.assertNotIn("## 📦 GitHub Releases", text)
+        self.assertNotIn("Example Tool v1.2.0rc1", text)
+
+    def test_chat_github_releases_filter_singular_dependency_update(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 1},
+            "topics": {
+                "supplemental": {
+                    "articles": [
+                        {
+                            "title": "Example Tool v1.0.3",
+                            "link": "https://github.com/example/tool/releases/tag/v1.0.3",
+                            "source_type": "github",
+                            "repo": "example/tool",
+                            "tag_name": "v1.0.3",
+                            "summary": "Dependency update: lodash 4.17.21.",
+                            "quality_score": 10,
+                        },
+                    ]
+                }
+            },
+        }
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=[],
+            report_date="2026-05-18",
+            version="3.17.0",
+            template="chat",
+        )
+
+        self.assertNotIn("## 📦 GitHub Releases", text)
+        self.assertNotIn("Example Tool v1.0.3", text)
+
+    def test_chat_github_releases_filter_dependency_bump_for_api_repo(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 1},
+            "topics": {
+                "supplemental": {
+                    "articles": [
+                        {
+                            "title": "foo/api v1.0.1",
+                            "link": "https://github.com/foo/api/releases/tag/v1.0.1",
+                            "source_type": "github",
+                            "repo": "foo/api",
+                            "tag_name": "v1.0.1",
+                            "summary": "Bump lodash from 4.17.20 to 4.17.21.",
+                            "quality_score": 10,
+                        },
+                    ]
+                }
+            },
+        }
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=[],
+            report_date="2026-05-18",
+            version="3.17.0",
+            template="chat",
+        )
+
+        self.assertNotIn("## 📦 GitHub Releases", text)
+        self.assertNotIn("foo/api v1.0.1", text)
+
+    def test_chat_github_releases_keep_dependency_injection_update(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 1},
+            "topics": {
+                "supplemental": {
+                    "articles": [
+                        {
+                            "title": "Example Tool v1.1.0",
+                            "link": "https://github.com/example/tool/releases/tag/v1.1.0",
+                            "source_type": "github",
+                            "repo": "example/tool",
+                            "tag_name": "v1.1.0",
+                            "summary": "Update dependency injection container for plugin loading.",
+                            "quality_score": 10,
+                        },
+                    ]
+                }
+            },
+        }
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=[],
+            report_date="2026-05-18",
+            version="3.17.0",
+            template="chat",
+        )
+
+        self.assertIn("## 📦 GitHub Releases", text)
+        self.assertIn("Example Tool v1.1.0", text)
+
+    def test_group_by_topics_prefers_content_keyword_match_over_topic_order(self):
+        articles = [
+            {
+                "title": "GDS weighs in on the NHS open source decision",
+                "snippet": "Government Digital Service discussed public sector open source policy.",
+                "topics": ["llm", "frontier-tech"],
+            }
+        ]
+        topic_priority = {"llm": 0, "frontier-tech": 1, "uncategorized": 2}
+        topic_keywords = {
+            "llm": ["large language model", "foundation model", "大模型"],
+            "frontier-tech": ["open source", "public sector", "policy"],
+        }
+
+        groups = merge_mod.group_by_topics(
+            articles,
+            topic_priority=topic_priority,
+            topic_keywords=topic_keywords,
+        )
+
+        self.assertNotIn("llm", groups)
+        self.assertIn("frontier-tech", groups)
+
+    def test_group_by_topics_scores_legacy_ai_agent_keyword_alias(self):
+        articles = [
+            {
+                "title": "AI agent framework ships benchmark report",
+                "snippet": "A coding agent benchmark for repository workflows.",
+                "topics": ["llm", "ai_agent"],
+            }
+        ]
+        topic_priority = {"llm": 0, "ai-agent": 1, "ai_agent": 1}
+        topic_keywords = {
+            "llm": ["large language model"],
+            "ai-agent": ["AI agent", "agent framework", "coding agent"],
+        }
+
+        groups = merge_mod.group_by_topics(
+            articles,
+            topic_priority=topic_priority,
+            topic_keywords=topic_keywords,
+        )
+
+        self.assertNotIn("llm", groups)
+        self.assertIn("ai-agent", groups)
+        self.assertNotIn("ai_agent", groups)
+
+    def test_default_topics_keep_agent_benchmark_out_of_llm(self):
+        topics = render_mod.load_topic_definitions(TOPICS_FILE)
+        topic_priority = {topic["id"]: index for index, topic in enumerate(topics)}
+        topic_keywords = {
+            topic["id"]: topic.get("search", {}).get("must_include", [])
+            for topic in topics
+        }
+        article = {
+            "title": "Coding agent benchmark report",
+            "snippet": "A coding agent benchmark for repository workflows.",
+            "topics": ["llm", "ai-agent"],
+        }
+
+        groups = merge_mod.group_by_topics(
+            [article],
+            topic_priority=topic_priority,
+            topic_keywords=topic_keywords,
+        )
+
+        self.assertNotIn("llm", groups)
+        self.assertIn("ai-agent", groups)
+
+    def test_default_topics_keep_non_llm_model_release_out_of_llm(self):
+        topics = render_mod.load_topic_definitions(TOPICS_FILE)
+        topic_priority = {topic["id"]: index for index, topic in enumerate(topics)}
+        topic_keywords = {
+            topic["id"]: topic.get("search", {}).get("must_include", [])
+            for topic in topics
+        }
+        article = {
+            "title": "AlphaFold model release improves structure prediction",
+            "snippet": "A biotech model release for protein structure prediction.",
+            "topics": ["llm", "frontier-tech"],
+        }
+
+        groups = merge_mod.group_by_topics(
+            [article],
+            topic_priority=topic_priority,
+            topic_keywords=topic_keywords,
+        )
+
+        self.assertNotIn("llm", groups)
+        self.assertIn("frontier-tech", groups)
+
+    def test_default_topics_keep_gpt_story_in_llm(self):
+        topics = render_mod.load_topic_definitions(TOPICS_FILE)
+        topic_priority = {topic["id"]: index for index, topic in enumerate(topics)}
+        topic_keywords = merge_mod.topic_keyword_map(topics)
+        article = {
+            "title": "OpenAI introduces GPT-5",
+            "snippet": "The technology update improves model capability.",
+            "topics": ["llm", "frontier-tech"],
+        }
+
+        groups = merge_mod.group_by_topics(
+            [article],
+            topic_priority=topic_priority,
+            topic_keywords=topic_keywords,
+        )
+
+        self.assertIn("llm", groups)
+        self.assertNotIn("frontier-tech", groups)
+
+    def test_default_topics_keep_openai_governance_story_in_industry(self):
+        topics = render_mod.load_topic_definitions(TOPICS_FILE)
+        topic_priority = {topic["id"]: index for index, topic in enumerate(topics)}
+        topic_keywords = merge_mod.topic_keyword_map(topics)
+        article = {
+            "title": "OpenAI changes nonprofit governance structure",
+            "snippet": "The company updated its governance structure after industry scrutiny.",
+            "topics": ["llm", "frontier-tech"],
+        }
+
+        groups = merge_mod.group_by_topics(
+            [article],
+            topic_priority=topic_priority,
+            topic_keywords=topic_keywords,
+        )
+
+        self.assertNotIn("llm", groups)
+        self.assertIn("frontier-tech", groups)
+
+    def test_default_topics_keep_model_evidence_in_llm_over_industry_terms(self):
+        topics = render_mod.load_topic_definitions(TOPICS_FILE)
+        topic_priority = {topic["id"]: index for index, topic in enumerate(topics)}
+        topic_keywords = merge_mod.topic_keyword_map(topics)
+        article = {
+            "title": "Claude model release adds open source security controls",
+            "snippet": "The release improves model behavior for enterprise teams.",
+            "topics": ["llm", "frontier-tech"],
+        }
+
+        groups = merge_mod.group_by_topics(
+            [article],
+            topic_priority=topic_priority,
+            topic_keywords=topic_keywords,
+        )
+
+        self.assertIn("llm", groups)
+        self.assertNotIn("frontier-tech", groups)
+
+    def test_chat_intro_keeps_decimal_version_in_highlight(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 1},
+            "topics": {
+                "llm": {
+                    "articles": [
+                        {
+                            "title": "Claude 4.5 improves coding workflows",
+                            "link": "https://example.com/claude-4-5",
+                            "quality_score": 12,
+                            "source_type": "rss",
+                            "chat_summary": "Claude 4.5 improves coding workflows. The release focuses on repository tasks.",
+                        }
+                    ]
+                }
+            },
+        }
+        topic_defs = [{"id": "llm", "emoji": "🧠", "label": "LLM / 大模型"}]
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs,
+            report_date="2026-05-18",
+            version="3.17.0",
+            template="chat",
+        )
+
+        self.assertIn("• Claude 4.5 improves coding workflows.", text)
+        self.assertNotIn("\n• Claude 4.\n", text)
+
+    def test_chat_intro_keeps_abbreviation_in_highlight(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 1},
+            "topics": {
+                "frontier-tech": {
+                    "articles": [
+                        {
+                            "title": "U.S. agency backs open-source AI policy",
+                            "link": "https://example.com/us-policy",
+                            "quality_score": 12,
+                            "source_type": "rss",
+                            "chat_summary": "U.S. agency backs open-source AI policy. The update affects public-sector technology teams.",
+                        }
+                    ]
+                }
+            },
+        }
+        topic_defs = [
+            {"id": "frontier-tech", "emoji": "🔬", "label": "Tech Industry / 产业动态"}
+        ]
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs,
+            report_date="2026-05-18",
+            version="3.17.0",
+            template="chat",
+        )
+
+        self.assertIn("• U.S. agency backs open-source AI policy.", text)
+        self.assertNotIn("\n• U.\n", text)
+
+    def test_chat_intro_keeps_titlecase_abbreviation_in_highlight(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 1},
+            "topics": {
+                "llm": {
+                    "articles": [
+                        {
+                            "title": "OpenAI Inc. ships new model",
+                            "link": "https://example.com/openai-inc-model",
+                            "quality_score": 12,
+                            "source_type": "rss",
+                            "chat_summary": "OpenAI Inc. ships new model. The release targets coding workflows.",
+                        }
+                    ]
+                }
+            },
+        }
+        topic_defs = [{"id": "llm", "emoji": "🧠", "label": "LLM / 大模型"}]
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs,
+            report_date="2026-05-18",
+            version="3.17.0",
+            template="chat",
+        )
+
+        self.assertIn("• OpenAI Inc. ships new model.", text)
+        self.assertNotIn("\n• OpenAI Inc.\n", text)
+
+    def test_chat_intro_stops_at_terminal_company_abbreviation(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 1},
+            "topics": {
+                "llm": {
+                    "articles": [
+                        {
+                            "title": "OpenAI Inc. update",
+                            "link": "https://example.com/openai-inc-update",
+                            "quality_score": 12,
+                            "source_type": "rss",
+                            "chat_summary": "OpenAI Inc. It released a model.",
+                        }
+                    ]
+                }
+            },
+        }
+        topic_defs = [{"id": "llm", "emoji": "🧠", "label": "LLM / 大模型"}]
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs,
+            report_date="2026-05-18",
+            version="3.17.0",
+            template="chat",
+        )
+
+        self.assertIn("• OpenAI Inc.", text)
+        self.assertNotIn("• OpenAI Inc. It released a model.", text)
+
+    def test_github_fetch_preserves_prerelease_flag(self):
+        class FakeResponse:
+            headers = {"ETag": "etag"}
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+            def read(self):
+                return json.dumps(
+                    [
+                        {
+                            "draft": False,
+                            "prerelease": True,
+                            "published_at": "2026-05-18T00:00:00Z",
+                            "tag_name": "v1.0.0",
+                            "html_url": "https://github.com/example/tool/releases/tag/v1.0.0",
+                            "body": "Stable-looking prerelease.",
+                        }
+                    ]
+                ).encode("utf-8")
+
+        source = {
+            "id": "example-github",
+            "name": "Example Tool",
+            "repo": "example/tool",
+            "priority": False,
+            "topics": ["ai-agent"],
+        }
+        cutoff = fetch_github_mod.parse_github_date("2026-05-17T00:00:00Z")
+
+        with patch.object(fetch_github_mod, "urlopen", return_value=FakeResponse()):
+            result = fetch_github_mod.fetch_releases_with_retry(
+                source,
+                cutoff,
+                no_cache=True,
+            )
+
+        self.assertEqual(result["articles"][0]["tag_name"], "v1.0.0")
+        self.assertTrue(result["articles"][0]["prerelease"])
 
     def test_chat_non_github_summaries_keep_stable_evidence_phrases(self):
         text = render_daily_chat_digest()
@@ -757,7 +1561,7 @@ class TestAcceptanceRenderer(unittest.TestCase):
         self.assertNotIn("## 🧠 LLM / Large Models", text)
         self.assertNotIn("No link item", text)
         self.assertIn("## 🤖 AI Agent", text)
-        self.assertIn("1. 🤖 [5/10] Visible agent item", text)
+        self.assertIn("1. [5/10] Visible agent item", text)
         self.assertIn("🔗 https://example.com/agent", text)
 
     def test_chat_digest_invalid_score_uses_zero_fallback(self):
@@ -788,7 +1592,7 @@ class TestAcceptanceRenderer(unittest.TestCase):
             template="chat",
         )
 
-        self.assertIn("1. 🤖 [0/10] Invalid score item", text)
+        self.assertIn("1. [0/10] Invalid score item", text)
 
     def test_default_discord_digest_filters_invalid_score_items(self):
         data = {
@@ -896,7 +1700,7 @@ class TestAcceptanceRenderer(unittest.TestCase):
         )
         summary = extract_chat_summary(
             text,
-            "1. 🧠 [5/10] Snippet-only model note",
+            "1. [5/10] Snippet-only model note",
         )
 
         self.assertEqual(summary, "Only this snippet is available.")
@@ -936,7 +1740,7 @@ class TestAcceptanceRenderer(unittest.TestCase):
         )
         summary = extract_chat_summary(
             text,
-            "1. 🏗️ [5/10] Title-level fallback only",
+            "1. [5/10] Title-level fallback only",
         )
 
         self.assertEqual(summary, "Full text evidence should win.")
@@ -1123,7 +1927,7 @@ class TestAcceptanceRenderer(unittest.TestCase):
         lines = text.splitlines()
 
         self.assertTrue(text.startswith("# 🚀 Tech Digest - 2026-02-27\n"))
-        self.assertIn("## 🧠 LLM / Large Models", text)
+        self.assertIn("## 🧠 LLM / 大模型", text)
         self.assertIn("---\n", text)
         self.assertIn("Powered by OpenClaw", text)
 
@@ -1184,7 +1988,7 @@ class TestAcceptanceRenderer(unittest.TestCase):
         )
 
         self.assertIn("# 🚀 Tech Digest - 2026-02-27", text)
-        self.assertIn("## 🧠 LLM / Large Models", text)
+        self.assertIn("## 🧠 LLM / 大模型", text)
         self.assertIn("• 🔥18 | OpenAI ships structured agent evaluation suite", text)
         self.assertIn("  🔗 https://openai.com/research/agent-evals", text)
         self.assertIn("  *[3 sources]*", text)
@@ -1551,7 +2355,7 @@ class TestAcceptanceRenderer(unittest.TestCase):
 
             self.assertEqual(result.returncode, 0, result.stderr)
             text = output_path.read_text(encoding="utf-8")
-            self.assertIn("1. 🧠 [9/10] OpenAI ships structured agent evaluation suite", text)
+            self.assertIn("1. [9/10] OpenAI ships structured agent evaluation suite", text)
             self.assertIn("🔗 https://openai.com/research/agent-evals", text)
             self.assertNotIn("<https://", text)
 
