@@ -559,7 +559,8 @@ def is_low_signal_github_release(article: Dict[str, Any]) -> bool:
         r"\bdependency\s+(?:bump|update|upgrade)\b",
         r"\bdependency\s+update\s*:",
         r"\b(?:update|upgrade)\s+dependencies\s*:",
-        r"\b(?:update|upgrade)\s+dependency\s+[a-z0-9_.@/-]+(?:\s+(?:from|to)\b)?",
+        r"\b(?:update|upgrade)\s+dependency\s+[a-z0-9_.@/-]+\s+(?:from|to)\b",
+        r"\b(?:update|upgrade)\s+dependency\s+[a-z0-9_.@/-]+\s+v?\d",
         r"\bdependabot\b",
     )
     signal_terms = (

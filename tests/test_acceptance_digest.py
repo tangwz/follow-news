@@ -1117,6 +1117,38 @@ class TestAcceptanceRenderer(unittest.TestCase):
         self.assertNotIn("## 📦 GitHub Releases", text)
         self.assertNotIn("foo/api v1.0.1", text)
 
+    def test_chat_github_releases_keep_dependency_injection_update(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 1},
+            "topics": {
+                "supplemental": {
+                    "articles": [
+                        {
+                            "title": "Example Tool v1.1.0",
+                            "link": "https://github.com/example/tool/releases/tag/v1.1.0",
+                            "source_type": "github",
+                            "repo": "example/tool",
+                            "tag_name": "v1.1.0",
+                            "summary": "Update dependency injection container for plugin loading.",
+                            "quality_score": 10,
+                        },
+                    ]
+                }
+            },
+        }
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=[],
+            report_date="2026-05-18",
+            version="3.17.0",
+            template="chat",
+        )
+
+        self.assertIn("## 📦 GitHub Releases", text)
+        self.assertIn("Example Tool v1.1.0", text)
+
     def test_group_by_topics_prefers_content_keyword_match_over_topic_order(self):
         articles = [
             {
@@ -1215,6 +1247,44 @@ class TestAcceptanceRenderer(unittest.TestCase):
         article = {
             "title": "OpenAI introduces GPT-5",
             "snippet": "The technology update improves model capability.",
+            "topics": ["llm", "frontier-tech"],
+        }
+
+        groups = merge_mod.group_by_topics(
+            [article],
+            topic_priority=topic_priority,
+            topic_keywords=topic_keywords,
+        )
+
+        self.assertIn("llm", groups)
+        self.assertNotIn("frontier-tech", groups)
+
+    def test_default_topics_keep_openai_governance_story_in_industry(self):
+        topics = render_mod.load_topic_definitions(TOPICS_FILE)
+        topic_priority = {topic["id"]: index for index, topic in enumerate(topics)}
+        topic_keywords = merge_mod.topic_keyword_map(topics)
+        article = {
+            "title": "OpenAI changes nonprofit governance structure",
+            "snippet": "The company updated its governance structure after industry scrutiny.",
+            "topics": ["llm", "frontier-tech"],
+        }
+
+        groups = merge_mod.group_by_topics(
+            [article],
+            topic_priority=topic_priority,
+            topic_keywords=topic_keywords,
+        )
+
+        self.assertNotIn("llm", groups)
+        self.assertIn("frontier-tech", groups)
+
+    def test_default_topics_keep_model_evidence_in_llm_over_industry_terms(self):
+        topics = render_mod.load_topic_definitions(TOPICS_FILE)
+        topic_priority = {topic["id"]: index for index, topic in enumerate(topics)}
+        topic_keywords = merge_mod.topic_keyword_map(topics)
+        article = {
+            "title": "Claude model release adds open source security controls",
+            "snippet": "The release improves model behavior for enterprise teams.",
             "topics": ["llm", "frontier-tech"],
         }
 

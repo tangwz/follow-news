@@ -494,7 +494,10 @@ def group_by_topics(
             str(article.get(field, ""))
             for field in ("title", "snippet", "summary", "description", "full_text")
         ).lower()
-        return sum(1 for keyword in keywords if str(keyword).lower() in haystack)
+        score = sum(1 for keyword in keywords if str(keyword).lower() in haystack)
+        if canonical_keyword_topic(topic) == "llm" and has_llm_model_signal(haystack):
+            score += 2
+        return score
 
     def choose_primary_topic(article: Dict[str, Any], topics: List[str]) -> str:
         scored_topics = [
@@ -553,11 +556,28 @@ def topic_keyword_map(topics: List[Dict[str, Any]]) -> Dict[str, List[str]]:
         keywords = list(search.get("must_include", []))
         topic_id = topic["id"]
         if topic_id == "llm":
-            keywords.extend(["GPT", "Claude", "Gemini", "OpenAI", "Anthropic"])
+            keywords.extend(["GPT", "Claude", "Gemini"])
 
         keyword_map[topic_id] = keywords
 
     return keyword_map
+
+
+def has_llm_model_signal(text: str) -> bool:
+    """Return true when text contains concrete LLM or model-family evidence."""
+    return any(
+        signal in text
+        for signal in (
+            "gpt",
+            "claude",
+            "gemini",
+            "chatgpt",
+            "llm",
+            "large language model",
+            "language model",
+            "foundation model",
+        )
+    )
 
 
 def main():
