@@ -503,8 +503,9 @@ def group_by_topics(
         ]
         matched_topics = [item for item in scored_topics if item[0] > 0]
         if matched_topics:
-            return sorted(matched_topics, key=lambda item: (-item[0], item[1]))[0][2]
-        return sorted(topics, key=get_topic_priority)[0]
+            selected = sorted(matched_topics, key=lambda item: (-item[0], item[1]))[0][2]
+            return canonical_keyword_topic(selected)
+        return canonical_keyword_topic(sorted(topics, key=get_topic_priority)[0])
     
     for article in articles:
         topics = article.get("topics", [])

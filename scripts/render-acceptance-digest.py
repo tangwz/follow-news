@@ -546,7 +546,7 @@ def is_low_signal_github_release(article: Dict[str, Any]) -> bool:
     if any(token in tag for token in low_signal_tokens):
         return True
 
-    if re.search(r"(?:^|[._-])(?:a|b|rc)[._-]?\d+$|[0-9](?:a|b)\d+$", tag):
+    if re.search(r"(?:^|[._-])(?:a|b|rc|pre)[._-]?\d+$|[0-9](?:a|b)\d+$", tag):
         return True
 
     dependency_patterns = (
@@ -579,7 +579,7 @@ def release_tag_text(article: Dict[str, Any]) -> str:
 
     title = compact_text(article.get("title")).lower()
     matches = re.findall(
-        r"\b(?:v?\d+(?:[._-]\d+)*(?:[._-]?(?:a|b|rc)[._-]?\d+|[._-]?(?:alpha|beta)\d*)?|nightly|snapshot|canary)\b",
+        r"\b(?:v?\d+(?:[._-]\d+)*(?:[._-]?(?:a|b|rc|pre)[._-]?\d+|[._-]?(?:alpha|beta)\d*)?|nightly|snapshot|canary)\b",
         title,
     )
     return " ".join(matches)
@@ -801,6 +801,20 @@ def first_sentence(text: str) -> str:
             and index + 1 < len(compact)
             and compact[index - 1].isdigit()
             and compact[index + 1].isdigit()
+        ):
+            continue
+        if (
+            char == "."
+            and index > 0
+            and index + 1 < len(compact)
+            and compact[index - 1].isupper()
+            and (
+                compact[index + 1].isupper()
+                or (
+                    index >= 2
+                    and compact[index - 2] == "."
+                )
+            )
         ):
             continue
         return compact[: index + 1]

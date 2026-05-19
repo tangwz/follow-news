@@ -217,8 +217,8 @@ class TestGroupByTopics(unittest.TestCase):
 
         # current allowed topic should still pass legacy ai_agent article
         groups = group_by_topics([{"title": "B", "topics": ["ai_agent"]}], allowed_topics={"ai-agent"})
-        self.assertIn("ai_agent", groups)
-        self.assertNotIn("ai-agent", groups, "only the actual article topic should be retained for this article")
+        self.assertIn("ai-agent", groups)
+        self.assertNotIn("ai_agent", groups)
 
     def test_topic_priority_maps_ai_agent_both_directions(self):
         articles = [
