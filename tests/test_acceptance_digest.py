@@ -826,6 +826,70 @@ class TestAcceptanceRenderer(unittest.TestCase):
         self.assertIn("## 📦 GitHub Releases / 发布", text)
         self.assertIn("Example Tool v1.0.0", text)
 
+    def test_chat_github_releases_filter_named_dependency_bump(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 1},
+            "topics": {
+                "supplemental": {
+                    "articles": [
+                        {
+                            "title": "Example Tool v1.0.1",
+                            "link": "https://github.com/example/tool/releases/tag/v1.0.1",
+                            "source_type": "github",
+                            "repo": "example/tool",
+                            "tag_name": "v1.0.1",
+                            "summary": "Bump lodash from 4.17.20 to 4.17.21.",
+                            "quality_score": 10,
+                        },
+                    ]
+                }
+            },
+        }
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=[],
+            report_date="2026-05-18",
+            version="3.17.0",
+            template="chat",
+        )
+
+        self.assertNotIn("## 📦 GitHub Releases", text)
+        self.assertNotIn("Example Tool v1.0.1", text)
+
+    def test_chat_github_releases_filter_dependency_update_with_package_signal_word(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 1},
+            "topics": {
+                "supplemental": {
+                    "articles": [
+                        {
+                            "title": "Example Tool v1.0.2",
+                            "link": "https://github.com/example/tool/releases/tag/v1.0.2",
+                            "source_type": "github",
+                            "repo": "example/tool",
+                            "tag_name": "v1.0.2",
+                            "summary": "Update dependencies: fastapi and pydantic.",
+                            "quality_score": 10,
+                        },
+                    ]
+                }
+            },
+        }
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=[],
+            report_date="2026-05-18",
+            version="3.17.0",
+            template="chat",
+        )
+
+        self.assertNotIn("## 📦 GitHub Releases", text)
+        self.assertNotIn("Example Tool v1.0.2", text)
+
     def test_chat_github_releases_filter_alpha_tag_from_title(self):
         data = {
             "input_sources": {},
@@ -1105,6 +1169,37 @@ class TestAcceptanceRenderer(unittest.TestCase):
 
         self.assertIn("• U.S. agency backs open-source AI policy.", text)
         self.assertNotIn("\n• U.\n", text)
+
+    def test_chat_intro_keeps_titlecase_abbreviation_in_highlight(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 1},
+            "topics": {
+                "llm": {
+                    "articles": [
+                        {
+                            "title": "OpenAI Inc. ships new model",
+                            "link": "https://example.com/openai-inc-model",
+                            "quality_score": 12,
+                            "source_type": "rss",
+                            "chat_summary": "OpenAI Inc. ships new model. The release targets coding workflows.",
+                        }
+                    ]
+                }
+            },
+        }
+        topic_defs = [{"id": "llm", "emoji": "🧠", "label": "LLM / 大模型"}]
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs,
+            report_date="2026-05-18",
+            version="3.17.0",
+            template="chat",
+        )
+
+        self.assertIn("• OpenAI Inc. ships new model.", text)
+        self.assertNotIn("\n• OpenAI Inc.\n", text)
 
     def test_chat_non_github_summaries_keep_stable_evidence_phrases(self):
         text = render_daily_chat_digest()

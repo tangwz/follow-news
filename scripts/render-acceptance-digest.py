@@ -551,7 +551,9 @@ def is_low_signal_github_release(article: Dict[str, Any]) -> bool:
 
     dependency_patterns = (
         r"\b(?:bump|update|upgrade|pin|vendor)\s+(?:deps?|dependencies|packages?)\b",
+        r"\b(?:bump|update|upgrade|pin|vendor)\s+[a-z0-9_.@/-]+\s+(?:from|to)\b",
         r"\b(?:deps?|dependencies)\s+(?:bump|update|upgrade)\b",
+        r"\b(?:update|upgrade)\s+dependencies\s*:",
         r"\bdependabot\b",
     )
     signal_terms = (
@@ -568,7 +570,10 @@ def is_low_signal_github_release(article: Dict[str, Any]) -> bool:
         re.search(pattern, combined)
         for pattern in dependency_patterns
     )
-    has_product_signal = any(term in combined for term in signal_terms)
+    has_product_signal = any(
+        re.search(rf"\b{re.escape(term)}\b", combined)
+        for term in signal_terms
+    )
     return has_dependency_update and not has_product_signal
 
 
@@ -817,8 +822,30 @@ def first_sentence(text: str) -> str:
             )
         ):
             continue
+        if char == "." and is_known_sentence_abbreviation(compact, index):
+            continue
         return compact[: index + 1]
     return compact
+
+
+def is_known_sentence_abbreviation(text: str, period_index: int) -> bool:
+    start = period_index - 1
+    while start >= 0 and text[start].isalpha():
+        start -= 1
+    token = text[start + 1:period_index].lower()
+    return token in {
+        "co",
+        "corp",
+        "dr",
+        "inc",
+        "jr",
+        "ltd",
+        "mr",
+        "mrs",
+        "ms",
+        "prof",
+        "sr",
+    }
 
 
 def render_chat_intro(
