@@ -537,7 +537,7 @@ def is_low_signal_github_release(article: Dict[str, Any]) -> bool:
     title = compact_text(article.get("title")).lower()
     tag = release_tag_text(article)
     summary = compact_text(article.get("summary") or article.get("snippet")).lower()
-    combined = " ".join([title, tag, summary])
+    dependency_text = " ".join([title, tag, summary])
 
     if article.get("prerelease") is True:
         return True
@@ -546,14 +546,20 @@ def is_low_signal_github_release(article: Dict[str, Any]) -> bool:
     if any(token in tag for token in low_signal_tokens):
         return True
 
-    if re.search(r"(?:^|[._-])(?:a|b|rc|pre)[._-]?\d+$|[0-9](?:a|b)\d+$", tag):
+    if re.search(
+        r"(?:^|[._-])(?:a|b|rc|pre)[._-]?\d+$|[0-9](?:a|b|rc|pre)\d+$",
+        tag,
+    ):
         return True
 
     dependency_patterns = (
         r"\b(?:bump|update|upgrade|pin|vendor)\s+(?:deps?|dependencies|packages?)\b",
         r"\b(?:bump|update|upgrade|pin|vendor)\s+[a-z0-9_.@/-]+\s+(?:from|to)\b",
         r"\b(?:deps?|dependencies)\s+(?:bump|update|upgrade)\b",
+        r"\bdependency\s+(?:bump|update|upgrade)\b",
+        r"\bdependency\s+update\s*:",
         r"\b(?:update|upgrade)\s+dependencies\s*:",
+        r"\b(?:update|upgrade)\s+dependency\s+[a-z0-9_.@/-]+(?:\s+(?:from|to)\b)?",
         r"\bdependabot\b",
     )
     signal_terms = (
@@ -567,11 +573,11 @@ def is_low_signal_github_release(article: Dict[str, Any]) -> bool:
         "fix",
     )
     has_dependency_update = any(
-        re.search(pattern, combined)
+        re.search(pattern, dependency_text)
         for pattern in dependency_patterns
     )
     has_product_signal = any(
-        re.search(rf"\b{re.escape(term)}\b", combined)
+        re.search(rf"\b{re.escape(term)}\b", summary)
         for term in signal_terms
     )
     return has_dependency_update and not has_product_signal
@@ -833,19 +839,24 @@ def is_known_sentence_abbreviation(text: str, period_index: int) -> bool:
     while start >= 0 and text[start].isalpha():
         start -= 1
     token = text[start + 1:period_index].lower()
-    return token in {
-        "co",
-        "corp",
+    if token in {
         "dr",
-        "inc",
         "jr",
-        "ltd",
         "mr",
         "mrs",
         "ms",
         "prof",
         "sr",
-    }
+    }:
+        return True
+
+    if token not in {"co", "corp", "inc", "ltd"}:
+        return False
+
+    next_start = period_index + 1
+    while next_start < len(text) and text[next_start].isspace():
+        next_start += 1
+    return next_start < len(text) and text[next_start].islower()
 
 
 def render_chat_intro(

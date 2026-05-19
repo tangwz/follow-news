@@ -343,6 +343,8 @@ def fetch_releases_with_retry(source: Dict[str, Any], cutoff: datetime, github_t
                         "link": link,
                         "date": pub_date.isoformat(),
                         "summary": summary,
+                        "tag_name": tag_name,
+                        "prerelease": bool(release.get("prerelease", False)),
                         "topics": topics[:],
                     })
             

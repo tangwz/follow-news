@@ -542,6 +542,24 @@ def group_by_topics(
     return topic_groups
 
 
+def topic_keyword_map(topics: List[Dict[str, Any]]) -> Dict[str, List[str]]:
+    """Return content-match keywords by topic, including stable topic aliases."""
+    keyword_map: Dict[str, List[str]] = {}
+    for topic in topics:
+        if not isinstance(topic, dict) or not topic.get("id"):
+            continue
+
+        search = topic.get("search", {})
+        keywords = list(search.get("must_include", []))
+        topic_id = topic["id"]
+        if topic_id == "llm":
+            keywords.extend(["GPT", "Claude", "Gemini", "OpenAI", "Anthropic"])
+
+        keyword_map[topic_id] = keywords
+
+    return keyword_map
+
+
 def main():
     """Main merge and scoring function."""
     parser = argparse.ArgumentParser(
@@ -783,11 +801,7 @@ Examples:
             topic_ids = {topic_id for topic_id in ordered_topic_ids}
             topic_priority = {topic_id: index for index, topic_id in enumerate(ordered_topic_ids)}
             topic_priority["uncategorized"] = len(topic_ids) + 1
-            topic_keywords = {
-                topic.get("id"): topic.get("search", {}).get("must_include", [])
-                for topic in configured_topics
-                if isinstance(topic, dict) and topic.get("id")
-            }
+            topic_keywords = topic_keyword_map(configured_topics)
         except Exception as e:
             logger.warning(f"Failed to load configured topics from {args.defaults}: {e}")
 
