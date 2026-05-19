@@ -17,6 +17,7 @@ Environment:
     OPENCLI_NO_UPDATE    - Disable OpenCLI automatic update for this run/environment (0/1)
     OPENCLI_UPDATE_COMMAND - Override OpenCLI update command, e.g. "self-update" or "update --yes"
     OPENCLI_UPDATE_CHECK_INTERVAL_SECONDS - Minimum seconds between checks (default: 86400)
+    OPENCLI_MIN_VERSION - Minimum supported OpenCLI version (default: 1.7.22)
     GETX_API_KEY        - GetXAPI API key (preferred backend, $0.001 per call)
     TWITTERAPI_IO_KEY   - twitterapi.io API key (alternative backend, ~$5/month)
     X_BEARER_TOKEN      - Twitter/X official API v2 bearer token (fallback)
@@ -60,6 +61,7 @@ OPENCLI_BROWSER_RECOVERABLE_RETRIES = 1
 OPENCLI_AUTO_UPDATE_DEFAULT = True
 OPENCLI_UPDATE_CHECK_INTERVAL_SECONDS = 24 * 60 * 60
 OPENCLI_UPDATE_COMMAND_CANDIDATES = ("self-update", "update", "upgrade")
+OPENCLI_DEFAULT_MIN_VERSION = "1.7.22"
 OPENCLI_UPDATE_ALREADY_UP_TO_DATE_MARKERS = (
     "already up to date",
     "already up-to-date",
@@ -344,6 +346,104 @@ def resolve_opencli_bin() -> str:
         "opencli_missing",
         "OpenCLI executable not found. Set OPENCLI_BIN or install opencli on PATH.",
     )
+
+
+def _parse_opencli_version(value: str) -> Optional[List[int]]:
+    """Extract a semantic version tuple from an OpenCLI version string."""
+    match = re.search(r"\bv?(\d+)\.(\d+)(?:\.(\d+))?\b", value or "")
+    if not match:
+        return None
+
+    return [
+        int(match.group(1)),
+        int(match.group(2)),
+        int(match.group(3) or 0),
+    ]
+
+
+def _min_opencli_version() -> List[int]:
+    raw_value = os.getenv("OPENCLI_MIN_VERSION", OPENCLI_DEFAULT_MIN_VERSION).strip()
+    parsed = _parse_opencli_version(raw_value)
+    if parsed:
+        return parsed
+
+    logging.warning(
+        "Invalid OPENCLI_MIN_VERSION=%r; using default %s",
+        raw_value,
+        OPENCLI_DEFAULT_MIN_VERSION,
+    )
+    return _parse_opencli_version(OPENCLI_DEFAULT_MIN_VERSION) or [0, 0, 0]
+
+
+def _opencli_version_str(version: List[int]) -> str:
+    """Format an OpenCLI version tuple as a dotted string."""
+    return ".".join(str(item) for item in version)
+
+
+def _run_opencli_version_command(binary: str, args: List[str], timeout: int = 10) -> subprocess.CompletedProcess:
+    """Run one OpenCLI version command without raising."""
+    try:
+        return subprocess.run(
+            [binary] + args,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            env=os.environ,
+        )
+    except subprocess.TimeoutExpired as exc:
+        return subprocess.CompletedProcess(
+            args=[binary] + args,
+            returncode=75,
+            stdout="",
+            stderr=f"OpenCLI version check timed out: {exc}",
+        )
+    except Exception as exc:  # pragma: no cover - defensive
+        return subprocess.CompletedProcess(
+            args=[binary] + args,
+            returncode=1,
+            stdout="",
+            stderr=str(exc),
+        )
+
+
+def _get_opencli_version(binary: str) -> Optional[str]:
+    """Probe OpenCLI version from common CLI flags."""
+    for args in (["--version"], ["version"], ["-v"], ["-V"]):
+        result = _run_opencli_version_command(binary, args, timeout=10)
+        if result.returncode != 0:
+            continue
+        version_text = f"{result.stdout}\n{result.stderr}".strip()
+        parsed = _parse_opencli_version(version_text)
+        if parsed is None:
+            continue
+        return _opencli_version_str(parsed)
+
+    return None
+
+
+def _ensure_opencli_min_version(binary: str) -> None:
+    """Verify that installed OpenCLI meets the minimum required version."""
+    minimum = _min_opencli_version()
+    current = _get_opencli_version(binary)
+    minimum_text = _opencli_version_str(minimum)
+    if current is None:
+        raise OpenCliBackendError(
+            "opencli_version_unknown",
+            f"Could not determine OpenCLI version. Install OpenCLI {minimum_text} or later.",
+        )
+
+    current_tuple = _parse_opencli_version(current)
+    if current_tuple is None:
+        raise OpenCliBackendError(
+            "opencli_version_unknown",
+            "Could not parse OpenCLI version output.",
+        )
+
+    if current_tuple < minimum:
+        raise OpenCliBackendError(
+            "opencli_version_too_old",
+            f"OpenCLI is too old (current={current}); upgrade to {minimum_text} or later.",
+        )
 
 
 def _env_bool(name: str, default: bool = False) -> bool:
@@ -1483,8 +1583,10 @@ class OpenCliBackend(TwitterBackend):
         self._max_workers = max_workers
         self._auto_update = auto_update
         self.no_cache = no_cache
-        self._before_chrome_windows = snapshot_chrome_windows()
+        self._before_chrome_windows: Optional[Dict[str, List[str]]] = None
         try:
+            _ensure_opencli_min_version(self.command)
+            self._before_chrome_windows = snapshot_chrome_windows()
             if self._auto_update:
                 update_result = _ensure_opencli_latest(self.command)
                 if update_result["status"] == "updated":
@@ -2358,6 +2460,8 @@ def fetch_with_backend_chain(
                     f"{candidate} unavailable: {exc.code}: {exc.message} "
                     f"(attempt {attempt + 1}/{max_retries + 1})"
                 )
+                if exc.code == "opencli_version_too_old":
+                    return candidate, [], diagnostics
                 if _is_retriable_opencli_error(exc.code) and candidate == "opencli" and attempt < max_retries:
                     logging.warning("opencli recovery attempt enabled after browser-bridge failure; retrying")
                     continue
@@ -2383,6 +2487,8 @@ def fetch_with_backend_chain(
                     f"{candidate} failed globally: {exc.code}: {exc.message} "
                     f"(attempt {attempt + 1}/{max_retries + 1})"
                 )
+                if exc.code == "opencli_version_too_old":
+                    return candidate, [], diagnostics
                 if _is_retriable_opencli_error(exc.code) and candidate == "opencli" and attempt < max_retries:
                     logging.warning("opencli recovery attempt enabled after browser-bridge failure; retrying")
                     continue

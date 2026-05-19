@@ -19,13 +19,13 @@ sys.modules.setdefault("doctor_module", doctor)
 
 def _ok_cp(args):
     if args and args[:2] == ["--version"]:
-        return _build_cp(args, stdout="opencli 0.2.0")
+        return _build_cp(args, stdout="opencli 1.8.0")
     if args and args[:1] == ["version"]:
-        return _build_cp(args, stdout="opencli version 0.2.0")
+        return _build_cp(args, stdout="opencli version 1.8.0")
     if args and args[:1] == ["-v"]:
-        return _build_cp(args, stdout="0.2.0")
+        return _build_cp(args, stdout="1.8.0")
     if args and args[:1] == ["-V"]:
-        return _build_cp(args, stdout="opencli 0.2.0")
+        return _build_cp(args, stdout="opencli 1.8.0")
     return subprocess.CompletedProcess(args=args, returncode=0, stdout='{"commands":[{"site":"twitter","name":"tweets"}]}', stderr="")
 
 
@@ -45,13 +45,13 @@ class TestDoctorSuccess(unittest.TestCase):
     def _make_opencli_success(self):
         def _opencli(args, timeout):
             if args and args[:2] == ["--version"]:
-                return _build_cp(args, stdout="opencli 0.2.0")
+                return _build_cp(args, stdout="opencli 1.8.0")
             if args and args[:1] == ["version"]:
-                return _build_cp(args, stdout="opencli version 0.2.0")
+                return _build_cp(args, stdout="opencli version 1.8.0")
             if args and args[:1] == ["-v"]:
-                return _build_cp(args, stdout="0.2.0")
+                return _build_cp(args, stdout="1.8.0")
             if args and args[:1] == ["-V"]:
-                return _build_cp(args, stdout="opencli 0.2.0")
+                return _build_cp(args, stdout="opencli 1.8.0")
             if args[:3] == ["list", "-f", "json"]:
                 return _ok_cp(args)
             if args[:3] == ["browser", "tab", "list"]:
@@ -128,13 +128,13 @@ class TestDoctorSuccess(unittest.TestCase):
     def test_opencli_version_with_two_part_number_is_accepted(self):
         def _opencli(args, timeout):
             if args and args[:2] == ["--version"]:
-                return _build_cp(args, stdout="opencli 0.2")
+                return _build_cp(args, stdout="opencli 1.8")
             if args and args[:1] == ["version"]:
-                return _build_cp(args, stdout="opencli version 0.2")
+                return _build_cp(args, stdout="opencli version 1.8")
             if args and args[:1] == ["-v"]:
-                return _build_cp(args, stdout="0.2")
+                return _build_cp(args, stdout="1.8")
             if args and args[:1] == ["-V"]:
-                return _build_cp(args, stdout="opencli 0.2")
+                return _build_cp(args, stdout="opencli 1.8")
             return _ok_cp(args)
 
         with patch("doctor_module._run_opencli_command", side_effect=_opencli), \
@@ -179,13 +179,13 @@ class TestDoctorFailureModes(unittest.TestCase):
     def test_x_login_auth_required(self):
         def _opencli(args, timeout):
             if args and args[:2] == ["--version"]:
-                return _build_cp(args, stdout="opencli 0.2.0")
+                return _build_cp(args, stdout="opencli 1.8.0")
             if args and args[:1] == ["version"]:
-                return _build_cp(args, stdout="opencli version 0.2.0")
+                return _build_cp(args, stdout="opencli version 1.8.0")
             if args and args[:1] == ["-v"]:
-                return _build_cp(args, stdout="0.2.0")
+                return _build_cp(args, stdout="1.8.0")
             if args and args[:1] == ["-V"]:
-                return _build_cp(args, stdout="opencli 0.2.0")
+                return _build_cp(args, stdout="opencli 1.8.0")
             if args[:3] == ["list", "-f", "json"]:
                 return _ok_cp(args)
             if args[:3] == ["browser", "tab", "list"]:
@@ -208,13 +208,13 @@ class TestDoctorFailureModes(unittest.TestCase):
     def test_browser_bridge_not_healthy(self):
         def _opencli(args, timeout):
             if args and args[:2] == ["--version"]:
-                return _build_cp(args, stdout="opencli 0.2.0")
+                return _build_cp(args, stdout="opencli 1.8.0")
             if args and args[:1] == ["version"]:
-                return _build_cp(args, stdout="opencli version 0.2.0")
+                return _build_cp(args, stdout="opencli version 1.8.0")
             if args and args[:1] == ["-v"]:
-                return _build_cp(args, stdout="0.2.0")
+                return _build_cp(args, stdout="1.8.0")
             if args and args[:1] == ["-V"]:
-                return _build_cp(args, stdout="opencli 0.2.0")
+                return _build_cp(args, stdout="opencli 1.8.0")
             if args[:3] == ["list", "-f", "json"]:
                 return _ok_cp(args)
             if args[:3] == ["browser", "tab", "list"]:
@@ -260,13 +260,13 @@ class TestDoctorFailureModes(unittest.TestCase):
     @staticmethod
     def _opencli_ok(args, timeout):
         if args and args[:2] == ["--version"]:
-            return _build_cp(args, stdout="opencli 0.2.0")
+            return _build_cp(args, stdout="opencli 1.8.0")
         if args and args[:1] == ["version"]:
-            return _build_cp(args, stdout="opencli version 0.2.0")
+            return _build_cp(args, stdout="opencli version 1.8.0")
         if args and args[:1] == ["-v"]:
-            return _build_cp(args, stdout="0.2.0")
+            return _build_cp(args, stdout="1.8.0")
         if args and args[:1] == ["-V"]:
-            return _build_cp(args, stdout="opencli 0.2.0")
+            return _build_cp(args, stdout="opencli 1.8.0")
         if args[:3] == ["list", "-f", "json"]:
             return _ok_cp(args)
         if args[:3] == ["browser", "tab", "list"]:

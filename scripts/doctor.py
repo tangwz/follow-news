@@ -17,7 +17,7 @@ from typing import Any, Dict, List, Optional
 
 
 SCRIPTS_DIR = Path(__file__).resolve().parent
-OPENCLI_DEFAULT_MIN_VERSION = "0.1.0"
+OPENCLI_DEFAULT_MIN_VERSION = "1.7.22"
 
 
 def _load_script_module(module_name: str, file_name: str):

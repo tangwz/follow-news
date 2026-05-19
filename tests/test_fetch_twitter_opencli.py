@@ -548,6 +548,12 @@ class TestOpenCliBackend(unittest.TestCase):
         self._env_patch = patch.dict(os.environ, {"OPENCLI_CLOSE_CHROME_WINDOWS_AFTER_RUN": "0"})
         self._env_patch.start()
         self.addCleanup(self._env_patch.stop)
+        self._version_patch = patch(
+            "fetch_twitter._get_opencli_version",
+            return_value="1.7.22",
+        )
+        self._version_patch.start()
+        self.addCleanup(self._version_patch.stop)
         self.source = {
             "id": "sama-twitter",
             "type": "twitter",
@@ -712,6 +718,16 @@ class TestOpenCliBackend(unittest.TestCase):
 
         self.assertEqual(ctx.exception.code, "opencli_auth_required")
 
+    @patch("fetch_twitter._get_opencli_version", return_value="1.7.21")
+    @patch("fetch_twitter.resolve_opencli_bin", return_value="/bin/opencli")
+    @patch("subprocess.run")
+    def test_too_old_version_raises_global_error(self, run_mock, _resolve_mock, _version_mock):
+        with self.assertRaises(fetch_twitter.OpenCliBackendError) as ctx:
+            fetch_twitter.OpenCliBackend(no_cache=True)
+
+        self.assertEqual(ctx.exception.code, "opencli_version_too_old")
+        run_mock.assert_not_called()
+
     @patch("fetch_twitter.resolve_opencli_bin", return_value="/bin/opencli")
     @patch("subprocess.run")
     def test_single_source_error_does_not_raise_global_error(self, run_mock, _resolve_mock):
@@ -750,6 +766,38 @@ class TestOpenCliBackend(unittest.TestCase):
 
 
 class TestFetchWithBackendChain(unittest.TestCase):
+    @patch("fetch_twitter._instantiate_backend")
+    def test_auto_chain_stops_when_opencli_version_too_old(self, instantiate_mock):
+        source = {
+            "id": "sama-twitter",
+            "type": "twitter",
+            "name": "Sam Altman",
+            "handle": "sama",
+            "enabled": True,
+            "priority": True,
+            "topics": ["llm"],
+        }
+
+        def _instantiate(backend_name, *args, **kwargs):
+            if backend_name == "opencli":
+                raise fetch_twitter.OpenCliBackendError("opencli_version_too_old", "Please upgrade OpenCLI.")
+            raise AssertionError(f"unexpected backend instantiation: {backend_name}")
+
+        instantiate_mock.side_effect = _instantiate
+
+        selected, results, diagnostics = fetch_twitter.fetch_with_backend_chain(
+            "auto",
+            [source],
+            utc("2026-05-08T00:00:00Z"),
+        )
+
+        self.assertEqual(selected, "opencli")
+        self.assertEqual(results, [])
+        self.assertEqual(
+            diagnostics,
+            [{"backend": "opencli", "code": "opencli_version_too_old", "message": "Please upgrade OpenCLI."}],
+        )
+
     @patch("fetch_twitter.OpenCliBackend")
     def test_fetch_with_backend_chain_passes_opencli_workers(self, backend_cls_mock):
         source = {
