@@ -1585,8 +1585,6 @@ class OpenCliBackend(TwitterBackend):
         self.no_cache = no_cache
         self._before_chrome_windows: Optional[Dict[str, List[str]]] = None
         try:
-            _ensure_opencli_min_version(self.command)
-            self._before_chrome_windows = snapshot_chrome_windows()
             if self._auto_update:
                 update_result = _ensure_opencli_latest(self.command)
                 if update_result["status"] == "updated":
@@ -1604,6 +1602,8 @@ class OpenCliBackend(TwitterBackend):
                         "OpenCLI auto-update check did not complete successfully: %s",
                         update_result["message"],
                     )
+            _ensure_opencli_min_version(self.command)
+            self._before_chrome_windows = snapshot_chrome_windows()
             self._verify_capability()
             self._run_doctor()
         except Exception:
