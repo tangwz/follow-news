@@ -546,7 +546,7 @@ def is_low_signal_github_release(article: Dict[str, Any]) -> bool:
     if any(token in tag for token in low_signal_tokens):
         return True
 
-    if re.search(r"(?:^|[._-])(?:a|b|rc)\d+$|[0-9](?:a|b)\d+$", tag):
+    if re.search(r"(?:^|[._-])(?:a|b|rc)[._-]?\d+$|[0-9](?:a|b)\d+$", tag):
         return True
 
     dependency_patterns = (
@@ -579,7 +579,7 @@ def release_tag_text(article: Dict[str, Any]) -> str:
 
     title = compact_text(article.get("title")).lower()
     matches = re.findall(
-        r"\b(?:v?\d+(?:[._-]\d+)*(?:[._-]?(?:a|b|rc)\d+|[._-]?(?:alpha|beta)\d*)?|nightly|snapshot|canary)\b",
+        r"\b(?:v?\d+(?:[._-]\d+)*(?:[._-]?(?:a|b|rc)[._-]?\d+|[._-]?(?:alpha|beta)\d*)?|nightly|snapshot|canary)\b",
         title,
     )
     return " ".join(matches)
@@ -792,9 +792,18 @@ def render_chat_podcast_remix(
 
 def first_sentence(text: str) -> str:
     compact = compact_text(text)
-    for separator in ("。", ".", "！", "!", "？", "?"):
-        if separator in compact:
-            return compact.split(separator, 1)[0] + separator
+    for index, char in enumerate(compact):
+        if char not in ("。", ".", "！", "!", "？", "?"):
+            continue
+        if (
+            char == "."
+            and index > 0
+            and index + 1 < len(compact)
+            and compact[index - 1].isdigit()
+            and compact[index + 1].isdigit()
+        ):
+            continue
+        return compact[: index + 1]
     return compact
 
 
