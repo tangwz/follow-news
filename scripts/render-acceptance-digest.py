@@ -329,13 +329,19 @@ def fixed_kol_articles(data: Dict[str, Any]) -> List[Dict[str, Any]]:
     ]
 
 
-def fixed_github_release_articles(data: Dict[str, Any]) -> List[Dict[str, Any]]:
+def fixed_github_release_articles(
+    data: Dict[str, Any],
+    filter_low_signal: bool = False,
+) -> List[Dict[str, Any]]:
     return [
         article
         for article in iter_articles(data)
         if article.get("source_type") == "github"
         and article_link(article)
-        and not is_low_signal_github_release(article)
+        and (
+            not filter_low_signal
+            or not is_low_signal_github_release(article)
+        )
     ]
 
 
@@ -395,7 +401,12 @@ def visible_alias_candidates(
             candidates.extend(sorted_topic_articles(topic_data))
 
     candidates.extend(fixed_kol_articles(data))
-    candidates.extend(fixed_github_release_articles(data))
+    candidates.extend(
+        fixed_github_release_articles(
+            data,
+            filter_low_signal=(template == "chat"),
+        )
+    )
     candidates.extend(fixed_github_trending_articles(data))
     candidates.extend(fixed_blog_pick_articles(data))
     candidates.extend(fixed_podcast_articles(data))
@@ -524,27 +535,24 @@ def format_kol_metric_text(article: Dict[str, Any]) -> str:
 
 def is_low_signal_github_release(article: Dict[str, Any]) -> bool:
     title = compact_text(article.get("title")).lower()
-    tag = compact_text(article.get("tag_name") or article.get("version")).lower()
+    tag = release_tag_text(article)
     summary = compact_text(article.get("summary") or article.get("snippet")).lower()
     combined = " ".join([title, tag, summary])
 
     if article.get("prerelease") is True:
         return True
 
-    low_signal_tokens = ("nightly", "snapshot", "alpha", "canary")
-    if any(token in combined for token in low_signal_tokens):
+    low_signal_tokens = ("nightly", "snapshot", "canary", "alpha", "beta")
+    if any(token in tag for token in low_signal_tokens):
         return True
 
-    if re.search(r"(?:^|[._-])a\d+$", tag):
+    if re.search(r"(?:^|[._-])(?:a|b|rc)\d+$|[0-9](?:a|b)\d+$", tag):
         return True
 
-    dependency_terms = (
-        "dependency",
-        "dependencies",
-        "package",
-        "packages",
-        "bump",
-        "deps",
+    dependency_patterns = (
+        r"\b(?:bump|update|upgrade|pin|vendor)\s+(?:deps?|dependencies|packages?)\b",
+        r"\b(?:deps?|dependencies)\s+(?:bump|update|upgrade)\b",
+        r"\bdependabot\b",
     )
     signal_terms = (
         "api",
@@ -556,9 +564,25 @@ def is_low_signal_github_release(article: Dict[str, Any]) -> bool:
         "breaking",
         "fix",
     )
-    has_dependency_update = any(term in combined for term in dependency_terms)
+    has_dependency_update = any(
+        re.search(pattern, combined)
+        for pattern in dependency_patterns
+    )
     has_product_signal = any(term in combined for term in signal_terms)
     return has_dependency_update and not has_product_signal
+
+
+def release_tag_text(article: Dict[str, Any]) -> str:
+    explicit_tag = compact_text(article.get("tag_name") or article.get("version")).lower()
+    if explicit_tag:
+        return explicit_tag
+
+    title = compact_text(article.get("title")).lower()
+    matches = re.findall(
+        r"\b(?:v?\d+(?:[._-]\d+)*(?:[._-]?(?:a|b|rc)\d+|[._-]?(?:alpha|beta)\d*)?|nightly|snapshot|canary)\b",
+        title,
+    )
+    return " ".join(matches)
 
 
 def render_github_releases(
@@ -726,7 +750,7 @@ def render_chat_github_releases(
     data: Dict[str, Any],
     visible_registry: VisibleArticleRegistry,
 ) -> Optional[str]:
-    releases = fixed_github_release_articles(data)
+    releases = fixed_github_release_articles(data, filter_low_signal=True)
     releases = sorted(releases, key=quality_score, reverse=True)
     releases = visible_registry.filter_unseen(releases)
     return render_chat_article_section("## 📦 GitHub Releases / 发布", "📦", releases)

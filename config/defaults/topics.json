@@ -11,7 +11,7 @@
       "search": {
         "queries": ["LLM latest news", "large language model breakthroughs", "大模型最新动态", "GPT Claude Gemini updates"],
         "twitter_queries": ["GPT-5", "Claude", "大模型"],
-        "must_include": ["LLM", "large language model", "foundation model", "language model", "model release", "benchmark", "inference", "大模型"],
+        "must_include": ["LLM", "large language model", "foundation model", "language model", "model release", "LLM benchmark", "LLM inference", "大模型"],
         "exclude": ["tutorial", "how to use", "beginner guide"]
       },
       "display": {

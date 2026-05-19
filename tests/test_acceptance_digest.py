@@ -761,6 +761,134 @@ class TestAcceptanceRenderer(unittest.TestCase):
         self.assertNotIn("picoclaw nightly", text)
         self.assertNotIn("crewAI 1.14.5a7", text)
 
+    def test_discord_github_releases_keep_low_signal_releases(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 1},
+            "topics": {
+                "supplemental": {
+                    "articles": [
+                        {
+                            "title": "picoclaw nightly",
+                            "link": "https://github.com/sipeed/picoclaw/releases/tag/nightly",
+                            "source_type": "github",
+                            "repo": "sipeed/picoclaw",
+                            "tag_name": "nightly",
+                            "summary": "Nightly build.",
+                            "quality_score": 10,
+                        },
+                    ]
+                }
+            },
+        }
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=[],
+            report_date="2026-05-18",
+            version="3.17.0",
+            template="discord",
+        )
+
+        self.assertIn("## 📦 GitHub Releases", text)
+        self.assertIn("sipeed/picoclaw", text)
+        self.assertIn("`nightly`", text)
+
+    def test_chat_github_releases_keep_real_package_release(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 1},
+            "topics": {
+                "supplemental": {
+                    "articles": [
+                        {
+                            "title": "Example Tool v1.0.0",
+                            "link": "https://github.com/example/tool/releases/tag/v1.0.0",
+                            "source_type": "github",
+                            "repo": "example/tool",
+                            "tag_name": "v1.0.0",
+                            "summary": "Adds a Python package for CLI users.",
+                            "quality_score": 10,
+                        },
+                    ]
+                }
+            },
+        }
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=[],
+            report_date="2026-05-18",
+            version="3.17.0",
+            template="chat",
+        )
+
+        self.assertIn("## 📦 GitHub Releases / 发布", text)
+        self.assertIn("Example Tool v1.0.0", text)
+
+    def test_chat_github_releases_filter_alpha_tag_from_title(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 1},
+            "topics": {
+                "supplemental": {
+                    "articles": [
+                        {
+                            "title": "crewAI 1.14.5a7",
+                            "link": "https://github.com/crewAIInc/crewAI/releases/tag/1.14.5a7",
+                            "source_type": "github",
+                            "repo": "crewAIInc/crewAI",
+                            "summary": "Release notes include minor changes.",
+                            "quality_score": 10,
+                        },
+                    ]
+                }
+            },
+        }
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=[],
+            report_date="2026-05-18",
+            version="3.17.0",
+            template="chat",
+        )
+
+        self.assertNotIn("## 📦 GitHub Releases", text)
+        self.assertNotIn("crewAI 1.14.5a7", text)
+
+    def test_chat_github_releases_keep_stable_project_with_alpha_in_name(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 1},
+            "topics": {
+                "supplemental": {
+                    "articles": [
+                        {
+                            "title": "AlphaFold v1.0.0",
+                            "link": "https://github.com/example/alphafold/releases/tag/v1.0.0",
+                            "source_type": "github",
+                            "repo": "example/alphafold",
+                            "tag_name": "v1.0.0",
+                            "summary": "Stable release.",
+                            "quality_score": 10,
+                        },
+                    ]
+                }
+            },
+        }
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=[],
+            report_date="2026-05-18",
+            version="3.17.0",
+            template="chat",
+        )
+
+        self.assertIn("## 📦 GitHub Releases / 发布", text)
+        self.assertIn("AlphaFold v1.0.0", text)
+
     def test_group_by_topics_prefers_content_keyword_match_over_topic_order(self):
         articles = [
             {
@@ -783,6 +911,51 @@ class TestAcceptanceRenderer(unittest.TestCase):
 
         self.assertNotIn("llm", groups)
         self.assertIn("frontier-tech", groups)
+
+    def test_group_by_topics_scores_legacy_ai_agent_keyword_alias(self):
+        articles = [
+            {
+                "title": "AI agent framework ships benchmark report",
+                "snippet": "A coding agent benchmark for repository workflows.",
+                "topics": ["llm", "ai_agent"],
+            }
+        ]
+        topic_priority = {"llm": 0, "ai-agent": 1, "ai_agent": 1}
+        topic_keywords = {
+            "llm": ["large language model"],
+            "ai-agent": ["AI agent", "agent framework", "coding agent"],
+        }
+
+        groups = merge_mod.group_by_topics(
+            articles,
+            topic_priority=topic_priority,
+            topic_keywords=topic_keywords,
+        )
+
+        self.assertNotIn("llm", groups)
+        self.assertIn("ai_agent", groups)
+
+    def test_default_topics_keep_agent_benchmark_out_of_llm(self):
+        topics = render_mod.load_topic_definitions(TOPICS_FILE)
+        topic_priority = {topic["id"]: index for index, topic in enumerate(topics)}
+        topic_keywords = {
+            topic["id"]: topic.get("search", {}).get("must_include", [])
+            for topic in topics
+        }
+        article = {
+            "title": "Coding agent benchmark report",
+            "snippet": "A coding agent benchmark for repository workflows.",
+            "topics": ["llm", "ai-agent"],
+        }
+
+        groups = merge_mod.group_by_topics(
+            [article],
+            topic_priority=topic_priority,
+            topic_keywords=topic_keywords,
+        )
+
+        self.assertNotIn("llm", groups)
+        self.assertIn("ai-agent", groups)
 
     def test_chat_non_github_summaries_keep_stable_evidence_phrases(self):
         text = render_daily_chat_digest()

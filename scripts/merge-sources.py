@@ -475,11 +475,18 @@ def group_by_topics(
     def get_topic_priority(topic: str) -> int:
         return topic_priority.get(topic, 99)
 
+    def canonical_keyword_topic(topic: str) -> str:
+        if topic == "ai_agent":
+            return "ai-agent"
+        return topic
+
     def topic_keyword_score(article: Dict[str, Any], topic: str) -> int:
         if not topic_keywords:
             return 0
 
         keywords = topic_keywords.get(topic, [])
+        if not keywords:
+            keywords = topic_keywords.get(canonical_keyword_topic(topic), [])
         if not keywords:
             return 0
 
