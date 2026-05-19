@@ -22,7 +22,6 @@ Universal IM format for Telegram, Feishu, WeChat, WeCom, and similar chat surfac
 
 {{summary}}
 
-来源：{{source_domain}}
 🔗 {{link}}
 
 {{/articles}}
@@ -35,7 +34,7 @@ Universal IM format for Telegram, Feishu, WeChat, WeCom, and similar chat surfac
 
 ## Format Rules
 
-- Use one fixed item shape: title line, blank line, compact summary, blank line, `来源：domain`, then `🔗 URL`.
+- Use one fixed item shape: title line, blank line, compact summary, blank line, then `🔗 URL`.
 - Use bare URLs only. Do not use `<URL>`, Markdown inline links, or HTML links.
 - Reset `{{index}}` to `1` inside each section.
 - Do not repeat the section emoji in item title lines; the section heading already carries the visual marker.

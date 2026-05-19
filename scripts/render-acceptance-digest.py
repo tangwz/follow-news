@@ -296,19 +296,6 @@ def chat_title_line(
     return f"{index}. [{format_chat_score(article)}/10] {title}"
 
 
-def visible_source_label(article: Dict[str, Any]) -> str:
-    url = article_link(article)
-    if url:
-        try:
-            domain = normalize_visible_domain(urlparse(url).netloc)
-            if domain:
-                return domain
-        except Exception:
-            pass
-
-    return compact_text(article.get("source_name")) or "unknown"
-
-
 def render_chat_item(
     article: Dict[str, Any],
     index: int,
@@ -320,7 +307,6 @@ def render_chat_item(
             "",
             chat_summary(article),
             "",
-            f"来源：{visible_source_label(article)}",
             f"🔗 {article_link(article)}",
         ]
     )
@@ -731,7 +717,6 @@ def render_chat_kol_updates(
         lines.append("")
         lines.append(f"{chat_summary(article)} `{metric_text}`")
         lines.append("")
-        lines.append(f"来源：{visible_source_label(article)}")
         lines.append(f"🔗 {article_link(article)}")
         lines.append("")
     return "\n".join(lines).rstrip()

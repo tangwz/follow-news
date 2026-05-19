@@ -636,7 +636,7 @@ class TestAcceptanceRenderer(unittest.TestCase):
         self.assertIn("## 🧠 LLM / 大模型", text)
         self.assertIn("1. [9/10] OpenAI ships structured agent evaluation suite", text)
         self.assertNotIn("1. 🧠 [9/10]", text)
-        self.assertIn("来源：openai.com", text)
+        self.assertNotIn("来源：", text)
         self.assertIn("🔗 https://openai.com/research/agent-evals", text)
         self.assertNotIn("<https://", text)
         self.assertNotIn("Low scoring model rumor should not render", text)
@@ -651,12 +651,11 @@ class TestAcceptanceRenderer(unittest.TestCase):
         for index, line in enumerate(lines):
             if not re.match(r"^[0-9]+\. \[[0-9]+(?:\.[0-9]+)?/10\] .+", line):
                 continue
-            self.assertLess(index + 5, len(lines))
+            self.assertLess(index + 4, len(lines))
             self.assertEqual(lines[index + 1], "")
             self.assertNotEqual(lines[index + 2], "")
             self.assertEqual(lines[index + 3], "")
-            self.assertRegex(lines[index + 4], r"^来源：.+$")
-            self.assertRegex(lines[index + 5], r"^🔗 https?://.+$")
+            self.assertRegex(lines[index + 4], r"^🔗 https?://.+$")
 
         section_starts = [
             index for index, line in enumerate(lines) if line.startswith("## ")
@@ -716,7 +715,7 @@ class TestAcceptanceRenderer(unittest.TestCase):
         self.assertIn("## 📝 Blog Picks / 博客精选", text)
         fixed_text = text.split("## 📦 GitHub Releases / 发布", 1)[1]
         self.assertIn("1. [5/10] Example Tool v1.0.0", fixed_text)
-        self.assertIn("来源：github.com", fixed_text)
+        self.assertNotIn("来源：", fixed_text)
         self.assertNotRegex(fixed_text, r"(?m)^• ")
 
     def test_chat_github_releases_filter_low_signal_prereleases(self):
