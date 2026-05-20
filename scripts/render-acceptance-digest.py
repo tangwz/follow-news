@@ -895,9 +895,21 @@ def source_count(data: Dict[str, Any], key: str) -> int:
         return 0
 
 
+def source_count_first_present(data: Dict[str, Any], keys: Sequence[str]) -> int:
+    input_sources = data.get("input_sources", {})
+    for key in keys:
+        if key in input_sources:
+            return source_count(data, key)
+    return 0
+
+
 def render_footer(data: Dict[str, Any], version: str) -> str:
     stats = data.get("output_stats", {})
     merged = stats.get("total_articles", 0)
+    trending_count = source_count_first_present(
+        data,
+        ("github_trending", "trending_repositories"),
+    )
     return "\n".join(
         [
             "---",
@@ -908,7 +920,7 @@ def render_footer(data: Dict[str, Any], version: str) -> str:
                 f"Reddit {source_count(data, 'reddit_posts')} | "
                 f"Web {source_count(data, 'web_articles')} | "
                 f"GitHub {source_count(data, 'github_articles')} releases + "
-                f"{source_count(data, 'trending_repositories')} trending | "
+                f"{trending_count} trending | "
                 f"Podcast {source_count(data, 'podcast_episodes')} episodes | "
                 f"Dedup: {merged} articles"
             ),

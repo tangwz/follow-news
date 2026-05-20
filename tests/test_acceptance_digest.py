@@ -2089,6 +2089,25 @@ class TestAcceptanceRenderer(unittest.TestCase):
             1,
         )
 
+    def test_footer_uses_current_github_trending_count_key(self):
+        data = {
+            "input_sources": {
+                "rss_articles": 0,
+                "twitter_articles": 0,
+                "web_articles": 0,
+                "github_articles": 0,
+                "github_trending": 2,
+                "reddit_posts": 0,
+                "podcast_episodes": 0,
+            },
+            "output_stats": {"total_articles": 0},
+            "topics": {},
+        }
+
+        footer = render_mod.render_footer(data, version="3.17.0")
+
+        self.assertIn("GitHub 0 releases + 2 trending", footer)
+
     def test_discord_visible_dedupe_resolves_cross_fixed_late_bridge(self):
         text = render_mod.render_digest(
             cross_fixed_bridge_fixture(),
