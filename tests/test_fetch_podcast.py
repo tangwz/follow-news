@@ -1153,7 +1153,7 @@ class TestPodcastCliOutput(unittest.TestCase):
                 {**source, "platform": "rss", "url": "https://example.com/feed.xml"},
                 source["url"],
             ),
-            cache_key,
+            f"rss:{source['url']}:{fetch_podcast.MAX_EPISODES_PER_SOURCE}:v{fetch_podcast.METADATA_CACHE_VERSION}",
         )
         self.assertIn(cache_key, cache["metadata"])
         self.assertEqual(cache["metadata"][cache_key]["payload"][0]["title"], "Danfei Xu")
@@ -1161,6 +1161,106 @@ class TestPodcastCliOutput(unittest.TestCase):
         self.assertEqual(enrich_transcript.call_count, 2)
         self.assertEqual(first[0]["transcript"], "Cached transcript.")
         self.assertEqual(second[0]["transcript"], "Cached transcript.")
+
+    @patch("fetch_podcast.enrich_episode_transcript", side_effect=lambda episode, *_args, **_kwargs: episode)
+    @patch("fetch_podcast.run_opencli_json")
+    @patch("fetch_podcast.resolve_opencli_bin", return_value="/usr/local/bin/opencli")
+    def test_fetch_xiaoyuzhou_source_caches_raw_payload_before_cutoff_filtering(
+        self,
+        _resolve,
+        run_opencli,
+        _enrich_transcript,
+    ):
+        source = {
+            "id": "whynottv-podcast",
+            "type": "podcast",
+            "name": "WhynotTV Podcast",
+            "url": "https://www.xiaoyuzhoufm.com/podcast/686a1832222ae2de21fea940",
+            "platform": "xiaoyuzhou",
+            "topics": ["podcast"],
+            "transcript": {"enabled": False},
+        }
+        raw_payload = [
+            {"eid": "older", "title": "Older Episode", "date": "2026-04-01"},
+            {"eid": "newer", "title": "Newer Episode", "date": "2026-05-01"},
+        ]
+        run_opencli.return_value = raw_payload
+        cache = {"metadata": {}, "transcripts": {}}
+
+        first = fetch_podcast.fetch_xiaoyuzhou_source(
+            source,
+            utc("2026-04-15T00:00:00Z"),
+            cache,
+            no_cache=False,
+        )
+        second = fetch_podcast.fetch_xiaoyuzhou_source(
+            source,
+            utc("2026-03-01T00:00:00Z"),
+            cache,
+            no_cache=False,
+        )
+
+        cache_key = fetch_podcast.metadata_cache_key(source)
+        self.assertEqual([episode["guid"] for episode in first], ["xiaoyuzhou:newer"])
+        self.assertEqual(
+            [episode["guid"] for episode in second],
+            ["xiaoyuzhou:newer", "xiaoyuzhou:older"],
+        )
+        self.assertEqual(cache["metadata"][cache_key]["payload"], raw_payload)
+        run_opencli.assert_called_once()
+
+    def test_metadata_cache_key_uses_source_url_for_explicit_xiaoyuzhou_fallback(self):
+        source = {
+            "url": "https://www.xiaoyuzhoufm.com/podcast/686a1832222ae2de21fea940",
+            "platform": "xiaoyuzhou",
+        }
+
+        key = fetch_podcast.metadata_cache_key(source, "https://example.com/feed.xml")
+
+        self.assertEqual(key, "xiaoyuzhou:686a1832222ae2de21fea940")
+
+    @patch("fetch_podcast.enrich_episode_transcript", side_effect=lambda episode, *_args, **_kwargs: episode)
+    @patch("fetch_podcast.run_opencli_json")
+    @patch("fetch_podcast.resolve_opencli_bin", return_value="/usr/local/bin/opencli")
+    def test_fetch_xiaoyuzhou_source_refetches_wrong_shape_metadata_cache(
+        self,
+        _resolve,
+        run_opencli,
+        _enrich_transcript,
+    ):
+        source = {
+            "id": "whynottv-podcast",
+            "type": "podcast",
+            "name": "WhynotTV Podcast",
+            "url": "https://www.xiaoyuzhoufm.com/podcast/686a1832222ae2de21fea940",
+            "platform": "xiaoyuzhou",
+            "topics": ["podcast"],
+            "transcript": {"enabled": False},
+        }
+        cache_key = fetch_podcast.metadata_cache_key(source)
+        cache = {
+            "metadata": {
+                cache_key: {
+                    "payload": {"eid": "wrong-shape"},
+                    "ts": time.time(),
+                }
+            },
+            "transcripts": {},
+        }
+        run_opencli.return_value = [
+            {"eid": "fresh", "title": "Fresh Episode", "date": "2026-05-01"},
+        ]
+
+        episodes = fetch_podcast.fetch_xiaoyuzhou_source(
+            source,
+            utc("2026-01-01T00:00:00Z"),
+            cache,
+            no_cache=False,
+        )
+
+        self.assertEqual([episode["guid"] for episode in episodes], ["xiaoyuzhou:fresh"])
+        self.assertIsInstance(cache["metadata"][cache_key]["payload"], list)
+        run_opencli.assert_called_once()
 
     @patch("fetch_podcast.resolve_opencli_bin", return_value=None)
     def test_fetch_xiaoyuzhou_source_requires_opencli(self, _resolve):

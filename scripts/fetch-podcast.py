@@ -585,16 +585,39 @@ def cache_entry_valid(entry: Dict[str, Any], now: float) -> bool:
 
 
 def metadata_cache_key(source: Dict[str, Any], resolved_url: Optional[str] = None) -> str:
-    url = resolved_url or source.get("url", "")
-    platform = source.get("platform") or infer_platform(url)
-    if platform == "auto":
-        platform = infer_platform(url)
+    source_url = source.get("url", "")
+    url = resolved_url or source_url
+    configured_platform = source.get("platform")
+    platform = str(configured_platform or "").strip()
 
-    podcast_id = extract_xiaoyuzhou_podcast_id(url)
-    if (platform == "xiaoyuzhou" or podcast_id) and podcast_id:
-        return f"xiaoyuzhou:{podcast_id}"
+    if not platform or platform == "auto":
+        inferred_platform = infer_platform(url)
+        podcast_id = extract_xiaoyuzhou_podcast_id(url)
+        if inferred_platform == "xiaoyuzhou" and podcast_id:
+            return f"xiaoyuzhou:{podcast_id}"
+        return f"{inferred_platform}:{url}:{MAX_EPISODES_PER_SOURCE}:v{METADATA_CACHE_VERSION}"
+
+    if platform == "xiaoyuzhou":
+        podcast_id = extract_xiaoyuzhou_podcast_id(url) or extract_xiaoyuzhou_podcast_id(source_url)
+        if podcast_id:
+            return f"xiaoyuzhou:{podcast_id}"
 
     return f"{platform}:{url}:{MAX_EPISODES_PER_SOURCE}:v{METADATA_CACHE_VERSION}"
+
+
+def cached_metadata_payload(
+    cache: Dict[str, Any],
+    cache_key: str,
+    now: float,
+    expected_type: type,
+) -> Optional[Any]:
+    cached = cache.get("metadata", {}).get(cache_key)
+    if not isinstance(cached, dict) or not metadata_cache_entry_valid(cached, now):
+        return None
+    payload = cached.get("payload")
+    if isinstance(payload, expected_type):
+        return payload
+    return None
 
 
 def metadata_cache_entry_valid(entry: Dict[str, Any], now: float) -> bool:
@@ -882,10 +905,8 @@ def fetch_youtube_source(
 
     cache_key = metadata_cache_key(source)
     now = time.time()
-    cached = None if no_cache else cache.get("metadata", {}).get(cache_key)
-    if isinstance(cached, dict) and metadata_cache_entry_valid(cached, now):
-        payload = cached["payload"]
-    else:
+    payload = None if no_cache else cached_metadata_payload(cache, cache_key, now, dict)
+    if payload is None:
         payload = run_ytdlp_metadata(ytdlp_bin, source)
         payload = hydrate_youtube_metadata(payload, ytdlp_bin)
         if not no_cache:
@@ -916,18 +937,8 @@ def fetch_xiaoyuzhou_source(
 
     cache_key = metadata_cache_key(source)
     now = time.time()
-    cached = None if no_cache else cache.get("metadata", {}).get(cache_key)
-    if isinstance(cached, dict) and metadata_cache_entry_valid(cached, now):
-        cached_episodes = []
-        for episode in cached["payload"]:
-            if not isinstance(episode, dict):
-                continue
-            published = parse_podcast_date(str(episode.get("date") or ""))
-            if not published or published.date() < cutoff.date():
-                continue
-            cached_episodes.append(episode.copy())
-        episodes = newest_episodes(cached_episodes)
-    else:
+    payload = None if no_cache else cached_metadata_payload(cache, cache_key, now, list)
+    if payload is None:
         payload = run_opencli_json(
             opencli_bin,
             [
@@ -940,12 +951,12 @@ def fetch_xiaoyuzhou_source(
                 "json",
             ],
         )
-        episodes = normalize_xiaoyuzhou_metadata(payload, source, cutoff)
         if not no_cache:
             cache.setdefault("metadata", {})[cache_key] = {
-                "payload": [episode.copy() for episode in episodes],
+                "payload": payload,
                 "ts": now,
             }
+    episodes = normalize_xiaoyuzhou_metadata(payload, source, cutoff)
     return [
         enrich_episode_transcript(episode, source, cache, no_cache=no_cache)
         for episode in episodes
