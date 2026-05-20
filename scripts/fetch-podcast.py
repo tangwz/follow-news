@@ -36,6 +36,7 @@ METADATA_CACHE_TTL_SECONDS = 3600
 METADATA_CACHE_VERSION = 2
 TRANSCRIPT_SUCCESS_TTL_SECONDS = 30 * 86400
 TRANSCRIPT_FAILURE_TTL_SECONDS = 6 * 3600
+XIAOYUZHOU_HOSTS = {"xiaoyuzhoufm.com", "www.xiaoyuzhoufm.com"}
 
 
 def setup_logging(verbose: bool) -> logging.Logger:
@@ -49,10 +50,24 @@ def setup_logging(verbose: bool) -> logging.Logger:
 
 
 def infer_platform(url: str) -> str:
-    host = (urlparse(url).hostname or "").lower()
+    parsed = urlparse(url)
+    host = (parsed.hostname or "").lower()
     if host in {"youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be"}:
         return "youtube"
+    if extract_xiaoyuzhou_podcast_id(url):
+        return "xiaoyuzhou"
     return "rss"
+
+
+def extract_xiaoyuzhou_podcast_id(url: str) -> str:
+    parsed = urlparse(url)
+    host = (parsed.hostname or "").lower()
+    if host not in XIAOYUZHOU_HOSTS:
+        return ""
+    parts = [part for part in parsed.path.split("/") if part]
+    if len(parts) == 2 and parts[0] == "podcast" and parts[1]:
+        return parts[1]
+    return ""
 
 
 def parse_podcast_date(value: str) -> Optional[datetime]:

@@ -40,6 +40,57 @@ class TestPodcastPlatformInference(unittest.TestCase):
             "rss",
         )
 
+    def test_infers_xiaoyuzhou_platform(self):
+        self.assertEqual(
+            fetch_podcast.infer_platform(
+                "https://www.xiaoyuzhoufm.com/podcast/686a1832222ae2de21fea940"
+            ),
+            "xiaoyuzhou",
+        )
+        self.assertEqual(
+            fetch_podcast.infer_platform(
+                "https://xiaoyuzhoufm.com/podcast/686a1832222ae2de21fea940"
+            ),
+            "xiaoyuzhou",
+        )
+
+    def test_extracts_xiaoyuzhou_podcast_id(self):
+        self.assertEqual(
+            fetch_podcast.extract_xiaoyuzhou_podcast_id(
+                "https://www.xiaoyuzhoufm.com/podcast/686a1832222ae2de21fea940"
+            ),
+            "686a1832222ae2de21fea940",
+        )
+
+    def test_extracts_xiaoyuzhou_podcast_id_with_query_and_fragment(self):
+        self.assertEqual(
+            fetch_podcast.extract_xiaoyuzhou_podcast_id(
+                "https://www.xiaoyuzhoufm.com/podcast/686a1832222ae2de21fea940?foo=bar#frag"
+            ),
+            "686a1832222ae2de21fea940",
+        )
+
+    def test_extract_xiaoyuzhou_podcast_id_rejects_non_podcast_url(self):
+        self.assertEqual(
+            fetch_podcast.extract_xiaoyuzhou_podcast_id(
+                "https://www.xiaoyuzhoufm.com/episode/69f441cd5390b7cc928acdcc"
+            ),
+            "",
+        )
+
+    def test_extract_xiaoyuzhou_podcast_id_rejects_empty_podcast_path(self):
+        url = "https://www.xiaoyuzhoufm.com/podcast/"
+        self.assertEqual(fetch_podcast.extract_xiaoyuzhou_podcast_id(url), "")
+        self.assertEqual(fetch_podcast.infer_platform(url), "rss")
+
+    def test_extract_xiaoyuzhou_podcast_id_rejects_extra_path_segments(self):
+        self.assertEqual(
+            fetch_podcast.extract_xiaoyuzhou_podcast_id(
+                "https://www.xiaoyuzhoufm.com/podcast/686a1832222ae2de21fea940/extra"
+            ),
+            "",
+        )
+
 
 class TestPodcastDateParsing(unittest.TestCase):
     def test_parse_podcast_date_iso(self):
