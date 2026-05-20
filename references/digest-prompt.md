@@ -59,6 +59,10 @@ If it fails, run individual scripts in `<SKILL_DIR>/scripts/` (see each script's
 
 Twitter/X uses `TWITTER_API_BACKEND=auto` by default. Auto mode tries OpenCLI first, then API fallbacks. If the `jackwener/opencli` skill is available in OpenClaw and Twitter data is missing, use that skill to validate `opencli doctor`, browser bridge connectivity, and X login state before asking the user for API credentials.
 
+⚠️ Important: Browser commands reuse your Chrome login session. You must be logged into the target website in Chrome before running commands.
+
+⚠️ 重要提示：浏览器命令会复用你的 Chrome 登录会话。运行命令前，必须先在 Chrome 中登录目标网站。
+
 ## Report Generation
 
 Get a structured overview:
