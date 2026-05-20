@@ -1056,6 +1056,69 @@ class TestPodcastCliOutput(unittest.TestCase):
         self.assertEqual(len(episodes), 1)
         self.assertEqual(episodes[0]["title"], "Cached Episode")
 
+    @patch("fetch_podcast.enrich_episode_transcript", side_effect=lambda episode, *_args, **_kwargs: episode)
+    @patch("fetch_podcast.hydrate_youtube_metadata")
+    @patch("fetch_podcast.run_ytdlp_metadata")
+    @patch("fetch_podcast.resolve_ytdlp_bin", return_value="/usr/local/bin/yt-dlp")
+    def test_fetch_youtube_source_refetches_wrong_shape_metadata_cache(
+        self,
+        _resolve,
+        run_metadata,
+        hydrate_metadata,
+        _enrich_transcript,
+    ):
+        source = {
+            "id": "training-data-podcast",
+            "type": "podcast",
+            "name": "Training Data",
+            "url": "https://www.youtube.com/playlist?list=abc",
+            "platform": "youtube",
+            "topics": ["llm"],
+            "transcript": {"enabled": False},
+        }
+        cache_key = fetch_podcast.metadata_cache_key(source)
+        cache = {
+            "metadata": {
+                cache_key: {
+                    "payload": [{"id": "wrong-shape"}],
+                    "ts": time.time(),
+                }
+            },
+            "transcripts": {},
+        }
+        raw_payload = {"entries": [{"id": "fresh"}]}
+        fresh_payload = {
+            "entries": [
+                {
+                    "id": "fresh",
+                    "title": "Fresh Episode",
+                    "webpage_url": "https://www.youtube.com/watch?v=fresh",
+                    "upload_date": "20260504",
+                }
+            ]
+        }
+        run_metadata.return_value = raw_payload
+        hydrate_metadata.return_value = fresh_payload
+
+        first = fetch_podcast.fetch_youtube_source(
+            source,
+            utc("2026-01-01T00:00:00Z"),
+            cache,
+            no_cache=False,
+        )
+        second = fetch_podcast.fetch_youtube_source(
+            source,
+            utc("2026-01-01T00:00:00Z"),
+            cache,
+            no_cache=False,
+        )
+
+        self.assertEqual([episode["guid"] for episode in first], ["youtube:fresh"])
+        self.assertEqual([episode["guid"] for episode in second], ["youtube:fresh"])
+        self.assertEqual(cache["metadata"][cache_key]["payload"], fresh_payload)
+        run_metadata.assert_called_once_with("/usr/local/bin/yt-dlp", source)
+        hydrate_metadata.assert_called_once_with(raw_payload, "/usr/local/bin/yt-dlp")
+
     @patch("fetch_podcast.run_opencli_json")
     @patch("fetch_podcast.resolve_opencli_bin", return_value="/usr/local/bin/opencli")
     def test_fetch_xiaoyuzhou_source_uses_opencli(self, _resolve, run_opencli):
