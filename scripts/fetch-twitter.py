@@ -446,6 +446,13 @@ def _ensure_opencli_min_version(binary: str) -> None:
         )
 
 
+def _is_opencli_below_min_version(binary: str) -> bool:
+    """Return true when OpenCLI has a known version below the minimum."""
+    current = _get_opencli_version(binary)
+    current_tuple = _parse_opencli_version(current or "")
+    return current_tuple is not None and current_tuple < _min_opencli_version()
+
+
 def _env_bool(name: str, default: bool = False) -> bool:
     """Read a boolean environment variable."""
     raw = os.getenv(name)
@@ -587,7 +594,7 @@ def _run_opencli_update_command(binary: str, args: List[str], timeout: int = 120
         )
 
 
-def _ensure_opencli_latest(binary: str) -> Dict[str, Any]:
+def _ensure_opencli_latest(binary: str, force: bool = False) -> Dict[str, Any]:
     """Optionally check for and apply OpenCLI updates.
 
     Returns a structured result suitable for logging. This helper never raises.
@@ -599,7 +606,7 @@ def _ensure_opencli_latest(binary: str) -> Dict[str, Any]:
 
     state_path = _opencli_update_state_path()
     interval_seconds = _get_opencli_update_interval_seconds()
-    if not _is_opencli_update_due(state_path, interval_seconds):
+    if not force and not _is_opencli_update_due(state_path, interval_seconds):
         result["status"] = "throttled"
         result["message"] = f"OpenCLI update check throttled to every {interval_seconds}s."
         return result
@@ -1587,6 +1594,9 @@ class OpenCliBackend(TwitterBackend):
         try:
             if self._auto_update:
                 update_result = _ensure_opencli_latest(self.command)
+                if update_result["status"] == "throttled" and _is_opencli_below_min_version(self.command):
+                    logging.info("OpenCLI update throttle bypassed because the installed version is below minimum.")
+                    update_result = _ensure_opencli_latest(self.command, force=True)
                 if update_result["status"] == "updated":
                     logging.info(update_result["message"])
                 elif update_result["status"] == "already_latest":

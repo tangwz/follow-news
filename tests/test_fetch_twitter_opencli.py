@@ -776,6 +776,55 @@ class TestOpenCliBackend(unittest.TestCase):
         verify_mock.assert_called_once()
         doctor_mock.assert_called_once()
 
+    @patch.dict(
+        os.environ,
+        {
+            "OPENCLI_CLOSE_CHROME_WINDOWS_AFTER_RUN": "0",
+            "OPENCLI_UPDATE_COMMAND": "self-update",
+        },
+        clear=True,
+    )
+    @patch("fetch_twitter.snapshot_chrome_windows", return_value=None)
+    @patch("fetch_twitter.OpenCliBackend._run_doctor")
+    @patch("fetch_twitter.OpenCliBackend._verify_capability")
+    @patch("fetch_twitter.resolve_opencli_bin", return_value="/bin/opencli")
+    def test_auto_update_forces_retry_when_throttled_and_version_too_old(
+        self,
+        _resolve_mock,
+        verify_mock,
+        doctor_mock,
+        _snapshot_mock,
+    ):
+        update_ran = {"value": False}
+
+        def _get_version(_binary):
+            return "1.7.22" if update_ran["value"] else "1.7.21"
+
+        def _run_update(binary, args, timeout=120):
+            update_ran["value"] = True
+            return subprocess.CompletedProcess(
+                args=[binary] + args,
+                returncode=0,
+                stdout="updated",
+                stderr="",
+            )
+
+        with ExitStack() as stack:
+            stack.enter_context(patch("fetch_twitter._get_opencli_version", side_effect=_get_version))
+            update_mock = stack.enter_context(patch("fetch_twitter._run_opencli_update_command", side_effect=_run_update))
+            stack.enter_context(patch("fetch_twitter._record_opencli_update_state"))
+            state_path = _temp_opencli_state_path(stack)
+            state_path.write_text("{}", encoding="utf-8")
+            stack.enter_context(patch("fetch_twitter._opencli_update_state_path", return_value=state_path))
+
+            backend = fetch_twitter.OpenCliBackend(auto_update=True, no_cache=True)
+
+        self.assertEqual(backend.command, "/bin/opencli")
+        self.assertTrue(update_ran["value"])
+        update_mock.assert_called_once_with("/bin/opencli", ["self-update"])
+        verify_mock.assert_called_once()
+        doctor_mock.assert_called_once()
+
     @patch("fetch_twitter.resolve_opencli_bin", return_value="/bin/opencli")
     @patch("subprocess.run")
     def test_single_source_error_does_not_raise_global_error(self, run_mock, _resolve_mock):
