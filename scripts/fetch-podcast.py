@@ -527,8 +527,11 @@ def run_opencli_transcript(
             text_file = str(row.get("text_file") or "").strip()
             if not text_file or text_file == "-":
                 continue
+            text_path = Path(text_file)
+            if not text_path.is_absolute():
+                text_path = Path(tmpdir) / text_path
             try:
-                transcript = Path(text_file).read_text(encoding="utf-8", errors="replace").strip()
+                transcript = text_path.read_text(encoding="utf-8", errors="replace").strip()
             except OSError as exc:
                 return {"status": "error", "error": str(exc)[:200]}
             if transcript:
@@ -623,7 +626,7 @@ def enrich_episode_transcript(
         episode["transcript_error"] = f"Unsupported transcript backend: {backend}"
         return episode
 
-    if backend == "opencli" or episode.get("platform") == "xiaoyuzhou":
+    if backend == "opencli" or (backend == "auto" and episode.get("platform") == "xiaoyuzhou"):
         opencli_bin = resolve_opencli_bin()
         if not opencli_bin:
             result = {"status": "backend_unavailable", "error": "opencli is not available"}

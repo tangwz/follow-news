@@ -712,6 +712,60 @@ class TestTranscriptBackend(unittest.TestCase):
         run_opencli.assert_called_once()
         self.assertIn("transcript", run_opencli.call_args.args[1])
 
+    @patch("fetch_podcast.run_ytdlp_transcript")
+    @patch("fetch_podcast.resolve_ytdlp_bin", return_value="/usr/local/bin/yt-dlp")
+    @patch("fetch_podcast.resolve_opencli_bin")
+    def test_xiaoyuzhou_explicit_ytdlp_backend_uses_ytdlp(
+        self,
+        resolve_opencli,
+        _resolve_ytdlp,
+        run_transcript,
+    ):
+        source = self.xiaoyuzhou_source()
+        source["transcript"]["backend"] = "yt-dlp"
+        run_transcript.return_value = {
+            "status": "ok",
+            "transcript": "Subtitle transcript.",
+        }
+
+        result = fetch_podcast.enrich_episode_transcript(
+            self.xiaoyuzhou_episode(),
+            source,
+            {},
+            no_cache=True,
+        )
+
+        self.assertEqual(result["transcript_status"], "ok")
+        self.assertEqual(result["transcript"], "Subtitle transcript.")
+        resolve_opencli.assert_not_called()
+        run_transcript.assert_called_once()
+
+    @patch("fetch_podcast.run_opencli_json")
+    def test_opencli_transcript_reads_relative_text_file_from_output_dir(self, run_opencli):
+        def write_relative_transcript(_opencli_bin, args, **_kwargs):
+            output_dir = Path(args[args.index("--output") + 1])
+            (output_dir / "transcript.txt").write_text(
+                "Segment one.\nSegment two.\n",
+                encoding="utf-8",
+            )
+            return [
+                {
+                    "status": "success",
+                    "segments": "2",
+                    "text_file": "transcript.txt",
+                }
+            ]
+
+        run_opencli.side_effect = write_relative_transcript
+
+        result = fetch_podcast.run_opencli_transcript(
+            "/usr/local/bin/opencli",
+            self.xiaoyuzhou_episode(),
+        )
+
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(result["transcript"], "Segment one.\nSegment two.")
+
     @patch("fetch_podcast.resolve_opencli_bin", return_value=None)
     def test_opencli_transcript_backend_unavailable_keeps_episode(self, _resolve):
         result = fetch_podcast.enrich_episode_transcript(
