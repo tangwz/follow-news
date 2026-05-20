@@ -294,7 +294,7 @@ def normalize_xiaoyuzhou_metadata(
         episode_id = str(entry.get("eid") or "").strip()
         title = str(entry.get("title") or "").strip()
         published = parse_xiaoyuzhou_date(entry.get("date"))
-        if not episode_id or not title or not published or published < cutoff:
+        if not episode_id or not title or not published or published.date() < cutoff.date():
             continue
         if episode_id in seen_episode_ids:
             continue

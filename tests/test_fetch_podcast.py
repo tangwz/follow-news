@@ -572,6 +572,20 @@ class TestXiaoyuzhouMetadataNormalization(unittest.TestCase):
 
         self.assertEqual([episode["guid"] for episode in episodes], ["xiaoyuzhou:new"])
 
+    def test_includes_xiaoyuzhou_rows_on_cutoff_calendar_date(self):
+        rows = [
+            {"eid": "same-day", "title": "Same Day Episode", "date": "2026-05-01"},
+        ]
+
+        episodes = fetch_podcast.normalize_xiaoyuzhou_metadata(
+            rows,
+            self.source,
+            utc("2026-05-01T12:00:00Z"),
+        )
+
+        self.assertEqual([episode["guid"] for episode in episodes], ["xiaoyuzhou:same-day"])
+        self.assertEqual(episodes[0]["date"], "2026-05-01T00:00:00+00:00")
+
     def test_normalizes_xiaoyuzhou_rows_newest_first(self):
         rows = [
             {"eid": "older", "title": "Older", "date": "2026-05-01"},
@@ -588,6 +602,19 @@ class TestXiaoyuzhouMetadataNormalization(unittest.TestCase):
     def test_normalize_xiaoyuzhou_metadata_rejects_non_list_payload(self):
         with self.assertRaises(RuntimeError):
             fetch_podcast.normalize_xiaoyuzhou_metadata({"eid": "one"}, self.source, self.cutoff)
+
+    def test_skips_duplicate_and_malformed_xiaoyuzhou_rows(self):
+        rows = [
+            {"eid": "same", "title": "First Episode", "date": "2026-05-01"},
+            {"eid": "same", "title": "Duplicate Episode", "date": "2026-05-02"},
+            {"eid": "", "title": "Missing ID", "date": "2026-05-03"},
+            {"eid": "missing-title", "date": "2026-05-04"},
+            ["not", "a", "row"],
+        ]
+
+        episodes = fetch_podcast.normalize_xiaoyuzhou_metadata(rows, self.source, self.cutoff)
+
+        self.assertEqual([episode["title"] for episode in episodes], ["First Episode"])
 
 
 class TestTranscriptBackend(unittest.TestCase):
@@ -982,6 +1009,30 @@ class TestPodcastCliOutput(unittest.TestCase):
         fetch_xiaoyuzhou.assert_called_once()
         self.assertEqual(result["status"], "ok")
         self.assertEqual(result["platform"], "xiaoyuzhou")
+
+    @patch("fetch_podcast.resolve_opencli_bin", return_value=None)
+    def test_fetch_source_returns_error_result_when_xiaoyuzhou_opencli_missing(self, _resolve):
+        source = {
+            "id": "whynottv-podcast",
+            "type": "podcast",
+            "name": "WhynotTV Podcast",
+            "url": "https://www.xiaoyuzhoufm.com/podcast/686a1832222ae2de21fea940",
+            "platform": "xiaoyuzhou",
+            "topics": ["podcast"],
+        }
+
+        result = fetch_podcast.fetch_source(
+            source,
+            utc("2026-01-01T00:00:00Z"),
+            {"transcripts": {}},
+            no_cache=True,
+        )
+
+        self.assertEqual(result["status"], "error")
+        self.assertEqual(result["count"], 0)
+        self.assertEqual(result["articles"], [])
+        self.assertEqual(result["platform"], "xiaoyuzhou")
+        self.assertIn("opencli is not available", result["error"])
 
     def test_save_podcast_cache_suppresses_replace_failure(self):
         with tempfile.TemporaryDirectory() as tmpdir:
