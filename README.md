@@ -123,7 +123,7 @@ Your overlay file **merges** with defaults:
 
 No need to copy the entire file — just include what you want to change.
 
-Podcast sources use `type: "podcast"`. RSS podcast feeds work without extra tools. YouTube podcast sources use `platform: "youtube"` and can fetch metadata and transcripts through the optional `yt-dlp` runtime. Xiaoyuzhou podcast sources use `platform: "xiaoyuzhou"` with URLs like `https://www.xiaoyuzhoufm.com/podcast/<podcast_id>` and transcript backend `"opencli"`.
+Podcast sources use `type: "podcast"`. RSS podcast feeds work without extra tools. YouTube podcast sources use `platform: "youtube"` and can fetch metadata and transcripts through the optional `yt-dlp` runtime. Xiaoyuzhou podcast sources use `platform: "xiaoyuzhou"` with URLs like `https://www.xiaoyuzhoufm.com/podcast/<podcast_id>`. Xiaoyuzhou metadata discovery uses OpenCLI and has no direct API or HTML fallback; transcript backend `auto`/`opencli` uses OpenCLI, while explicit transcript backend overrides remain explicit user choices. OpenCLI is the documented supported transcript path for Xiaoyuzhou.
 
 ## 🔧 Environment Variables
 
@@ -164,7 +164,7 @@ OpenCLI browser bridge stability depends on the local browser extension connecti
 
 RSS podcast feeds do not need extra tools. YouTube podcast metadata and transcript fetching require `yt-dlp`; install it on `PATH`, or set `YTDLP_BIN` to the executable path. If `yt-dlp` is missing, that YouTube podcast source is marked failed without blocking the rest of the pipeline.
 
-Xiaoyuzhou podcast metadata and transcript fetching require OpenCLI. Install, configure, and authenticate OpenCLI for Xiaoyuzhou before running these sources; set `OPENCLI_BIN` to override the binary path when `opencli` is not on `PATH`. Xiaoyuzhou does not use an HTML fallback or API fallback.
+Xiaoyuzhou podcast metadata discovery requires OpenCLI. Install, configure, and authenticate OpenCLI for Xiaoyuzhou before running these sources; set `OPENCLI_BIN` to override the binary path when `opencli` is not on `PATH`. Xiaoyuzhou metadata discovery has no direct API or HTML fallback. For transcripts, backend `auto`/`opencli` uses OpenCLI; explicit transcript backend overrides remain explicit user choices, but OpenCLI is the documented supported path for Xiaoyuzhou.
 
 ## 📦 Dependencies
 

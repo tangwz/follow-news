@@ -689,10 +689,11 @@ class TestTranscriptBackend(unittest.TestCase):
     @patch("fetch_podcast.run_opencli_json")
     @patch("fetch_podcast.resolve_opencli_bin", return_value="/usr/local/bin/opencli")
     def test_opencli_transcript_success_attaches_text(self, _resolve, run_opencli):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            text_file = Path(tmpdir) / "transcript.txt"
+        def write_absolute_transcript(_opencli_bin, args, **_kwargs):
+            output_dir = Path(args[args.index("--output") + 1])
+            text_file = output_dir / "transcript.txt"
             text_file.write_text("Segment one.\nSegment two.\n", encoding="utf-8")
-            run_opencli.return_value = [
+            return [
                 {
                     "status": "success",
                     "segments": "2",
@@ -700,12 +701,14 @@ class TestTranscriptBackend(unittest.TestCase):
                 }
             ]
 
-            result = fetch_podcast.enrich_episode_transcript(
-                self.xiaoyuzhou_episode(),
-                self.xiaoyuzhou_source(),
-                {},
-                no_cache=True,
-            )
+        run_opencli.side_effect = write_absolute_transcript
+
+        result = fetch_podcast.enrich_episode_transcript(
+            self.xiaoyuzhou_episode(),
+            self.xiaoyuzhou_source(),
+            {},
+            no_cache=True,
+        )
 
         self.assertEqual(result["transcript_status"], "ok")
         self.assertEqual(result["transcript"], "Segment one.\nSegment two.")
@@ -765,6 +768,28 @@ class TestTranscriptBackend(unittest.TestCase):
 
         self.assertEqual(result["status"], "ok")
         self.assertEqual(result["transcript"], "Segment one.\nSegment two.")
+
+    @patch("fetch_podcast.run_opencli_json")
+    def test_opencli_transcript_rejects_text_file_outside_output_dir(self, run_opencli):
+        with tempfile.TemporaryDirectory() as outside_dir:
+            outside_file = Path(outside_dir) / "transcript.txt"
+            outside_file.write_text("Outside transcript.\n", encoding="utf-8")
+            run_opencli.return_value = [
+                {
+                    "status": "success",
+                    "segments": "1",
+                    "text_file": str(outside_file),
+                }
+            ]
+
+            result = fetch_podcast.run_opencli_transcript(
+                "/usr/local/bin/opencli",
+                self.xiaoyuzhou_episode(),
+            )
+
+        self.assertEqual(result["status"], "error")
+        self.assertIn("outside", result["error"])
+        self.assertNotIn("transcript", result)
 
     @patch("fetch_podcast.resolve_opencli_bin", return_value=None)
     def test_opencli_transcript_backend_unavailable_keeps_episode(self, _resolve):

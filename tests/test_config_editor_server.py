@@ -39,6 +39,20 @@ def _get_free_port() -> int:
 
 
 class TestConfigEditorServer(unittest.TestCase):
+    def _valid_podcast_source(self, **overrides: Any) -> dict[str, Any]:
+        source: dict[str, Any] = {
+            "id": "test-podcast",
+            "type": "podcast",
+            "name": "Test Podcast",
+            "enabled": True,
+            "priority": False,
+            "topics": ["podcast"],
+            "url": "https://example.com/feed.xml",
+            "platform": "rss",
+        }
+        source.update(overrides)
+        return source
+
     def test_options_rejects_non_exact_file_route(self) -> None:
         port = _get_free_port()
         server = server_module.HTTPServer(("127.0.0.1", port), server_module.ConfigEditorHandler)
@@ -348,6 +362,40 @@ class TestConfigEditorServer(unittest.TestCase):
                     server.shutdown()
                     server.server_close()
                     server_thread.join(timeout=1.0)
+
+    def test_validate_sources_payload_accepts_xiaoyuzhou_url_with_query_and_fragment(self) -> None:
+        handler = server_module.ConfigEditorHandler.__new__(server_module.ConfigEditorHandler)
+
+        handler._validate_sources_payload(
+            [
+                self._valid_podcast_source(
+                    url="https://www.xiaoyuzhoufm.com/podcast/686a1832222ae2de21fea940?foo=bar#section",
+                    platform="xiaoyuzhou",
+                )
+            ]
+        )
+
+    def test_validate_sources_payload_rejects_invalid_xiaoyuzhou_url_shape(self) -> None:
+        handler = server_module.ConfigEditorHandler.__new__(server_module.ConfigEditorHandler)
+        invalid_urls = [
+            "https://www.xiaoyuzhoufm.com/episode/69f441cd5390b7cc928acdcc",
+            "https://www.xiaoyuzhoufm.com/podcast/686a1832222ae2de21fea940/extra",
+            "https://www.xiaoyuzhoufm.com/podcast/",
+            "https://example.com/podcast/686a1832222ae2de21fea940",
+            "ftp://www.xiaoyuzhoufm.com/podcast/686a1832222ae2de21fea940",
+        ]
+
+        for url in invalid_urls:
+            with self.subTest(url=url):
+                with self.assertRaises(ValueError):
+                    handler._validate_sources_payload(
+                        [
+                            self._valid_podcast_source(
+                                url=url,
+                                platform="xiaoyuzhou",
+                            )
+                        ]
+                    )
 
     def test_post_rejects_invalid_content_type(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

@@ -521,6 +521,7 @@ def run_opencli_transcript(
             return {"status": "error", "error": str(exc)[:200]}
 
         rows = payload if isinstance(payload, list) else [payload]
+        output_dir = Path(tmpdir).resolve()
         for row in rows:
             if not isinstance(row, dict):
                 continue
@@ -529,9 +530,18 @@ def run_opencli_transcript(
                 continue
             text_path = Path(text_file)
             if not text_path.is_absolute():
-                text_path = Path(tmpdir) / text_path
+                text_path = output_dir / text_path
             try:
-                transcript = text_path.read_text(encoding="utf-8", errors="replace").strip()
+                resolved_text_path = text_path.resolve()
+                if os.path.commonpath([str(output_dir), str(resolved_text_path)]) != str(output_dir):
+                    return {
+                        "status": "error",
+                        "error": "opencli transcript text_file is outside output directory",
+                    }
+            except OSError as exc:
+                return {"status": "error", "error": str(exc)[:200]}
+            try:
+                transcript = resolved_text_path.read_text(encoding="utf-8", errors="replace").strip()
             except OSError as exc:
                 return {"status": "error", "error": str(exc)[:200]}
             if transcript:

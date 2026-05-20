@@ -123,7 +123,7 @@ cp config/defaults/topics.json workspace/config/follow-news-topics.json
 
 不需要复制整个文件——只写你要改的部分。
 
-Podcast 源使用 `type: "podcast"`。RSS 播客订阅源不需要额外工具；YouTube 播客源使用 `platform: "youtube"`，并可通过可选的 `yt-dlp` 运行时抓取元数据和转录文本。小宇宙播客源使用 `platform: "xiaoyuzhou"`，URL 形如 `https://www.xiaoyuzhoufm.com/podcast/<podcast_id>`，转录后端使用 `"opencli"`。
+Podcast 源使用 `type: "podcast"`。RSS 播客订阅源不需要额外工具；YouTube 播客源使用 `platform: "youtube"`，并可通过可选的 `yt-dlp` 运行时抓取元数据和转录文本。小宇宙播客源使用 `platform: "xiaoyuzhou"`，URL 形如 `https://www.xiaoyuzhoufm.com/podcast/<podcast_id>`。小宇宙元数据发现使用 OpenCLI，且没有直接 API 或 HTML fallback；转录后端 `auto`/`opencli` 使用 OpenCLI，显式指定的转录后端仍然是显式覆盖，但 OpenCLI 是小宇宙文档化支持的转录路径。
 
 ## 🔧 环境变量
 
@@ -158,7 +158,7 @@ OpenCLI 的稳定性取决于本机浏览器扩展桥接状态。抓取器默认
 
 RSS 播客订阅源不需要额外工具。YouTube 播客元数据和转录文本抓取需要 `yt-dlp`；请将它安装到 `PATH`，或通过 `YTDLP_BIN` 指向可执行文件。缺少 `yt-dlp` 时，对应 YouTube 播客源会标记为失败，但不会阻塞其他数据源。
 
-小宇宙播客元数据和转录文本抓取需要 OpenCLI。运行这类源之前，请先安装、配置并完成 OpenCLI 的小宇宙认证；当 `opencli` 不在 `PATH` 上时，可通过 `OPENCLI_BIN` 覆盖可执行文件路径。小宇宙不提供 HTML fallback 或 API fallback。
+小宇宙播客元数据发现需要 OpenCLI。运行这类源之前，请先安装、配置并完成 OpenCLI 的小宇宙认证；当 `opencli` 不在 `PATH` 上时，可通过 `OPENCLI_BIN` 覆盖可执行文件路径。小宇宙元数据发现没有直接 API 或 HTML fallback。转录方面，后端 `auto`/`opencli` 使用 OpenCLI；显式指定的转录后端仍然是显式覆盖，但 OpenCLI 是小宇宙文档化支持的路径。
 
 ## 📦 依赖
 

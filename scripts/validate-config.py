@@ -18,6 +18,8 @@ from pathlib import Path
 from typing import Dict, Any, Set
 from urllib.parse import urlparse
 
+XIAOYUZHOU_HOSTS = {"xiaoyuzhoufm.com", "www.xiaoyuzhoufm.com"}
+
 try:
     import jsonschema
     from jsonschema import validate, ValidationError
@@ -159,6 +161,20 @@ def is_http_url_with_hostname(value: Any) -> bool:
     return parsed.scheme in {"http", "https"}
 
 
+def is_xiaoyuzhou_podcast_url(value: Any) -> bool:
+    """Return whether value is an HTTP(S) Xiaoyuzhou podcast URL."""
+    if not is_http_url_with_hostname(value):
+        return False
+
+    parsed = urlparse(value)
+    host = (parsed.hostname or "").lower()
+    if host not in XIAOYUZHOU_HOSTS:
+        return False
+
+    parts = [part for part in parsed.path.split("/") if part]
+    return len(parts) == 2 and parts[0] == "podcast" and bool(parts[1])
+
+
 def validate_source_types(sources_data: Dict[str, Any]) -> bool:
     """Validate source-type specific requirements."""
     errors = []
@@ -189,6 +205,10 @@ def validate_source_types(sources_data: Dict[str, Any]) -> bool:
             if platform not in {"auto", "rss", "youtube", "xiaoyuzhou"}:
                 errors.append(
                     f"Podcast source '{source_id}' has invalid platform: {platform}"
+                )
+            elif platform == "xiaoyuzhou" and not is_xiaoyuzhou_podcast_url(url):
+                errors.append(
+                    f"Podcast source '{source_id}' has invalid Xiaoyuzhou podcast url: {url}"
                 )
             if "transcript" in source:
                 transcript = source["transcript"]

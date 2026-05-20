@@ -328,10 +328,43 @@ class TestPodcastConfigValidation(unittest.TestCase):
 
         self.assertTrue(validate_source_types(sources_data))
 
+    def test_validate_source_types_accepts_xiaoyuzhou_url_with_query_and_fragment(self):
+        sources_data = {
+            "sources": [
+                self.podcast_source(
+                    id="whynottv-podcast",
+                    url="https://www.xiaoyuzhoufm.com/podcast/686a1832222ae2de21fea940?foo=bar#section",
+                    platform="xiaoyuzhou",
+                ),
+            ]
+        }
+
+        self.assertTrue(validate_source_types(sources_data))
+
+    def test_validate_source_types_rejects_invalid_xiaoyuzhou_url_shape(self):
+        invalid_urls = [
+            "https://www.xiaoyuzhoufm.com/episode/69f441cd5390b7cc928acdcc",
+            "https://www.xiaoyuzhoufm.com/podcast/686a1832222ae2de21fea940/extra",
+            "https://www.xiaoyuzhoufm.com/podcast/",
+            "https://example.com/podcast/686a1832222ae2de21fea940",
+            "ftp://www.xiaoyuzhoufm.com/podcast/686a1832222ae2de21fea940",
+        ]
+
+        for url in invalid_urls:
+            with self.subTest(url=url):
+                sources_data = {
+                    "sources": [
+                        self.podcast_source(url=url, platform="xiaoyuzhou"),
+                    ]
+                }
+
+                self.assertFalse(validate_source_types(sources_data))
+
     def test_validate_source_types_accepts_opencli_transcript_backend(self):
         sources_data = {
             "sources": [
                 self.podcast_source(
+                    url="https://www.xiaoyuzhoufm.com/podcast/686a1832222ae2de21fea940",
                     platform="xiaoyuzhou",
                     transcript={
                         "enabled": True,
