@@ -575,6 +575,10 @@ class TestDocumentationExamples(unittest.TestCase):
             f"`config/defaults/sources.json` — {counts['total']} 个内置数据源（{counts['rss']} RSS、{counts['twitter']} Twitter、{counts['github']} GitHub、{counts['reddit']} Reddit、{counts['podcast']} Podcast）",
             content,
         )
+        self.assertIn(
+            f"开箱即用，内置 {counts['total']} 个数据源，并支持自定义 podcast 源",
+            content,
+        )
 
     def test_podcast_runtime_docs_include_youtube_and_ytdlp(self):
         docs = {

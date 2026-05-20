@@ -70,7 +70,7 @@ clawhub install follow-news
 
 ## 🎨 自定义数据源
 
-开箱即用，内置 162 个数据源，并支持自定义 podcast 源——但完全可自定义。将默认配置复制到 workspace 并覆盖：
+开箱即用，内置 163 个数据源，并支持自定义 podcast 源——但完全可自定义。将默认配置复制到 workspace 并覆盖：
 
 ```bash
 # 复制并自定义

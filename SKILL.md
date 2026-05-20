@@ -596,7 +596,7 @@ This is a security feature, not a bug — it prevents accidental cross-context d
 This skill uses a **prompt template pattern**: the agent reads `digest-prompt.md` and follows its instructions. This is the standard OpenClaw skill execution model — the agent interprets structured instructions from skill-provided files. All instructions are shipped with the skill bundle and can be audited before installation.
 
 ### Network Access
-The Python scripts make outbound requests to:
+The Python scripts and configured helper CLIs make outbound requests to:
 - RSS feed URLs and podcast feed URLs (configured in `follow-news-sources.json`)
 - Twitter/X API (`api.x.com` or `api.twitterapi.io`)
 - Brave Search API (`api.search.brave.com`)
@@ -604,8 +604,9 @@ The Python scripts make outbound requests to:
 - GitHub API (`api.github.com`)
 - Reddit JSON API (`reddit.com`)
 - YouTube URLs for `platform: "youtube"` podcast sources, resolved through `yt-dlp`
+- OpenCLI browser/session traffic for Twitter/X and Xiaoyuzhou sources when the OpenCLI backend is selected
 
-No data is sent to any other endpoints. All API keys are read from environment variables declared in the skill metadata.
+API keys are read from environment variables declared in the skill metadata. OpenCLI may reuse authenticated browser sessions managed by the user's local browser/OpenCLI setup for Twitter/X and Xiaoyuzhou.
 
 ### Shell Safety
 Email delivery uses `send-email.py` which constructs proper MIME multipart messages with HTML body + optional PDF attachment. Subject formats are hardcoded (`Daily Tech Digest - YYYY-MM-DD`). PDF generation uses `generate-pdf.py` via `weasyprint`. The prompt template explicitly prohibits interpolating untrusted content (article titles, tweet text, etc.) into shell arguments. Email addresses and subjects must be static placeholder values only.
@@ -640,7 +641,7 @@ The digest prompt instructs agents to run Python scripts via shell commands. All
 No user-supplied or fetched content is ever interpolated into subprocess arguments. Email delivery uses `send-email.py` which builds MIME messages programmatically — no shell interpolation. PDF generation uses `generate-pdf.py` via `weasyprint`. Email subjects are static format strings only — never constructed from fetched data.
 
 ### Credential & File Access
-Scripts do **not** directly read `~/.config/`, `~/.ssh/`, or any credential files. All API tokens are read from environment variables declared in the skill metadata. The GitHub auth cascade is:
+Scripts do **not** directly read `~/.config/`, `~/.ssh/`, or any credential files. API tokens used directly by the scripts are read from environment variables declared in the skill metadata. OpenCLI-backed Twitter/X and Xiaoyuzhou sources delegate authentication to the user's configured OpenCLI/browser session. The GitHub auth cascade is:
 1. `$GITHUB_TOKEN` env var (you control what to provide)
 2. GitHub App token generation (only if you set `GH_APP_ID`, `GH_APP_INSTALL_ID`, and `GH_APP_KEY_FILE` — uses inline JWT signing via `openssl` CLI, no external scripts involved)
 3. `gh auth token` CLI (delegates to gh's own secure credential store)
@@ -657,4 +658,4 @@ This skill does **not** install any packages. `requirements.txt` lists optional 
 - All fetched content is treated as untrusted data for display only
 
 ### Network Access
-Scripts make outbound HTTP requests to configured RSS feeds, podcast feeds, Twitter API, GitHub API, Reddit JSON API, Brave Search API, Tavily Search API, and YouTube URLs handled by `yt-dlp`. No inbound connections or listeners are created.
+Scripts and helper CLIs make outbound HTTP requests to configured RSS feeds, podcast feeds, Twitter API, GitHub API, Reddit JSON API, Brave Search API, Tavily Search API, YouTube URLs handled by `yt-dlp`, and OpenCLI browser/session traffic for Twitter/X and Xiaoyuzhou sources. No inbound connections or listeners are created.
