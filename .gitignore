@@ -22,5 +22,8 @@ tech-digest-merged-*.json
 # Local runtime cache
 /.cache/
 
+# Local Playwright MCP snapshots
+/.playwright-mcp/
+
 # Local git worktrees
 /.worktrees/
