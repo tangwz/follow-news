@@ -525,6 +525,71 @@ class TestYoutubeMetadataNormalization(unittest.TestCase):
         self.assertEqual(episodes[0]["guid"], "youtube:tail")
 
 
+class TestXiaoyuzhouMetadataNormalization(unittest.TestCase):
+    def setUp(self):
+        self.source = {
+            "id": "whynottv-podcast",
+            "name": "WhynotTV Podcast",
+            "url": "https://www.xiaoyuzhoufm.com/podcast/686a1832222ae2de21fea940",
+            "platform": "xiaoyuzhou",
+            "topics": ["podcast"],
+            "transcript": {"enabled": False},
+        }
+        self.cutoff = utc("2026-01-01T00:00:00Z")
+
+    def test_normalizes_xiaoyuzhou_episode_rows(self):
+        rows = [
+            {
+                "eid": "69f441cd5390b7cc928acdcc",
+                "title": "Danfei Xu",
+                "duration": "137:23",
+                "plays": 11915,
+                "date": "2026-05-01",
+            },
+        ]
+
+        episodes = fetch_podcast.normalize_xiaoyuzhou_metadata(rows, self.source, self.cutoff)
+
+        self.assertEqual(len(episodes), 1)
+        self.assertEqual(episodes[0]["title"], "Danfei Xu")
+        self.assertEqual(
+            episodes[0]["link"],
+            "https://www.xiaoyuzhoufm.com/episode/69f441cd5390b7cc928acdcc",
+        )
+        self.assertEqual(episodes[0]["guid"], "xiaoyuzhou:69f441cd5390b7cc928acdcc")
+        self.assertEqual(episodes[0]["date"], "2026-05-01T00:00:00+00:00")
+        self.assertEqual(episodes[0]["platform"], "xiaoyuzhou")
+        self.assertEqual(episodes[0]["show_name"], "WhynotTV Podcast")
+        self.assertEqual(episodes[0]["transcript_status"], "disabled")
+
+    def test_filters_xiaoyuzhou_rows_older_than_cutoff(self):
+        rows = [
+            {"eid": "old", "title": "Old Episode", "date": "2025-12-31"},
+            {"eid": "new", "title": "New Episode", "date": "2026-01-01"},
+        ]
+
+        episodes = fetch_podcast.normalize_xiaoyuzhou_metadata(rows, self.source, self.cutoff)
+
+        self.assertEqual([episode["guid"] for episode in episodes], ["xiaoyuzhou:new"])
+
+    def test_normalizes_xiaoyuzhou_rows_newest_first(self):
+        rows = [
+            {"eid": "older", "title": "Older", "date": "2026-05-01"},
+            {"eid": "newer", "title": "Newer", "date": "2026-05-03"},
+        ]
+
+        episodes = fetch_podcast.normalize_xiaoyuzhou_metadata(rows, self.source, self.cutoff)
+
+        self.assertEqual(
+            [episode["guid"] for episode in episodes],
+            ["xiaoyuzhou:newer", "xiaoyuzhou:older"],
+        )
+
+    def test_normalize_xiaoyuzhou_metadata_rejects_non_list_payload(self):
+        with self.assertRaises(RuntimeError):
+            fetch_podcast.normalize_xiaoyuzhou_metadata({"eid": "one"}, self.source, self.cutoff)
+
+
 class TestTranscriptBackend(unittest.TestCase):
     def setUp(self):
         self.source = {
@@ -832,6 +897,91 @@ class TestPodcastCliOutput(unittest.TestCase):
         hydrate_metadata.assert_not_called()
         self.assertEqual(len(episodes), 1)
         self.assertEqual(episodes[0]["title"], "Cached Episode")
+
+    @patch("fetch_podcast.run_opencli_json")
+    @patch("fetch_podcast.resolve_opencli_bin", return_value="/usr/local/bin/opencli")
+    def test_fetch_xiaoyuzhou_source_uses_opencli(self, _resolve, run_opencli):
+        source = {
+            "id": "whynottv-podcast",
+            "type": "podcast",
+            "name": "WhynotTV Podcast",
+            "url": "https://www.xiaoyuzhoufm.com/podcast/686a1832222ae2de21fea940",
+            "platform": "xiaoyuzhou",
+            "topics": ["podcast"],
+            "transcript": {"enabled": False},
+        }
+        run_opencli.return_value = [
+            {
+                "eid": "69f441cd5390b7cc928acdcc",
+                "title": "Danfei Xu",
+                "date": "2026-05-01",
+            }
+        ]
+
+        episodes = fetch_podcast.fetch_xiaoyuzhou_source(
+            source,
+            utc("2026-01-01T00:00:00Z"),
+            {"metadata": {}, "transcripts": {}},
+            no_cache=True,
+        )
+
+        self.assertEqual(len(episodes), 1)
+        self.assertEqual(episodes[0]["guid"], "xiaoyuzhou:69f441cd5390b7cc928acdcc")
+        run_opencli.assert_called_once_with(
+            "/usr/local/bin/opencli",
+            [
+                "xiaoyuzhou",
+                "podcast-episodes",
+                "686a1832222ae2de21fea940",
+                "--limit",
+                str(fetch_podcast.MAX_EPISODES_PER_SOURCE),
+                "-f",
+                "json",
+            ],
+        )
+
+    @patch("fetch_podcast.resolve_opencli_bin", return_value=None)
+    def test_fetch_xiaoyuzhou_source_requires_opencli(self, _resolve):
+        source = {
+            "id": "whynottv-podcast",
+            "type": "podcast",
+            "name": "WhynotTV Podcast",
+            "url": "https://www.xiaoyuzhoufm.com/podcast/686a1832222ae2de21fea940",
+            "platform": "xiaoyuzhou",
+            "topics": ["podcast"],
+        }
+
+        with self.assertRaises(RuntimeError) as context:
+            fetch_podcast.fetch_xiaoyuzhou_source(
+                source,
+                utc("2026-01-01T00:00:00Z"),
+                {"metadata": {}, "transcripts": {}},
+                no_cache=True,
+            )
+
+        self.assertEqual(str(context.exception), "opencli is not available")
+
+    def test_fetch_source_routes_xiaoyuzhou_platform(self):
+        source = {
+            "id": "whynottv-podcast",
+            "type": "podcast",
+            "name": "WhynotTV Podcast",
+            "url": "https://www.xiaoyuzhoufm.com/podcast/686a1832222ae2de21fea940",
+            "platform": "xiaoyuzhou",
+            "topics": ["podcast"],
+        }
+        cutoff = utc("2026-01-01T00:00:00Z")
+
+        with patch.object(
+            fetch_podcast,
+            "fetch_xiaoyuzhou_source",
+            return_value=[],
+        ) as fetch_xiaoyuzhou:
+            result = fetch_podcast.fetch_source(source, cutoff, {"transcripts": {}}, no_cache=True)
+
+        fetch_xiaoyuzhou.assert_called_once()
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(result["platform"], "xiaoyuzhou")
 
     def test_save_podcast_cache_suppresses_replace_failure(self):
         with tempfile.TemporaryDirectory() as tmpdir:

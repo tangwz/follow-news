@@ -220,6 +220,18 @@ def parse_youtube_date(value: Any) -> Optional[datetime]:
     return parse_podcast_date(text)
 
 
+def parse_xiaoyuzhou_date(value: Any) -> Optional[datetime]:
+    if not value:
+        return None
+    text = str(value).strip()
+    if re.match(r"^\d{4}-\d{2}-\d{2}$", text):
+        try:
+            return datetime.strptime(text, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        except ValueError:
+            return None
+    return parse_podcast_date(text)
+
+
 def normalize_youtube_metadata(
     payload: Dict[str, Any],
     source: Dict[str, Any],
@@ -260,6 +272,42 @@ def normalize_youtube_metadata(
         duration = entry.get("duration")
         if isinstance(duration, (int, float)) and duration > 0:
             episode["duration_seconds"] = int(duration)
+        episodes.append(episode)
+
+    return newest_episodes(episodes)
+
+
+def normalize_xiaoyuzhou_metadata(
+    payload: Any,
+    source: Dict[str, Any],
+    cutoff: datetime,
+) -> List[Dict[str, Any]]:
+    if not isinstance(payload, list):
+        raise RuntimeError("opencli xiaoyuzhou podcast-episodes output was not a list")
+
+    episodes: List[Dict[str, Any]] = []
+    seen_episode_ids: Set[str] = set()
+    for entry in payload:
+        if not isinstance(entry, dict):
+            continue
+
+        episode_id = str(entry.get("eid") or "").strip()
+        title = str(entry.get("title") or "").strip()
+        published = parse_xiaoyuzhou_date(entry.get("date"))
+        if not episode_id or not title or not published or published < cutoff:
+            continue
+        if episode_id in seen_episode_ids:
+            continue
+        seen_episode_ids.add(episode_id)
+
+        episode = build_episode(
+            source,
+            title,
+            f"https://www.xiaoyuzhoufm.com/episode/{episode_id}",
+            published,
+            f"xiaoyuzhou:{episode_id}",
+            "xiaoyuzhou",
+        )
         episodes.append(episode)
 
     return newest_episodes(episodes)
@@ -776,6 +824,39 @@ def fetch_youtube_source(
     ]
 
 
+def fetch_xiaoyuzhou_source(
+    source: Dict[str, Any],
+    cutoff: datetime,
+    cache: Dict[str, Any],
+    no_cache: bool,
+) -> List[Dict[str, Any]]:
+    podcast_id = extract_xiaoyuzhou_podcast_id(source.get("url", ""))
+    if not podcast_id:
+        raise RuntimeError("Xiaoyuzhou podcast URL must use the /podcast/{id} path")
+
+    opencli_bin = resolve_opencli_bin()
+    if not opencli_bin:
+        raise RuntimeError("opencli is not available")
+
+    payload = run_opencli_json(
+        opencli_bin,
+        [
+            "xiaoyuzhou",
+            "podcast-episodes",
+            podcast_id,
+            "--limit",
+            str(MAX_EPISODES_PER_SOURCE),
+            "-f",
+            "json",
+        ],
+    )
+    episodes = normalize_xiaoyuzhou_metadata(payload, source, cutoff)
+    return [
+        enrich_episode_transcript(episode, source, cache, no_cache=no_cache)
+        for episode in episodes
+    ]
+
+
 def fetch_source(
     source: Dict[str, Any],
     cutoff: datetime,
@@ -803,6 +884,8 @@ def fetch_source(
     try:
         if platform == "youtube":
             articles = fetch_youtube_source(source, cutoff, cache, no_cache)
+        elif platform == "xiaoyuzhou":
+            articles = fetch_xiaoyuzhou_source(source, cutoff, cache, no_cache)
         elif platform == "rss":
             articles = fetch_rss_source(source, cutoff, cache, no_cache)
         else:
