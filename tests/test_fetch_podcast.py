@@ -1098,6 +1098,70 @@ class TestPodcastCliOutput(unittest.TestCase):
             ],
         )
 
+    @patch("fetch_podcast.enrich_episode_transcript")
+    @patch("fetch_podcast.run_opencli_json")
+    @patch("fetch_podcast.resolve_opencli_bin", return_value="/usr/local/bin/opencli")
+    def test_fetch_xiaoyuzhou_source_reuses_metadata_cache(
+        self,
+        _resolve,
+        run_opencli,
+        enrich_transcript,
+    ):
+        source = {
+            "id": "whynottv-podcast",
+            "type": "podcast",
+            "name": "WhynotTV Podcast",
+            "url": "https://www.xiaoyuzhoufm.com/podcast/686a1832222ae2de21fea940?utm_source=share",
+            "topics": ["podcast"],
+            "transcript": {"enabled": True, "backend": "opencli"},
+        }
+        run_opencli.return_value = [
+            {
+                "eid": "69f441cd5390b7cc928acdcc",
+                "title": "Danfei Xu",
+                "date": "2026-05-01",
+            }
+        ]
+        enrich_transcript.side_effect = lambda episode, *_args, **_kwargs: {
+            **episode,
+            "transcript_status": "ok",
+            "transcript": "Cached transcript.",
+        }
+        cache = {"metadata": {}, "transcripts": {}}
+
+        first = fetch_podcast.fetch_xiaoyuzhou_source(
+            source,
+            utc("2026-01-01T00:00:00Z"),
+            cache,
+            no_cache=False,
+        )
+        second = fetch_podcast.fetch_xiaoyuzhou_source(
+            source,
+            utc("2026-01-01T00:00:00Z"),
+            cache,
+            no_cache=False,
+        )
+
+        cache_key = "xiaoyuzhou:686a1832222ae2de21fea940"
+        self.assertEqual(fetch_podcast.metadata_cache_key(source), cache_key)
+        self.assertEqual(
+            fetch_podcast.metadata_cache_key({**source, "platform": "xiaoyuzhou"}),
+            cache_key,
+        )
+        self.assertEqual(
+            fetch_podcast.metadata_cache_key(
+                {**source, "platform": "rss", "url": "https://example.com/feed.xml"},
+                source["url"],
+            ),
+            cache_key,
+        )
+        self.assertIn(cache_key, cache["metadata"])
+        self.assertEqual(cache["metadata"][cache_key]["payload"][0]["title"], "Danfei Xu")
+        run_opencli.assert_called_once()
+        self.assertEqual(enrich_transcript.call_count, 2)
+        self.assertEqual(first[0]["transcript"], "Cached transcript.")
+        self.assertEqual(second[0]["transcript"], "Cached transcript.")
+
     @patch("fetch_podcast.resolve_opencli_bin", return_value=None)
     def test_fetch_xiaoyuzhou_source_requires_opencli(self, _resolve):
         source = {

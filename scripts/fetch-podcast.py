@@ -584,9 +584,17 @@ def cache_entry_valid(entry: Dict[str, Any], now: float) -> bool:
     return now - ts < ttl
 
 
-def metadata_cache_key(source: Dict[str, Any]) -> str:
-    platform = source.get("platform") or infer_platform(source.get("url", ""))
-    return f"{platform}:{source.get('url', '')}:{MAX_EPISODES_PER_SOURCE}:v{METADATA_CACHE_VERSION}"
+def metadata_cache_key(source: Dict[str, Any], resolved_url: Optional[str] = None) -> str:
+    url = resolved_url or source.get("url", "")
+    platform = source.get("platform") or infer_platform(url)
+    if platform == "auto":
+        platform = infer_platform(url)
+
+    podcast_id = extract_xiaoyuzhou_podcast_id(url)
+    if (platform == "xiaoyuzhou" or podcast_id) and podcast_id:
+        return f"xiaoyuzhou:{podcast_id}"
+
+    return f"{platform}:{url}:{MAX_EPISODES_PER_SOURCE}:v{METADATA_CACHE_VERSION}"
 
 
 def metadata_cache_entry_valid(entry: Dict[str, Any], now: float) -> bool:
@@ -594,7 +602,7 @@ def metadata_cache_entry_valid(entry: Dict[str, Any], now: float) -> bool:
         ts = float(entry.get("ts", 0))
     except (TypeError, ValueError):
         return False
-    return now - ts < METADATA_CACHE_TTL_SECONDS and isinstance(entry.get("payload"), dict)
+    return now - ts < METADATA_CACHE_TTL_SECONDS and isinstance(entry.get("payload"), (dict, list))
 
 
 def enrich_episode_transcript(
@@ -906,19 +914,38 @@ def fetch_xiaoyuzhou_source(
     if not opencli_bin:
         raise RuntimeError("opencli is not available")
 
-    payload = run_opencli_json(
-        opencli_bin,
-        [
-            "xiaoyuzhou",
-            "podcast-episodes",
-            podcast_id,
-            "--limit",
-            str(MAX_EPISODES_PER_SOURCE),
-            "-f",
-            "json",
-        ],
-    )
-    episodes = normalize_xiaoyuzhou_metadata(payload, source, cutoff)
+    cache_key = metadata_cache_key(source)
+    now = time.time()
+    cached = None if no_cache else cache.get("metadata", {}).get(cache_key)
+    if isinstance(cached, dict) and metadata_cache_entry_valid(cached, now):
+        cached_episodes = []
+        for episode in cached["payload"]:
+            if not isinstance(episode, dict):
+                continue
+            published = parse_podcast_date(str(episode.get("date") or ""))
+            if not published or published.date() < cutoff.date():
+                continue
+            cached_episodes.append(episode.copy())
+        episodes = newest_episodes(cached_episodes)
+    else:
+        payload = run_opencli_json(
+            opencli_bin,
+            [
+                "xiaoyuzhou",
+                "podcast-episodes",
+                podcast_id,
+                "--limit",
+                str(MAX_EPISODES_PER_SOURCE),
+                "-f",
+                "json",
+            ],
+        )
+        episodes = normalize_xiaoyuzhou_metadata(payload, source, cutoff)
+        if not no_cache:
+            cache.setdefault("metadata", {})[cache_key] = {
+                "payload": [episode.copy() for episode in episodes],
+                "ts": now,
+            }
     return [
         enrich_episode_transcript(episode, source, cache, no_cache=no_cache)
         for episode in episodes
