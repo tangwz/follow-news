@@ -1205,7 +1205,10 @@ class TestPodcastCliOutput(unittest.TestCase):
             no_cache=False,
         )
 
-        cache_key = "xiaoyuzhou:686a1832222ae2de21fea940"
+        cache_key = (
+            "xiaoyuzhou:686a1832222ae2de21fea940:"
+            f"{fetch_podcast.MAX_EPISODES_PER_SOURCE}:v{fetch_podcast.METADATA_CACHE_VERSION}"
+        )
         self.assertEqual(fetch_podcast.metadata_cache_key(source), cache_key)
         self.assertEqual(
             fetch_podcast.metadata_cache_key({**source, "platform": "xiaoyuzhou"}),
@@ -1280,7 +1283,11 @@ class TestPodcastCliOutput(unittest.TestCase):
 
         key = fetch_podcast.metadata_cache_key(source, "https://example.com/feed.xml")
 
-        self.assertEqual(key, "xiaoyuzhou:686a1832222ae2de21fea940")
+        self.assertEqual(
+            key,
+            "xiaoyuzhou:686a1832222ae2de21fea940:"
+            f"{fetch_podcast.MAX_EPISODES_PER_SOURCE}:v{fetch_podcast.METADATA_CACHE_VERSION}",
+        )
 
     @patch("fetch_podcast.enrich_episode_transcript", side_effect=lambda episode, *_args, **_kwargs: episode)
     @patch("fetch_podcast.run_opencli_json")

@@ -585,6 +585,9 @@ def cache_entry_valid(entry: Dict[str, Any], now: float) -> bool:
 
 
 def metadata_cache_key(source: Dict[str, Any], resolved_url: Optional[str] = None) -> str:
+    def xiaoyuzhou_cache_key(podcast_id: str) -> str:
+        return f"xiaoyuzhou:{podcast_id}:{MAX_EPISODES_PER_SOURCE}:v{METADATA_CACHE_VERSION}"
+
     source_url = source.get("url", "")
     url = resolved_url or source_url
     configured_platform = source.get("platform")
@@ -594,13 +597,13 @@ def metadata_cache_key(source: Dict[str, Any], resolved_url: Optional[str] = Non
         inferred_platform = infer_platform(url)
         podcast_id = extract_xiaoyuzhou_podcast_id(url)
         if inferred_platform == "xiaoyuzhou" and podcast_id:
-            return f"xiaoyuzhou:{podcast_id}"
+            return xiaoyuzhou_cache_key(podcast_id)
         return f"{inferred_platform}:{url}:{MAX_EPISODES_PER_SOURCE}:v{METADATA_CACHE_VERSION}"
 
     if platform == "xiaoyuzhou":
         podcast_id = extract_xiaoyuzhou_podcast_id(url) or extract_xiaoyuzhou_podcast_id(source_url)
         if podcast_id:
-            return f"xiaoyuzhou:{podcast_id}"
+            return xiaoyuzhou_cache_key(podcast_id)
 
     return f"{platform}:{url}:{MAX_EPISODES_PER_SOURCE}:v{METADATA_CACHE_VERSION}"
 
