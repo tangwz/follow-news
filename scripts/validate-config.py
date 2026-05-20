@@ -175,6 +175,13 @@ def is_xiaoyuzhou_podcast_url(value: Any) -> bool:
     return len(parts) == 2 and parts[0] == "podcast" and bool(parts[1])
 
 
+def supports_opencli_transcript(platform: str, url: Any) -> bool:
+    """Return whether a podcast source can use the OpenCLI transcript backend."""
+    return platform == "xiaoyuzhou" or (
+        platform == "auto" and is_xiaoyuzhou_podcast_url(url)
+    )
+
+
 def validate_source_types(sources_data: Dict[str, Any]) -> bool:
     """Validate source-type specific requirements."""
     errors = []
@@ -226,6 +233,10 @@ def validate_source_types(sources_data: Dict[str, Any]) -> bool:
                     if backend not in {"auto", "yt-dlp", "opencli"}:
                         errors.append(
                             f"Podcast source '{source_id}' has invalid transcript backend: {backend}"
+                        )
+                    elif backend == "opencli" and not supports_opencli_transcript(platform, url):
+                        errors.append(
+                            f"Podcast source '{source_id}' uses opencli transcript backend without Xiaoyuzhou platform"
                         )
                     languages = transcript.get("languages", [])
                     if "languages" in transcript and (

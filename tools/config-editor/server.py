@@ -248,6 +248,12 @@ class ConfigEditorHandler(SimpleHTTPRequestHandler):
         parts = [part for part in parsed.path.split("/") if part]
         return len(parts) == 2 and parts[0] == "podcast" and bool(parts[1])
 
+    @classmethod
+    def _supports_opencli_transcript(cls, platform: str, url: Any) -> bool:
+        return platform == "xiaoyuzhou" or (
+            platform == "auto" and cls._is_xiaoyuzhou_podcast_url(url)
+        )
+
     def _normalize_sources_payload(self, sources: Any) -> int:
         if not isinstance(sources, list):
             return 0
@@ -340,6 +346,8 @@ class ConfigEditorHandler(SimpleHTTPRequestHandler):
 
                     backend = transcript.get("backend", "auto")
                     if backend not in self._ALLOWED_TRANSCRIPT_BACKENDS:
+                        raise ValueError(f"Source '{source_id}' has invalid field 'transcript.backend'")
+                    if backend == "opencli" and not self._supports_opencli_transcript(platform, url):
                         raise ValueError(f"Source '{source_id}' has invalid field 'transcript.backend'")
 
                     languages = transcript.get("languages", [])

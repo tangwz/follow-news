@@ -28,7 +28,7 @@ python3 server.py
 - 表格模式额外支持 `type: "podcast"` 的字段：
   - `platform`（可选）：`auto` / `rss` / `youtube` / `xiaoyuzhou`
   - `transcript.enabled`（可选）：布尔值
-  - `transcript.backend`（可选）：`auto` / `yt-dlp` / `opencli`
+  - `transcript.backend`（可选）：`auto` / `yt-dlp` / `opencli`（`opencli` 仅适用于小宇宙）
   - `transcript.languages`（可选）：字符串数组
 
 ## 注意

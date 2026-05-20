@@ -376,6 +376,22 @@ class TestPodcastConfigValidation(unittest.TestCase):
 
         self.assertTrue(validate_source_types(sources_data))
 
+    def test_validate_source_types_rejects_opencli_backend_for_non_xiaoyuzhou_platform(self):
+        sources_data = {
+            "sources": [
+                self.podcast_source(
+                    url="https://www.youtube.com/playlist?list=abc",
+                    platform="youtube",
+                    transcript={
+                        "enabled": True,
+                        "backend": "opencli",
+                    },
+                ),
+            ]
+        }
+
+        self.assertFalse(validate_source_types(sources_data))
+
     def test_validate_source_types_rejects_podcast_url_with_whitespace_host(self):
         sources_data = {
             "sources": [

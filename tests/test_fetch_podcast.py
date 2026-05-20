@@ -828,6 +828,28 @@ class TestTranscriptBackend(unittest.TestCase):
         self.assertIn("transcript_error", result)
         self.assertNotIn("transcript", result)
 
+    @patch("fetch_podcast.resolve_opencli_bin")
+    def test_opencli_transcript_backend_rejects_non_xiaoyuzhou_episode(self, resolve_opencli):
+        source = {
+            **self.source,
+            "transcript": {
+                **self.source["transcript"],
+                "backend": "opencli",
+            },
+        }
+
+        result = fetch_podcast.enrich_episode_transcript(
+            self.episode.copy(),
+            source,
+            {},
+            no_cache=True,
+        )
+
+        self.assertEqual(result["transcript_status"], "error")
+        self.assertIn("only supported for Xiaoyuzhou", result["transcript_error"])
+        self.assertNotIn("transcript", result)
+        resolve_opencli.assert_not_called()
+
     @patch("fetch_podcast.run_opencli_json", side_effect=RuntimeError("Transcript URL not found"))
     @patch("fetch_podcast.resolve_opencli_bin", return_value="/usr/local/bin/opencli")
     def test_opencli_transcript_failure_keeps_episode(self, _resolve, _run_opencli):

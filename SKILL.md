@@ -114,7 +114,7 @@ Automated tech news digest system with unified data source model, quality scorin
 
    To use the OpenCLI backend, the user must install the OpenCLI executable and expose it on `PATH`, or set `OPENCLI_BIN` to its absolute path. OpenClaw users should also install the `jackwener/opencli` Skill so the agent can run `opencli doctor` and diagnose browser bridge or X login-state issues. OpenCLI requests default to 10 workers (`OPENCLI_MAX_WORKERS=10`). The fetcher closes X/Twitter tabs created during an OpenCLI run by default (`OPENCLI_CLOSE_TABS_AFTER_RUN=1`) and closes Chrome automation windows opened by OpenCLI on macOS (`OPENCLI_CLOSE_CHROME_WINDOWS_AFTER_RUN=1`) while preserving tabs and windows that existed before the run.
 
-   Xiaoyuzhou podcast metadata discovery uses OpenCLI. The user must install, configure, and authenticate OpenCLI for Xiaoyuzhou metadata discovery. Xiaoyuzhou source URLs use `https://www.xiaoyuzhoufm.com/podcast/<podcast_id>` with `platform: "xiaoyuzhou"`. Xiaoyuzhou metadata discovery has no direct API or HTML fallback. For transcripts, backend `auto`/`opencli` uses OpenCLI; explicit transcript backend overrides remain explicit user choices, but OpenCLI is the documented supported path for Xiaoyuzhou.
+   Xiaoyuzhou podcast metadata discovery uses OpenCLI. The user must install, configure, and authenticate OpenCLI for Xiaoyuzhou metadata discovery. Xiaoyuzhou source URLs use `https://www.xiaoyuzhoufm.com/podcast/<podcast_id>` with `platform: "xiaoyuzhou"`. Xiaoyuzhou metadata discovery has no direct API or HTML fallback. For transcripts, backend `auto`/`opencli` uses OpenCLI for Xiaoyuzhou episodes. The `opencli` transcript backend is only valid for Xiaoyuzhou sources.
 
 3. **Generate Digest**:
    ```bash
@@ -293,7 +293,7 @@ python3 scripts/fetch-podcast.py [--defaults DIR] [--config DIR] [--hours 48] [-
 - Supports Xiaoyuzhou podcasts via `platform: "xiaoyuzhou"` and URLs like `https://www.xiaoyuzhoufm.com/podcast/<podcast_id>`.
 - Xiaoyuzhou metadata discovery requires installed, configured, and authenticated OpenCLI; set `OPENCLI_BIN` when it is not available on `PATH`.
 - Transcript backends: `auto`, `yt-dlp`, or `opencli`; missing `yt-dlp` fails only that YouTube podcast source instead of the full pipeline.
-- Xiaoyuzhou metadata discovery has no direct API or HTML fallback. For transcripts, backend `auto`/`opencli` uses OpenCLI; explicit transcript backend overrides remain explicit user choices, but OpenCLI is the documented supported path for Xiaoyuzhou.
+- Xiaoyuzhou metadata discovery has no direct API or HTML fallback. For transcripts, backend `auto`/`opencli` uses OpenCLI for Xiaoyuzhou episodes. The `opencli` transcript backend is rejected for non-Xiaoyuzhou podcast sources.
 
 #### `enrich-articles.py` - Article Full-Text Enrichment
 ```bash
@@ -510,7 +510,7 @@ export YTDLP_BIN="/path/to/yt-dlp"          # Optional; defaults to yt-dlp on PA
 - **Web Search**: Tavily (preferred in auto mode) or Brave. Without a configured search API key, the web search layer is skipped while the rest of the pipeline continues.
 - **GitHub**: Auto-generates token from GitHub App if PAT not set; unauthenticated fallback (60 req/hr)
 - **Reddit**: No API key needed (uses public JSON API)
-- **Podcast**: RSS podcast feeds require no extra binary. YouTube podcast sources use `yt-dlp` for metadata and optional transcript fetching; set `YTDLP_BIN` if needed. Xiaoyuzhou podcast metadata discovery uses OpenCLI with `platform: "xiaoyuzhou"`; set `OPENCLI_BIN` if needed. Xiaoyuzhou metadata discovery has no direct API or HTML fallback. For transcripts, backend `auto`/`opencli` uses OpenCLI; explicit transcript backend overrides remain explicit user choices, but OpenCLI is the documented supported path for Xiaoyuzhou.
+- **Podcast**: RSS podcast feeds require no extra binary. YouTube podcast sources use `yt-dlp` for metadata and optional transcript fetching; set `YTDLP_BIN` if needed. Xiaoyuzhou podcast metadata discovery uses OpenCLI with `platform: "xiaoyuzhou"`; set `OPENCLI_BIN` if needed. Xiaoyuzhou metadata discovery has no direct API or HTML fallback. For transcripts, backend `auto`/`opencli` uses OpenCLI for Xiaoyuzhou episodes; non-Xiaoyuzhou podcast sources cannot use `opencli`.
 
 ## Cron / Scheduled Task Integration
 

@@ -321,6 +321,7 @@ class TestConfigEditorServer(unittest.TestCase):
                 ("invalid_platform", {"platform": "vimeo"}),
                 ("invalid_transcript", {"transcript": []}),
                 ("invalid_transcript_backend", {"transcript": {"backend": "manual"}}),
+                ("invalid_opencli_backend_platform", {"transcript": {"backend": "opencli"}}),
                 ("invalid_transcript_enabled", {"transcript": {"enabled": "yes"}}),
                 ("invalid_transcript_languages", {"transcript": {"languages": "en"}}),
                 ("invalid_transcript_language_item", {"transcript": {"languages": ["en", 123]}}),

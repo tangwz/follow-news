@@ -674,6 +674,13 @@ def enrich_episode_transcript(
         episode["transcript_status"] = "error"
         episode["transcript_error"] = f"Unsupported transcript backend: {backend}"
         return episode
+    if backend == "opencli" and episode.get("platform") != "xiaoyuzhou":
+        episode["transcript_status"] = "error"
+        episode["transcript_error"] = (
+            "opencli transcript backend is only supported for Xiaoyuzhou episodes"
+        )
+        episode.pop("transcript", None)
+        return episode
 
     if backend == "opencli" or (backend == "auto" and episode.get("platform") == "xiaoyuzhou"):
         opencli_bin = resolve_opencli_bin()
