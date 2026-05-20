@@ -641,6 +641,30 @@ class TestTranscriptBackend(unittest.TestCase):
             "transcript_status": "missing",
         }
 
+    def xiaoyuzhou_source(self):
+        return {
+            "id": "whynottv-podcast",
+            "name": "WhynotTV Podcast",
+            "url": "https://www.xiaoyuzhoufm.com/podcast/686a1832222ae2de21fea940",
+            "topics": ["podcast"],
+            "transcript": {
+                "enabled": True,
+                "backend": "opencli",
+            },
+        }
+
+    def xiaoyuzhou_episode(self):
+        return {
+            "title": "Danfei Xu",
+            "link": "https://www.xiaoyuzhoufm.com/episode/69f441cd5390b7cc928acdcc",
+            "date": "2026-05-01T00:00:00+00:00",
+            "guid": "xiaoyuzhou:69f441cd5390b7cc928acdcc",
+            "topics": ["podcast"],
+            "show_name": "WhynotTV Podcast",
+            "platform": "xiaoyuzhou",
+            "transcript_status": "missing",
+        }
+
     @patch("fetch_podcast.resolve_ytdlp_bin", return_value=None)
     def test_transcript_backend_unavailable_keeps_episode(self, _resolve):
         result = fetch_podcast.enrich_episode_transcript(self.episode.copy(), self.source, {}, no_cache=True)
@@ -661,6 +685,59 @@ class TestTranscriptBackend(unittest.TestCase):
 
         self.assertEqual(result["transcript_status"], "ok")
         self.assertEqual(result["transcript"], "Speaker 1 | 00:00 - 00:05 Hello world.")
+
+    @patch("fetch_podcast.run_opencli_json")
+    @patch("fetch_podcast.resolve_opencli_bin", return_value="/usr/local/bin/opencli")
+    def test_opencli_transcript_success_attaches_text(self, _resolve, run_opencli):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            text_file = Path(tmpdir) / "transcript.txt"
+            text_file.write_text("Segment one.\nSegment two.\n", encoding="utf-8")
+            run_opencli.return_value = [
+                {
+                    "status": "success",
+                    "segments": "2",
+                    "text_file": str(text_file),
+                }
+            ]
+
+            result = fetch_podcast.enrich_episode_transcript(
+                self.xiaoyuzhou_episode(),
+                self.xiaoyuzhou_source(),
+                {},
+                no_cache=True,
+            )
+
+        self.assertEqual(result["transcript_status"], "ok")
+        self.assertEqual(result["transcript"], "Segment one.\nSegment two.")
+        run_opencli.assert_called_once()
+        self.assertIn("transcript", run_opencli.call_args.args[1])
+
+    @patch("fetch_podcast.resolve_opencli_bin", return_value=None)
+    def test_opencli_transcript_backend_unavailable_keeps_episode(self, _resolve):
+        result = fetch_podcast.enrich_episode_transcript(
+            self.xiaoyuzhou_episode(),
+            self.xiaoyuzhou_source(),
+            {},
+            no_cache=True,
+        )
+
+        self.assertEqual(result["transcript_status"], "backend_unavailable")
+        self.assertIn("transcript_error", result)
+        self.assertNotIn("transcript", result)
+
+    @patch("fetch_podcast.run_opencli_json", side_effect=RuntimeError("Transcript URL not found"))
+    @patch("fetch_podcast.resolve_opencli_bin", return_value="/usr/local/bin/opencli")
+    def test_opencli_transcript_failure_keeps_episode(self, _resolve, _run_opencli):
+        result = fetch_podcast.enrich_episode_transcript(
+            self.xiaoyuzhou_episode(),
+            self.xiaoyuzhou_source(),
+            {},
+            no_cache=True,
+        )
+
+        self.assertEqual(result["transcript_status"], "error")
+        self.assertIn("Transcript URL not found", result["transcript_error"])
+        self.assertNotIn("transcript", result)
 
     @patch("subprocess.run")
     def test_ytdlp_transcript_uses_language_priority(self, run):

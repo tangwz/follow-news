@@ -71,6 +71,20 @@ def extract_xiaoyuzhou_podcast_id(url: str) -> str:
     return ""
 
 
+def xiaoyuzhou_episode_id_from_episode(episode: Dict[str, Any]) -> str:
+    guid = str(episode.get("guid") or "").strip()
+    if guid.startswith("xiaoyuzhou:"):
+        return guid.split(":", 1)[1].strip()
+    link = str(episode.get("link") or "").strip()
+    parsed = urlparse(link)
+    host = (parsed.hostname or "").lower()
+    if host in XIAOYUZHOU_HOSTS:
+        parts = [part for part in parsed.path.split("/") if part]
+        if len(parts) >= 2 and parts[0] == "episode":
+            return parts[1]
+    return ""
+
+
 def parse_podcast_date(value: str) -> Optional[datetime]:
     if not value:
         return None
@@ -479,6 +493,50 @@ def run_ytdlp_transcript(
     return last_error or {"status": "missing", "error": "No subtitle track found"}
 
 
+def run_opencli_transcript(
+    opencli_bin: str,
+    episode: Dict[str, Any],
+    timeout: int = 120,
+) -> Dict[str, str]:
+    episode_id = xiaoyuzhou_episode_id_from_episode(episode)
+    if not episode_id:
+        return {"status": "error", "error": "Xiaoyuzhou episode id not found"}
+
+    with tempfile.TemporaryDirectory(prefix="follow-news-xiaoyuzhou-transcript-") as tmpdir:
+        try:
+            payload = run_opencli_json(
+                opencli_bin,
+                [
+                    "xiaoyuzhou",
+                    "transcript",
+                    episode_id,
+                    "--output",
+                    tmpdir,
+                    "-f",
+                    "json",
+                ],
+                timeout=timeout,
+            )
+        except RuntimeError as exc:
+            return {"status": "error", "error": str(exc)[:200]}
+
+        rows = payload if isinstance(payload, list) else [payload]
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            text_file = str(row.get("text_file") or "").strip()
+            if not text_file or text_file == "-":
+                continue
+            try:
+                transcript = Path(text_file).read_text(encoding="utf-8", errors="replace").strip()
+            except OSError as exc:
+                return {"status": "error", "error": str(exc)[:200]}
+            if transcript:
+                return {"status": "ok", "transcript": transcript}
+
+    return {"status": "missing", "error": "No transcript text returned by opencli"}
+
+
 def parse_vtt_transcript(content: str) -> str:
     lines: List[str] = []
     current_time = ""
@@ -560,16 +618,23 @@ def enrich_episode_transcript(
             return episode
 
     backend = config.get("backend", "auto")
-    if backend not in {"auto", "yt-dlp"}:
+    if backend not in {"auto", "yt-dlp", "opencli"}:
         episode["transcript_status"] = "error"
         episode["transcript_error"] = f"Unsupported transcript backend: {backend}"
         return episode
 
-    ytdlp_bin = resolve_ytdlp_bin()
-    if not ytdlp_bin:
-        result = {"status": "backend_unavailable", "error": "yt-dlp is not available"}
+    if backend == "opencli" or episode.get("platform") == "xiaoyuzhou":
+        opencli_bin = resolve_opencli_bin()
+        if not opencli_bin:
+            result = {"status": "backend_unavailable", "error": "opencli is not available"}
+        else:
+            result = run_opencli_transcript(opencli_bin, episode)
     else:
-        result = run_ytdlp_transcript(ytdlp_bin, episode, transcript_languages(source))
+        ytdlp_bin = resolve_ytdlp_bin()
+        if not ytdlp_bin:
+            result = {"status": "backend_unavailable", "error": "yt-dlp is not available"}
+        else:
+            result = run_ytdlp_transcript(ytdlp_bin, episode, transcript_languages(source))
 
     episode["transcript_status"] = result.get("status", "error")
     episode.pop("transcript", None)
