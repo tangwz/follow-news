@@ -60,7 +60,7 @@
         },
         "platform": {
           "type": "string",
-          "enum": ["auto", "rss", "youtube"],
+          "enum": ["auto", "rss", "youtube", "xiaoyuzhou"],
           "description": "Podcast platform. Use auto to infer from URL."
         },
         "transcript": {
@@ -73,7 +73,7 @@
             },
             "backend": {
               "type": "string",
-              "enum": ["auto", "yt-dlp"],
+              "enum": ["auto", "yt-dlp", "opencli"],
               "description": "Transcript backend selection"
             },
             "languages": {

@@ -26,9 +26,9 @@ python3 server.py
   - JSON 模式：直接编辑完整 JSON 文本（会做 JSON 合法性校验）
   - 搜索 + 分页（sources 更友好）
 - 表格模式额外支持 `type: "podcast"` 的字段：
-  - `platform`（可选）：`auto` / `rss` / `youtube`
+  - `platform`（可选）：`auto` / `rss` / `youtube` / `xiaoyuzhou`
   - `transcript.enabled`（可选）：布尔值
-  - `transcript.backend`（可选）：`auto` / `yt-dlp`
+  - `transcript.backend`（可选）：`auto` / `yt-dlp` / `opencli`
   - `transcript.languages`（可选）：字符串数组
 
 ## 注意

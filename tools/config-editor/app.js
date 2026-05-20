@@ -1,7 +1,7 @@
 (() => {
   const PAGE_SIZE = 20;
-  const PODCAST_PLATFORMS = ["auto", "rss", "youtube"];
-  const PODCAST_TRANSCRIPT_BACKENDS = ["auto", "yt-dlp"];
+  const PODCAST_PLATFORMS = ["auto", "rss", "youtube", "xiaoyuzhou"];
+  const PODCAST_TRANSCRIPT_BACKENDS = ["auto", "yt-dlp", "opencli"];
 
   const TEXT = {
     zh: {

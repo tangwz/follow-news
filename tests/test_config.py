@@ -315,6 +315,34 @@ class TestPodcastConfigValidation(unittest.TestCase):
 
         self.assertTrue(validate_source_types(sources_data))
 
+    def test_validate_source_types_accepts_xiaoyuzhou_platform(self):
+        sources_data = {
+            "sources": [
+                self.podcast_source(
+                    id="whynottv-podcast",
+                    url="https://www.xiaoyuzhoufm.com/podcast/686a1832222ae2de21fea940",
+                    platform="xiaoyuzhou",
+                ),
+            ]
+        }
+
+        self.assertTrue(validate_source_types(sources_data))
+
+    def test_validate_source_types_accepts_opencli_transcript_backend(self):
+        sources_data = {
+            "sources": [
+                self.podcast_source(
+                    platform="xiaoyuzhou",
+                    transcript={
+                        "enabled": True,
+                        "backend": "opencli",
+                    },
+                ),
+            ]
+        }
+
+        self.assertTrue(validate_source_types(sources_data))
+
     def test_validate_source_types_rejects_podcast_url_with_whitespace_host(self):
         sources_data = {
             "sources": [

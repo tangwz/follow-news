@@ -186,7 +186,7 @@ def validate_source_types(sources_data: Dict[str, Any]) -> bool:
             elif not is_http_url_with_hostname(url):
                 errors.append(f"Podcast source '{source_id}' has invalid url: {url}")
             platform = source.get("platform", "auto")
-            if platform not in {"auto", "rss", "youtube"}:
+            if platform not in {"auto", "rss", "youtube", "xiaoyuzhou"}:
                 errors.append(
                     f"Podcast source '{source_id}' has invalid platform: {platform}"
                 )
@@ -203,7 +203,7 @@ def validate_source_types(sources_data: Dict[str, Any]) -> bool:
                             f"Podcast source '{source_id}' has invalid transcript enabled flag"
                         )
                     backend = transcript.get("backend", "auto")
-                    if backend not in {"auto", "yt-dlp"}:
+                    if backend not in {"auto", "yt-dlp", "opencli"}:
                         errors.append(
                             f"Podcast source '{source_id}' has invalid transcript backend: {backend}"
                         )

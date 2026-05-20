@@ -38,7 +38,7 @@ def _get_free_port() -> int:
     return port
 
 
-class ConfigEditorServerTest(unittest.TestCase):
+class TestConfigEditorServer(unittest.TestCase):
     def test_options_rejects_non_exact_file_route(self) -> None:
         port = _get_free_port()
         server = server_module.HTTPServer(("127.0.0.1", port), server_module.ConfigEditorHandler)
@@ -134,18 +134,18 @@ class ConfigEditorServerTest(unittest.TestCase):
             payload_source = {
                 "sources": [
                     {
-                        "id": "training-data-podcast",
+                        "id": "whynottv-podcast",
                         "type": "podcast",
-                        "name": "Training Data",
+                        "name": "WhynotTV Podcast",
                         "enabled": True,
                         "priority": True,
-                        "topics": ["llm", "ai-agent"],
-                        "url": "https://www.youtube.com/playlist?list=PLOhHNjZItNnMm5tdW61JpnyxeYH5NDDx8",
-                        "platform": "youtube",
+                        "topics": ["podcast"],
+                        "url": "https://www.xiaoyuzhoufm.com/podcast/686a1832222ae2de21fea940",
+                        "platform": "xiaoyuzhou",
                         "transcript": {
                             "enabled": True,
-                            "backend": "auto",
-                            "languages": ["en", "zh", "zh-Hans"],
+                            "backend": "opencli",
+                            "languages": [],
                         },
                     }
                 ]
@@ -194,7 +194,8 @@ class ConfigEditorServerTest(unittest.TestCase):
 
                     saved = json.loads(sources_path.read_text(encoding="utf-8"))
                     self.assertEqual(saved["sources"][0]["type"], "podcast")
-                    self.assertEqual(saved["sources"][0]["platform"], "youtube")
+                    self.assertEqual(saved["sources"][0]["platform"], "xiaoyuzhou")
+                    self.assertEqual(saved["sources"][0]["transcript"]["backend"], "opencli")
                 finally:
                     server.shutdown()
                     server.server_close()
