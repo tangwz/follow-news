@@ -538,6 +538,11 @@ def run_opencli_transcript(
                         "status": "error",
                         "error": "opencli transcript text_file is outside output directory",
                     }
+            except ValueError:
+                return {
+                    "status": "error",
+                    "error": "opencli transcript text_file is outside output directory",
+                }
             except OSError as exc:
                 return {"status": "error", "error": str(exc)[:200]}
             try:

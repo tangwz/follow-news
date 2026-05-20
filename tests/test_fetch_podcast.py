@@ -791,6 +791,30 @@ class TestTranscriptBackend(unittest.TestCase):
         self.assertIn("outside", result["error"])
         self.assertNotIn("transcript", result)
 
+    @patch("fetch_podcast.os.path.commonpath", side_effect=ValueError("paths on different drives"))
+    @patch("fetch_podcast.run_opencli_json")
+    def test_opencli_transcript_handles_path_commonpath_value_error(
+        self,
+        run_opencli,
+        _commonpath,
+    ):
+        run_opencli.return_value = [
+            {
+                "status": "success",
+                "segments": "1",
+                "text_file": "D:/transcript.txt",
+            }
+        ]
+
+        result = fetch_podcast.run_opencli_transcript(
+            "/usr/local/bin/opencli",
+            self.xiaoyuzhou_episode(),
+        )
+
+        self.assertEqual(result["status"], "error")
+        self.assertIn("outside", result["error"])
+        self.assertNotIn("transcript", result)
+
     @patch("fetch_podcast.resolve_opencli_bin", return_value=None)
     def test_opencli_transcript_backend_unavailable_keeps_episode(self, _resolve):
         result = fetch_podcast.enrich_episode_transcript(
