@@ -9,6 +9,7 @@ import json
 import logging
 import os
 import re
+import shutil
 import sys
 import tempfile
 import time
@@ -292,6 +293,39 @@ def resolve_ytdlp_bin() -> Optional[str]:
     from shutil import which
 
     return which("yt-dlp")
+
+
+def resolve_opencli_bin() -> Optional[str]:
+    configured = os.environ.get("OPENCLI_BIN")
+    if configured:
+        return configured
+    return shutil.which("opencli")
+
+
+def run_opencli_json(opencli_bin: str, args: List[str], timeout: int = 90) -> Any:
+    import subprocess
+
+    cmd = [opencli_bin] + args
+    try:
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError("opencli command timed out") from exc
+    except OSError as exc:
+        raise RuntimeError(str(exc)) from exc
+
+    if result.returncode != 0:
+        message = (result.stderr or result.stdout or "opencli command failed").strip()
+        raise RuntimeError(message[:300])
+
+    try:
+        return json.loads(result.stdout)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError("opencli output was not valid JSON") from exc
 
 
 def source_identity(source: Dict[str, Any]) -> str:

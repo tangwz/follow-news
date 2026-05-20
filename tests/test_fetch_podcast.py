@@ -225,6 +225,81 @@ class TestPodcastSourceLoading(unittest.TestCase):
             self.assertEqual([s["id"] for s in sources], ["podcast-source"])
 
 
+class TestOpenCliHelpers(unittest.TestCase):
+    @patch.dict("os.environ", {"OPENCLI_BIN": "/custom/opencli"})
+    def test_resolve_opencli_bin_from_env(self):
+        self.assertEqual(fetch_podcast.resolve_opencli_bin(), "/custom/opencli")
+
+    @patch.dict("os.environ", {}, clear=True)
+    @patch("shutil.which", return_value="/usr/local/bin/opencli")
+    def test_resolve_opencli_bin_from_path(self, _which):
+        self.assertEqual(fetch_podcast.resolve_opencli_bin(), "/usr/local/bin/opencli")
+
+    @patch.dict("os.environ", {}, clear=True)
+    @patch("shutil.which", return_value=None)
+    def test_resolve_opencli_bin_returns_none_when_missing(self, _which):
+        self.assertIsNone(fetch_podcast.resolve_opencli_bin())
+
+    @patch(
+        "subprocess.run",
+        return_value=subprocess.CompletedProcess(
+            args=["opencli"],
+            returncode=0,
+            stdout='[{"eid":"episode-one"}]',
+            stderr="",
+        ),
+    )
+    def test_run_opencli_json_parses_stdout(self, run):
+        payload = fetch_podcast.run_opencli_json(
+            "/usr/local/bin/opencli",
+            ["xiaoyuzhou", "podcast-episodes", "pid", "--limit", "20", "-f", "json"],
+        )
+
+        self.assertEqual(payload, [{"eid": "episode-one"}])
+        self.assertEqual(run.call_args.args[0][0], "/usr/local/bin/opencli")
+        self.assertIn("-f", run.call_args.args[0])
+        self.assertIn("json", run.call_args.args[0])
+        self.assertTrue(run.call_args.kwargs["capture_output"])
+        self.assertTrue(run.call_args.kwargs["text"])
+        self.assertEqual(run.call_args.kwargs["timeout"], 90)
+
+    @patch(
+        "subprocess.run",
+        return_value=subprocess.CompletedProcess(
+            args=["opencli"],
+            returncode=78,
+            stdout="",
+            stderr="Missing Xiaoyuzhou credentials. Expected /Users/test/.opencli/xiaoyuzhou.json",
+        ),
+    )
+    def test_run_opencli_json_raises_on_nonzero_exit(self, _run):
+        with self.assertRaises(RuntimeError) as context:
+            fetch_podcast.run_opencli_json(
+                "/usr/local/bin/opencli",
+                ["xiaoyuzhou", "podcast-episodes", "pid", "-f", "json"],
+            )
+
+        self.assertIn("Missing Xiaoyuzhou credentials", str(context.exception))
+
+    @patch(
+        "subprocess.run",
+        return_value=subprocess.CompletedProcess(
+            args=["opencli"],
+            returncode=0,
+            stdout="{not-json",
+            stderr="",
+        ),
+    )
+    def test_run_opencli_json_raises_on_invalid_json(self, _run):
+        with self.assertRaises(RuntimeError) as context:
+            fetch_podcast.run_opencli_json(
+                "/usr/local/bin/opencli",
+                ["xiaoyuzhou", "podcast-episodes", "pid", "-f", "json"],
+            )
+
+        self.assertIn("valid JSON", str(context.exception))
+
+
 class TestYoutubeMetadataNormalization(unittest.TestCase):
     def setUp(self):
         self.source = {
