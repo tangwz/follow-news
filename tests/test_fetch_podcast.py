@@ -285,6 +285,23 @@ class TestOpenCliHelpers(unittest.TestCase):
         "subprocess.run",
         return_value=subprocess.CompletedProcess(
             args=["opencli"],
+            returncode=66,
+            stdout="",
+            stderr="No results found",
+        ),
+    )
+    def test_run_opencli_json_returns_empty_list_on_empty_result_exit(self, _run):
+        payload = fetch_podcast.run_opencli_json(
+            "/usr/local/bin/opencli",
+            ["xiaoyuzhou", "podcast-episodes", "pid", "-f", "json"],
+        )
+
+        self.assertEqual(payload, [])
+
+    @patch(
+        "subprocess.run",
+        return_value=subprocess.CompletedProcess(
+            args=["opencli"],
             returncode=0,
             stdout="{not-json",
             stderr="",
@@ -586,6 +603,28 @@ class TestXiaoyuzhouMetadataNormalization(unittest.TestCase):
         self.assertEqual([episode["guid"] for episode in episodes], ["xiaoyuzhou:same-day"])
         self.assertEqual(episodes[0]["date"], "2026-05-01T00:00:00+00:00")
 
+    def test_filters_xiaoyuzhou_full_timestamps_before_hour_cutoff(self):
+        rows = [
+            {
+                "eid": "too-old",
+                "title": "Too Old Episode",
+                "date": "2026-05-01T10:59:59Z",
+            },
+            {
+                "eid": "new-enough",
+                "title": "New Enough Episode",
+                "date": "2026-05-01T11:00:00Z",
+            },
+        ]
+
+        episodes = fetch_podcast.normalize_xiaoyuzhou_metadata(
+            rows,
+            self.source,
+            utc("2026-05-01T11:00:00Z"),
+        )
+
+        self.assertEqual([episode["guid"] for episode in episodes], ["xiaoyuzhou:new-enough"])
+
     def test_normalizes_xiaoyuzhou_rows_newest_first(self):
         rows = [
             {"eid": "older", "title": "Older", "date": "2026-05-01"},
@@ -862,6 +901,25 @@ class TestTranscriptBackend(unittest.TestCase):
 
         self.assertEqual(result["transcript_status"], "error")
         self.assertIn("Transcript URL not found", result["transcript_error"])
+        self.assertNotIn("transcript", result)
+
+    @patch(
+        "subprocess.run",
+        return_value=subprocess.CompletedProcess(
+            args=["opencli"],
+            returncode=66,
+            stdout="",
+            stderr="No transcript rows",
+        ),
+    )
+    def test_opencli_transcript_empty_result_returns_missing(self, _run):
+        result = fetch_podcast.run_opencli_transcript(
+            "/usr/local/bin/opencli",
+            self.xiaoyuzhou_episode(),
+        )
+
+        self.assertEqual(result["status"], "missing")
+        self.assertIn("No transcript", result["error"])
         self.assertNotIn("transcript", result)
 
     @patch("subprocess.run")
@@ -1231,6 +1289,38 @@ class TestPodcastCliOutput(unittest.TestCase):
                 "json",
             ],
         )
+
+    @patch("fetch_podcast.enrich_episode_transcript")
+    @patch("fetch_podcast.run_opencli_json")
+    @patch("fetch_podcast.resolve_opencli_bin", return_value="/usr/local/bin/opencli")
+    def test_fetch_xiaoyuzhou_source_accepts_empty_opencli_result(
+        self,
+        _resolve,
+        run_opencli,
+        enrich_transcript,
+    ):
+        source = {
+            "id": "whynottv-podcast",
+            "type": "podcast",
+            "name": "WhynotTV Podcast",
+            "url": "https://www.xiaoyuzhoufm.com/podcast/686a1832222ae2de21fea940",
+            "platform": "xiaoyuzhou",
+            "topics": ["podcast"],
+            "transcript": {"enabled": False},
+        }
+        run_opencli.return_value = []
+        cache = {"metadata": {}, "transcripts": {}}
+
+        episodes = fetch_podcast.fetch_xiaoyuzhou_source(
+            source,
+            utc("2026-01-01T00:00:00Z"),
+            cache,
+            no_cache=False,
+        )
+
+        self.assertEqual(episodes, [])
+        self.assertEqual(cache["metadata"][fetch_podcast.metadata_cache_key(source)]["payload"], [])
+        enrich_transcript.assert_not_called()
 
     @patch("fetch_podcast.enrich_episode_transcript")
     @patch("fetch_podcast.run_opencli_json")

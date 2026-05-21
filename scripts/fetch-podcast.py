@@ -38,6 +38,7 @@ METADATA_CACHE_VERSION = 2
 TRANSCRIPT_SUCCESS_TTL_SECONDS = 30 * 86400
 TRANSCRIPT_FAILURE_TTL_SECONDS = 6 * 3600
 XIAOYUZHOU_HOSTS = {"xiaoyuzhoufm.com", "www.xiaoyuzhoufm.com"}
+OPENCLI_EMPTY_RESULT_EXIT_CODE = 66
 
 
 def setup_logging(verbose: bool) -> logging.Logger:
@@ -246,6 +247,13 @@ def parse_xiaoyuzhou_date(value: Any) -> Optional[datetime]:
     return parse_podcast_date(text)
 
 
+def xiaoyuzhou_published_before_cutoff(value: Any, published: datetime, cutoff: datetime) -> bool:
+    text = str(value or "").strip()
+    if re.match(r"^\d{4}-\d{2}-\d{2}$", text):
+        return published.date() < cutoff.date()
+    return published < cutoff
+
+
 def normalize_youtube_metadata(
     payload: Dict[str, Any],
     source: Dict[str, Any],
@@ -307,8 +315,11 @@ def normalize_xiaoyuzhou_metadata(
 
         episode_id = str(entry.get("eid") or "").strip()
         title = str(entry.get("title") or "").strip()
-        published = parse_xiaoyuzhou_date(entry.get("date"))
-        if not episode_id or not title or not published or published.date() < cutoff.date():
+        raw_date = entry.get("date")
+        published = parse_xiaoyuzhou_date(raw_date)
+        if not episode_id or not title or not published:
+            continue
+        if xiaoyuzhou_published_before_cutoff(raw_date, published, cutoff):
             continue
         if episode_id in seen_episode_ids:
             continue
@@ -379,6 +390,9 @@ def run_opencli_json(opencli_bin: str, args: List[str], timeout: int = 90) -> An
         raise RuntimeError("opencli command timed out") from exc
     except OSError as exc:
         raise RuntimeError(str(exc)) from exc
+
+    if result.returncode == OPENCLI_EMPTY_RESULT_EXIT_CODE:
+        return []
 
     if result.returncode != 0:
         message = (result.stderr or result.stdout or "opencli command failed").strip()
