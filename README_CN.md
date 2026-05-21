@@ -41,7 +41,7 @@ clawhub install follow-news
 | 🔍 Web 搜索 | 6 个主题 | `llm`、`ai-agent`、`builder`、`kol`、`frontier-tech`、`podcast` + 时效过滤 |
 | 🐙 GitHub | 23 个仓库 | 关键项目的 Release 跟踪（LangChain、vLLM、DeepSeek、Llama…） |
 | 🗣️ Reddit | 8 个子版块 | r/MachineLearning、r/LocalLLaMA、r/OpenAI、r/ExperiencedDevs… |
-| 🎙️ Podcast | 自定义源 | RSS 播客订阅源、YouTube 播放列表/频道，以及可选转录文本 |
+| 🎙️ Podcast | 自定义源 | RSS 播客订阅源、YouTube 播放列表/频道、小宇宙播客，以及可选转录文本 |
 
 ### 数据管道
 
@@ -70,7 +70,7 @@ clawhub install follow-news
 
 ## 🎨 自定义数据源
 
-开箱即用，内置 162 个数据源，并支持自定义 podcast 源——但完全可自定义。将默认配置复制到 workspace 并覆盖：
+开箱即用，内置 163 个数据源，并支持自定义 podcast 源——但完全可自定义。将默认配置复制到 workspace 并覆盖：
 
 ```bash
 # 复制并自定义
@@ -102,6 +102,20 @@ cp config/defaults/topics.json workspace/config/follow-news-topics.json
         "languages": ["en", "zh", "zh-Hans"]
       }
     },
+    {
+      "id": "xiaoyuzhou-example",
+      "type": "podcast",
+      "name": "Xiaoyuzhou Example",
+      "url": "https://www.xiaoyuzhoufm.com/podcast/686a1832222ae2de21fea940",
+      "platform": "xiaoyuzhou",
+      "enabled": true,
+      "topics": ["podcast"],
+      "transcript": {
+        "enabled": true,
+        "backend": "opencli",
+        "languages": ["zh"]
+      }
+    },
     {"id": "openai-rss", "enabled": false}
   ]
 }
@@ -109,7 +123,7 @@ cp config/defaults/topics.json workspace/config/follow-news-topics.json
 
 不需要复制整个文件——只写你要改的部分。
 
-Podcast 源使用 `type: "podcast"`。RSS 播客订阅源不需要额外工具；YouTube 播客源使用 `platform: "youtube"`，并可通过可选的 `yt-dlp` 运行时抓取元数据和转录文本。
+Podcast 源使用 `type: "podcast"`。RSS 播客订阅源不需要额外工具；YouTube 播客源使用 `platform: "youtube"`，并可通过可选的 `yt-dlp` 运行时抓取元数据和转录文本。小宇宙播客源使用 `platform: "xiaoyuzhou"`，URL 形如 `https://www.xiaoyuzhoufm.com/podcast/<podcast_id>`。小宇宙元数据发现使用 OpenCLI，且没有直接 API 或 HTML fallback；转录后端 `auto`/`opencli` 会对小宇宙单集使用 OpenCLI。`opencli` 转录后端只对小宇宙源有效。
 
 ## 🔧 环境变量
 
@@ -143,6 +157,8 @@ OpenCLI 是默认优先后端，因为它可以复用已经登录的 Chrome/Chro
 OpenCLI 的稳定性取决于本机浏览器扩展桥接状态。抓取器默认使用 10 并发 OpenCLI 请求（`OPENCLI_MAX_WORKERS=10`，上限 10），同时默认会关闭本次 OpenCLI 抓取中新建的 X/Twitter 标签页（`OPENCLI_CLOSE_TABS_AFTER_RUN=1`），并在 macOS 上关闭 OpenCLI 本次打开的 Chrome 自动化窗口（`OPENCLI_CLOSE_CHROME_WINDOWS_AFTER_RUN=1`），不会关闭执行前已经存在的窗口。
 
 RSS 播客订阅源不需要额外工具。YouTube 播客元数据和转录文本抓取需要 `yt-dlp`；请将它安装到 `PATH`，或通过 `YTDLP_BIN` 指向可执行文件。缺少 `yt-dlp` 时，对应 YouTube 播客源会标记为失败，但不会阻塞其他数据源。
+
+小宇宙播客元数据发现需要 OpenCLI。运行这类源之前，请先安装、配置并完成 OpenCLI 的小宇宙认证；当 `opencli` 不在 `PATH` 上时，可通过 `OPENCLI_BIN` 覆盖可执行文件路径。小宇宙元数据发现没有直接 API 或 HTML fallback。转录方面，后端 `auto`/`opencli` 会对小宇宙单集使用 OpenCLI；非小宇宙播客源会拒绝 `opencli` 转录后端。
 
 ## 📦 依赖
 

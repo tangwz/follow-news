@@ -315,6 +315,83 @@ class TestPodcastConfigValidation(unittest.TestCase):
 
         self.assertTrue(validate_source_types(sources_data))
 
+    def test_validate_source_types_accepts_xiaoyuzhou_platform(self):
+        sources_data = {
+            "sources": [
+                self.podcast_source(
+                    id="whynottv-podcast",
+                    url="https://www.xiaoyuzhoufm.com/podcast/686a1832222ae2de21fea940",
+                    platform="xiaoyuzhou",
+                ),
+            ]
+        }
+
+        self.assertTrue(validate_source_types(sources_data))
+
+    def test_validate_source_types_accepts_xiaoyuzhou_url_with_query_and_fragment(self):
+        sources_data = {
+            "sources": [
+                self.podcast_source(
+                    id="whynottv-podcast",
+                    url="https://www.xiaoyuzhoufm.com/podcast/686a1832222ae2de21fea940?foo=bar#section",
+                    platform="xiaoyuzhou",
+                ),
+            ]
+        }
+
+        self.assertTrue(validate_source_types(sources_data))
+
+    def test_validate_source_types_rejects_invalid_xiaoyuzhou_url_shape(self):
+        invalid_urls = [
+            "https://www.xiaoyuzhoufm.com/episode/69f441cd5390b7cc928acdcc",
+            "https://www.xiaoyuzhoufm.com/podcast/686a1832222ae2de21fea940/extra",
+            "https://www.xiaoyuzhoufm.com/podcast/",
+            "https://example.com/podcast/686a1832222ae2de21fea940",
+            "ftp://www.xiaoyuzhoufm.com/podcast/686a1832222ae2de21fea940",
+        ]
+
+        for url in invalid_urls:
+            with self.subTest(url=url):
+                sources_data = {
+                    "sources": [
+                        self.podcast_source(url=url, platform="xiaoyuzhou"),
+                    ]
+                }
+
+                self.assertFalse(validate_source_types(sources_data))
+
+    def test_validate_source_types_accepts_opencli_transcript_backend(self):
+        sources_data = {
+            "sources": [
+                self.podcast_source(
+                    url="https://www.xiaoyuzhoufm.com/podcast/686a1832222ae2de21fea940",
+                    platform="xiaoyuzhou",
+                    transcript={
+                        "enabled": True,
+                        "backend": "opencli",
+                    },
+                ),
+            ]
+        }
+
+        self.assertTrue(validate_source_types(sources_data))
+
+    def test_validate_source_types_rejects_opencli_backend_for_non_xiaoyuzhou_platform(self):
+        sources_data = {
+            "sources": [
+                self.podcast_source(
+                    url="https://www.youtube.com/playlist?list=abc",
+                    platform="youtube",
+                    transcript={
+                        "enabled": True,
+                        "backend": "opencli",
+                    },
+                ),
+            ]
+        }
+
+        self.assertFalse(validate_source_types(sources_data))
+
     def test_validate_source_types_rejects_podcast_url_with_whitespace_host(self):
         sources_data = {
             "sources": [
@@ -488,7 +565,7 @@ class TestSourceCounts(unittest.TestCase):
         self.assertEqual(counts["reddit"], 8)
 
 
-class TestReadmeCounts(unittest.TestCase):
+class TestDocumentationExamples(unittest.TestCase):
     def test_english_readme_counts_are_current(self):
         counts = get_source_counts()
         content = README_EN.read_text(encoding="utf-8")
@@ -541,10 +618,14 @@ class TestReadmeCounts(unittest.TestCase):
             "| 🎙️ Podcast | 自定义源 |",
             content,
         )
-        self.assertIn("RSS 播客订阅源、YouTube 播放列表/频道，以及可选转录文本", content)
+        self.assertIn("RSS 播客订阅源、YouTube 播放列表/频道、小宇宙播客，以及可选转录文本", content)
         self.assertIn("GitHub Tr.", content)
         self.assertIn(
             f"`config/defaults/sources.json` — {counts['total']} 个内置数据源（{counts['rss']} RSS、{counts['twitter']} Twitter、{counts['github']} GitHub、{counts['reddit']} Reddit、{counts['podcast']} Podcast）",
+            content,
+        )
+        self.assertIn(
+            f"开箱即用，内置 {counts['total']} 个数据源，并支持自定义 podcast 源",
             content,
         )
 
@@ -560,11 +641,16 @@ class TestReadmeCounts(unittest.TestCase):
                 lowered = content.lower()
                 self.assertIn("podcast", lowered)
                 self.assertIn("youtube", lowered)
+                self.assertIn("xiaoyuzhou", lowered)
                 self.assertIn("yt-dlp", lowered)
+                self.assertIn("opencli", lowered)
                 self.assertIn("YTDLP_BIN", content)
+                self.assertIn("OPENCLI_BIN", content)
                 self.assertIn('"type": "podcast"', content)
                 self.assertIn('"platform": "youtube"', content)
+                self.assertIn('"platform": "xiaoyuzhou"', content)
                 self.assertIn('"backend": "yt-dlp"', content)
+                self.assertIn('"backend": "opencli"', content)
 
         skill = docs["SKILL.md"]
         self.assertIn("--trending FILE", skill)

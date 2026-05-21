@@ -41,7 +41,7 @@ A quality-scored, deduplicated tech digest built from **163 built-in sources** p
 | 🔍 Web Search | 6 topics | `llm`, `ai-agent`, `builder`, `kol`, `frontier-tech`, `podcast` with freshness filters |
 | 🐙 GitHub | 23 repos | Releases from key projects (LangChain, vLLM, DeepSeek, Llama…) |
 | 🗣️ Reddit | 8 subs | r/MachineLearning, r/LocalLLaMA, r/OpenAI, r/ExperiencedDevs… |
-| 🎙️ Podcast | custom sources | RSS podcast feeds and YouTube playlists/channels with optional transcripts |
+| 🎙️ Podcast | custom sources | RSS podcast feeds, YouTube playlists/channels, and Xiaoyuzhou podcasts with optional transcripts |
 
 ### Pipeline
 
@@ -102,6 +102,20 @@ Your overlay file **merges** with defaults:
         "languages": ["en", "zh", "zh-Hans"]
       }
     },
+    {
+      "id": "xiaoyuzhou-example",
+      "type": "podcast",
+      "name": "Xiaoyuzhou Example",
+      "url": "https://www.xiaoyuzhoufm.com/podcast/686a1832222ae2de21fea940",
+      "platform": "xiaoyuzhou",
+      "enabled": true,
+      "topics": ["podcast"],
+      "transcript": {
+        "enabled": true,
+        "backend": "opencli",
+        "languages": ["zh"]
+      }
+    },
     {"id": "openai-rss", "enabled": false}
   ]
 }
@@ -109,7 +123,7 @@ Your overlay file **merges** with defaults:
 
 No need to copy the entire file — just include what you want to change.
 
-Podcast sources use `type: "podcast"`. RSS podcast feeds work without extra tools. YouTube podcast sources use `platform: "youtube"` and can fetch metadata and transcripts through the optional `yt-dlp` runtime.
+Podcast sources use `type: "podcast"`. RSS podcast feeds work without extra tools. YouTube podcast sources use `platform: "youtube"` and can fetch metadata and transcripts through the optional `yt-dlp` runtime. Xiaoyuzhou podcast sources use `platform: "xiaoyuzhou"` with URLs like `https://www.xiaoyuzhoufm.com/podcast/<podcast_id>`. Xiaoyuzhou metadata discovery uses OpenCLI and has no direct API or HTML fallback; transcript backend `auto`/`opencli` uses OpenCLI for Xiaoyuzhou episodes. The `opencli` transcript backend is only valid for Xiaoyuzhou sources.
 
 ## 🔧 Environment Variables
 
@@ -149,6 +163,8 @@ To use the OpenCLI backend, install the OpenCLI executable yourself and make it 
 OpenCLI browser bridge stability depends on the local browser extension connection. The fetcher defaults to 10 concurrent OpenCLI workers (`OPENCLI_MAX_WORKERS=10`) and has a hard cap at 10. It also closes X/Twitter tabs created during the OpenCLI fetch (`OPENCLI_CLOSE_TABS_AFTER_RUN=1` by default) and, on macOS, closes Chrome automation windows that OpenCLI opened during the run (`OPENCLI_CLOSE_CHROME_WINDOWS_AFTER_RUN=1` by default) while leaving pre-existing windows alone.
 
 RSS podcast feeds do not need extra tools. YouTube podcast metadata and transcript fetching require `yt-dlp`; install it on `PATH`, or set `YTDLP_BIN` to the executable path. If `yt-dlp` is missing, that YouTube podcast source is marked failed without blocking the rest of the pipeline.
+
+Xiaoyuzhou podcast metadata discovery requires OpenCLI. Install, configure, and authenticate OpenCLI for Xiaoyuzhou before running these sources; set `OPENCLI_BIN` to override the binary path when `opencli` is not on `PATH`. Xiaoyuzhou metadata discovery has no direct API or HTML fallback. For transcripts, backend `auto`/`opencli` uses OpenCLI for Xiaoyuzhou episodes, and `opencli` is rejected for non-Xiaoyuzhou podcast sources.
 
 ## 📦 Dependencies
 

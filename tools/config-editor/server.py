@@ -34,14 +34,15 @@ ALLOWED_FILES = {
         "label_en": "Default topics config",
     },
 }
+XIAOYUZHOU_HOSTS = {"xiaoyuzhoufm.com", "www.xiaoyuzhoufm.com"}
 
 
 class ConfigEditorHandler(SimpleHTTPRequestHandler):
     _json_prefix = re.compile(r"^/api/")
     _LOCAL_ORIGINS = {"127.0.0.1", "localhost", "::1"}
     _ALLOWED_SOURCE_TYPES = {"rss", "twitter", "web", "github", "reddit", "podcast"}
-    _ALLOWED_PODCAST_PLATFORMS = {"auto", "rss", "youtube"}
-    _ALLOWED_TRANSCRIPT_BACKENDS = {"auto", "yt-dlp"}
+    _ALLOWED_PODCAST_PLATFORMS = {"auto", "rss", "youtube", "xiaoyuzhou"}
+    _ALLOWED_TRANSCRIPT_BACKENDS = {"auto", "yt-dlp", "opencli"}
     _WILDCARD_HOSTS = {"0.0.0.0", "::", "::0"}
 
     def _send_json(self, payload: Dict[str, Any], status: int = 200) -> None:
@@ -234,6 +235,25 @@ class ConfigEditorHandler(SimpleHTTPRequestHandler):
             return False
         return parsed.scheme in {"http", "https"}
 
+    @classmethod
+    def _is_xiaoyuzhou_podcast_url(cls, value: Any) -> bool:
+        if not cls._is_http_url_with_hostname(value):
+            return False
+
+        parsed = urlparse(value)
+        host = (parsed.hostname or "").lower()
+        if host not in XIAOYUZHOU_HOSTS:
+            return False
+
+        parts = [part for part in parsed.path.split("/") if part]
+        return len(parts) == 2 and parts[0] == "podcast" and bool(parts[1])
+
+    @classmethod
+    def _supports_opencli_transcript(cls, platform: str, url: Any) -> bool:
+        return platform == "xiaoyuzhou" or (
+            platform == "auto" and cls._is_xiaoyuzhou_podcast_url(url)
+        )
+
     def _normalize_sources_payload(self, sources: Any) -> int:
         if not isinstance(sources, list):
             return 0
@@ -312,6 +332,8 @@ class ConfigEditorHandler(SimpleHTTPRequestHandler):
                 platform = source.get("platform", "auto")
                 if platform not in self._ALLOWED_PODCAST_PLATFORMS:
                     raise ValueError(f"Source '{source_id}' has invalid field 'platform'")
+                if platform == "xiaoyuzhou" and not self._is_xiaoyuzhou_podcast_url(url):
+                    raise ValueError(f"Source '{source_id}' has invalid Xiaoyuzhou podcast url")
 
                 if "transcript" in source:
                     transcript = source["transcript"]
@@ -324,6 +346,8 @@ class ConfigEditorHandler(SimpleHTTPRequestHandler):
 
                     backend = transcript.get("backend", "auto")
                     if backend not in self._ALLOWED_TRANSCRIPT_BACKENDS:
+                        raise ValueError(f"Source '{source_id}' has invalid field 'transcript.backend'")
+                    if backend == "opencli" and not self._supports_opencli_transcript(platform, url):
                         raise ValueError(f"Source '{source_id}' has invalid field 'transcript.backend'")
 
                     languages = transcript.get("languages", [])

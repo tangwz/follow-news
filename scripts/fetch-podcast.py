@@ -9,6 +9,7 @@ import json
 import logging
 import os
 import re
+import shutil
 import sys
 import tempfile
 import time
@@ -36,6 +37,8 @@ METADATA_CACHE_TTL_SECONDS = 3600
 METADATA_CACHE_VERSION = 2
 TRANSCRIPT_SUCCESS_TTL_SECONDS = 30 * 86400
 TRANSCRIPT_FAILURE_TTL_SECONDS = 6 * 3600
+XIAOYUZHOU_HOSTS = {"xiaoyuzhoufm.com", "www.xiaoyuzhoufm.com"}
+OPENCLI_EMPTY_RESULT_EXIT_CODE = 66
 
 
 def setup_logging(verbose: bool) -> logging.Logger:
@@ -49,10 +52,38 @@ def setup_logging(verbose: bool) -> logging.Logger:
 
 
 def infer_platform(url: str) -> str:
-    host = (urlparse(url).hostname or "").lower()
+    parsed = urlparse(url)
+    host = (parsed.hostname or "").lower()
     if host in {"youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be"}:
         return "youtube"
+    if extract_xiaoyuzhou_podcast_id(url):
+        return "xiaoyuzhou"
     return "rss"
+
+
+def extract_xiaoyuzhou_podcast_id(url: str) -> str:
+    parsed = urlparse(url)
+    host = (parsed.hostname or "").lower()
+    if host not in XIAOYUZHOU_HOSTS:
+        return ""
+    parts = [part for part in parsed.path.split("/") if part]
+    if len(parts) == 2 and parts[0] == "podcast" and parts[1]:
+        return parts[1]
+    return ""
+
+
+def xiaoyuzhou_episode_id_from_episode(episode: Dict[str, Any]) -> str:
+    guid = str(episode.get("guid") or "").strip()
+    if guid.startswith("xiaoyuzhou:"):
+        return guid.split(":", 1)[1].strip()
+    link = str(episode.get("link") or "").strip()
+    parsed = urlparse(link)
+    host = (parsed.hostname or "").lower()
+    if host in XIAOYUZHOU_HOSTS:
+        parts = [part for part in parsed.path.split("/") if part]
+        if len(parts) >= 2 and parts[0] == "episode":
+            return parts[1]
+    return ""
 
 
 def parse_podcast_date(value: str) -> Optional[datetime]:
@@ -204,6 +235,25 @@ def parse_youtube_date(value: Any) -> Optional[datetime]:
     return parse_podcast_date(text)
 
 
+def parse_xiaoyuzhou_date(value: Any) -> Optional[datetime]:
+    if not value:
+        return None
+    text = str(value).strip()
+    if re.match(r"^\d{4}-\d{2}-\d{2}$", text):
+        try:
+            return datetime.strptime(text, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        except ValueError:
+            return None
+    return parse_podcast_date(text)
+
+
+def xiaoyuzhou_published_before_cutoff(value: Any, published: datetime, cutoff: datetime) -> bool:
+    text = str(value or "").strip()
+    if re.match(r"^\d{4}-\d{2}-\d{2}$", text):
+        return published.date() < cutoff.date()
+    return published < cutoff
+
+
 def normalize_youtube_metadata(
     payload: Dict[str, Any],
     source: Dict[str, Any],
@@ -249,6 +299,45 @@ def normalize_youtube_metadata(
     return newest_episodes(episodes)
 
 
+def normalize_xiaoyuzhou_metadata(
+    payload: Any,
+    source: Dict[str, Any],
+    cutoff: datetime,
+) -> List[Dict[str, Any]]:
+    if not isinstance(payload, list):
+        raise RuntimeError("opencli xiaoyuzhou podcast-episodes output was not a list")
+
+    episodes: List[Dict[str, Any]] = []
+    seen_episode_ids: Set[str] = set()
+    for entry in payload:
+        if not isinstance(entry, dict):
+            continue
+
+        episode_id = str(entry.get("eid") or "").strip()
+        title = str(entry.get("title") or "").strip()
+        raw_date = entry.get("date")
+        published = parse_xiaoyuzhou_date(raw_date)
+        if not episode_id or not title or not published:
+            continue
+        if xiaoyuzhou_published_before_cutoff(raw_date, published, cutoff):
+            continue
+        if episode_id in seen_episode_ids:
+            continue
+        seen_episode_ids.add(episode_id)
+
+        episode = build_episode(
+            source,
+            title,
+            f"https://www.xiaoyuzhoufm.com/episode/{episode_id}",
+            published,
+            f"xiaoyuzhou:{episode_id}",
+            "xiaoyuzhou",
+        )
+        episodes.append(episode)
+
+    return newest_episodes(episodes)
+
+
 def youtube_entry_published_at(entry: Dict[str, Any]) -> Optional[datetime]:
     return timestamp_to_datetime(entry.get("timestamp")) or parse_youtube_date(
         entry.get("upload_date") or entry.get("release_date")
@@ -277,6 +366,42 @@ def resolve_ytdlp_bin() -> Optional[str]:
     from shutil import which
 
     return which("yt-dlp")
+
+
+def resolve_opencli_bin() -> Optional[str]:
+    configured = os.environ.get("OPENCLI_BIN")
+    if configured:
+        return configured
+    return shutil.which("opencli")
+
+
+def run_opencli_json(opencli_bin: str, args: List[str], timeout: int = 90) -> Any:
+    import subprocess
+
+    cmd = [opencli_bin] + args
+    try:
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError("opencli command timed out") from exc
+    except OSError as exc:
+        raise RuntimeError(str(exc)) from exc
+
+    if result.returncode == OPENCLI_EMPTY_RESULT_EXIT_CODE:
+        return []
+
+    if result.returncode != 0:
+        message = (result.stderr or result.stdout or "opencli command failed").strip()
+        raise RuntimeError(message[:300])
+
+    try:
+        return json.loads(result.stdout)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError("opencli output was not valid JSON") from exc
 
 
 def source_identity(source: Dict[str, Any]) -> str:
@@ -382,6 +507,68 @@ def run_ytdlp_transcript(
     return last_error or {"status": "missing", "error": "No subtitle track found"}
 
 
+def run_opencli_transcript(
+    opencli_bin: str,
+    episode: Dict[str, Any],
+    timeout: int = 120,
+) -> Dict[str, str]:
+    episode_id = xiaoyuzhou_episode_id_from_episode(episode)
+    if not episode_id:
+        return {"status": "error", "error": "Xiaoyuzhou episode id not found"}
+
+    with tempfile.TemporaryDirectory(prefix="follow-news-xiaoyuzhou-transcript-") as tmpdir:
+        try:
+            payload = run_opencli_json(
+                opencli_bin,
+                [
+                    "xiaoyuzhou",
+                    "transcript",
+                    episode_id,
+                    "--output",
+                    tmpdir,
+                    "-f",
+                    "json",
+                ],
+                timeout=timeout,
+            )
+        except RuntimeError as exc:
+            return {"status": "error", "error": str(exc)[:200]}
+
+        rows = payload if isinstance(payload, list) else [payload]
+        output_dir = Path(tmpdir).resolve()
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            text_file = str(row.get("text_file") or "").strip()
+            if not text_file or text_file == "-":
+                continue
+            text_path = Path(text_file)
+            if not text_path.is_absolute():
+                text_path = output_dir / text_path
+            try:
+                resolved_text_path = text_path.resolve()
+                if os.path.commonpath([str(output_dir), str(resolved_text_path)]) != str(output_dir):
+                    return {
+                        "status": "error",
+                        "error": "opencli transcript text_file is outside output directory",
+                    }
+            except ValueError:
+                return {
+                    "status": "error",
+                    "error": "opencli transcript text_file is outside output directory",
+                }
+            except OSError as exc:
+                return {"status": "error", "error": str(exc)[:200]}
+            try:
+                transcript = resolved_text_path.read_text(encoding="utf-8", errors="replace").strip()
+            except OSError as exc:
+                return {"status": "error", "error": str(exc)[:200]}
+            if transcript:
+                return {"status": "ok", "transcript": transcript}
+
+    return {"status": "missing", "error": "No transcript text returned by opencli"}
+
+
 def parse_vtt_transcript(content: str) -> str:
     lines: List[str] = []
     current_time = ""
@@ -426,9 +613,43 @@ def cache_entry_valid(entry: Dict[str, Any], now: float) -> bool:
     return now - ts < ttl
 
 
-def metadata_cache_key(source: Dict[str, Any]) -> str:
-    platform = source.get("platform") or infer_platform(source.get("url", ""))
-    return f"{platform}:{source.get('url', '')}:{MAX_EPISODES_PER_SOURCE}:v{METADATA_CACHE_VERSION}"
+def metadata_cache_key(source: Dict[str, Any], resolved_url: Optional[str] = None) -> str:
+    def xiaoyuzhou_cache_key(podcast_id: str) -> str:
+        return f"xiaoyuzhou:{podcast_id}:{MAX_EPISODES_PER_SOURCE}:v{METADATA_CACHE_VERSION}"
+
+    source_url = source.get("url", "")
+    url = resolved_url or source_url
+    configured_platform = source.get("platform")
+    platform = str(configured_platform or "").strip()
+
+    if not platform or platform == "auto":
+        inferred_platform = infer_platform(url)
+        podcast_id = extract_xiaoyuzhou_podcast_id(url)
+        if inferred_platform == "xiaoyuzhou" and podcast_id:
+            return xiaoyuzhou_cache_key(podcast_id)
+        return f"{inferred_platform}:{url}:{MAX_EPISODES_PER_SOURCE}:v{METADATA_CACHE_VERSION}"
+
+    if platform == "xiaoyuzhou":
+        podcast_id = extract_xiaoyuzhou_podcast_id(url) or extract_xiaoyuzhou_podcast_id(source_url)
+        if podcast_id:
+            return xiaoyuzhou_cache_key(podcast_id)
+
+    return f"{platform}:{url}:{MAX_EPISODES_PER_SOURCE}:v{METADATA_CACHE_VERSION}"
+
+
+def cached_metadata_payload(
+    cache: Dict[str, Any],
+    cache_key: str,
+    now: float,
+    expected_type: type,
+) -> Optional[Any]:
+    cached = cache.get("metadata", {}).get(cache_key)
+    if not isinstance(cached, dict) or not metadata_cache_entry_valid(cached, now):
+        return None
+    payload = cached.get("payload")
+    if isinstance(payload, expected_type):
+        return payload
+    return None
 
 
 def metadata_cache_entry_valid(entry: Dict[str, Any], now: float) -> bool:
@@ -436,7 +657,7 @@ def metadata_cache_entry_valid(entry: Dict[str, Any], now: float) -> bool:
         ts = float(entry.get("ts", 0))
     except (TypeError, ValueError):
         return False
-    return now - ts < METADATA_CACHE_TTL_SECONDS and isinstance(entry.get("payload"), dict)
+    return now - ts < METADATA_CACHE_TTL_SECONDS and isinstance(entry.get("payload"), (dict, list))
 
 
 def enrich_episode_transcript(
@@ -463,16 +684,30 @@ def enrich_episode_transcript(
             return episode
 
     backend = config.get("backend", "auto")
-    if backend not in {"auto", "yt-dlp"}:
+    if backend not in {"auto", "yt-dlp", "opencli"}:
         episode["transcript_status"] = "error"
         episode["transcript_error"] = f"Unsupported transcript backend: {backend}"
         return episode
+    if backend == "opencli" and episode.get("platform") != "xiaoyuzhou":
+        episode["transcript_status"] = "error"
+        episode["transcript_error"] = (
+            "opencli transcript backend is only supported for Xiaoyuzhou episodes"
+        )
+        episode.pop("transcript", None)
+        return episode
 
-    ytdlp_bin = resolve_ytdlp_bin()
-    if not ytdlp_bin:
-        result = {"status": "backend_unavailable", "error": "yt-dlp is not available"}
+    if backend == "opencli" or (backend == "auto" and episode.get("platform") == "xiaoyuzhou"):
+        opencli_bin = resolve_opencli_bin()
+        if not opencli_bin:
+            result = {"status": "backend_unavailable", "error": "opencli is not available"}
+        else:
+            result = run_opencli_transcript(opencli_bin, episode)
     else:
-        result = run_ytdlp_transcript(ytdlp_bin, episode, transcript_languages(source))
+        ytdlp_bin = resolve_ytdlp_bin()
+        if not ytdlp_bin:
+            result = {"status": "backend_unavailable", "error": "yt-dlp is not available"}
+        else:
+            result = run_ytdlp_transcript(ytdlp_bin, episode, transcript_languages(source))
 
     episode["transcript_status"] = result.get("status", "error")
     episode.pop("transcript", None)
@@ -709,10 +944,8 @@ def fetch_youtube_source(
 
     cache_key = metadata_cache_key(source)
     now = time.time()
-    cached = None if no_cache else cache.get("metadata", {}).get(cache_key)
-    if isinstance(cached, dict) and metadata_cache_entry_valid(cached, now):
-        payload = cached["payload"]
-    else:
+    payload = None if no_cache else cached_metadata_payload(cache, cache_key, now, dict)
+    if payload is None:
         payload = run_ytdlp_metadata(ytdlp_bin, source)
         payload = hydrate_youtube_metadata(payload, ytdlp_bin)
         if not no_cache:
@@ -721,6 +954,48 @@ def fetch_youtube_source(
                 "ts": now,
             }
     episodes = normalize_youtube_metadata(payload, source, cutoff)
+    return [
+        enrich_episode_transcript(episode, source, cache, no_cache=no_cache)
+        for episode in episodes
+    ]
+
+
+def fetch_xiaoyuzhou_source(
+    source: Dict[str, Any],
+    cutoff: datetime,
+    cache: Dict[str, Any],
+    no_cache: bool,
+) -> List[Dict[str, Any]]:
+    podcast_id = extract_xiaoyuzhou_podcast_id(source.get("url", ""))
+    if not podcast_id:
+        raise RuntimeError("Xiaoyuzhou podcast URL must use the /podcast/{id} path")
+
+    opencli_bin = resolve_opencli_bin()
+    if not opencli_bin:
+        raise RuntimeError("opencli is not available")
+
+    cache_key = metadata_cache_key(source)
+    now = time.time()
+    payload = None if no_cache else cached_metadata_payload(cache, cache_key, now, list)
+    if payload is None:
+        payload = run_opencli_json(
+            opencli_bin,
+            [
+                "xiaoyuzhou",
+                "podcast-episodes",
+                podcast_id,
+                "--limit",
+                str(MAX_EPISODES_PER_SOURCE),
+                "-f",
+                "json",
+            ],
+        )
+        if not no_cache:
+            cache.setdefault("metadata", {})[cache_key] = {
+                "payload": payload,
+                "ts": now,
+            }
+    episodes = normalize_xiaoyuzhou_metadata(payload, source, cutoff)
     return [
         enrich_episode_transcript(episode, source, cache, no_cache=no_cache)
         for episode in episodes
@@ -754,6 +1029,8 @@ def fetch_source(
     try:
         if platform == "youtube":
             articles = fetch_youtube_source(source, cutoff, cache, no_cache)
+        elif platform == "xiaoyuzhou":
+            articles = fetch_xiaoyuzhou_source(source, cutoff, cache, no_cache)
         elif platform == "rss":
             articles = fetch_rss_source(source, cutoff, cache, no_cache)
         else:

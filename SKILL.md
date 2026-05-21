@@ -4,7 +4,7 @@ description: Generate tech news digests with unified source model, quality scori
 version: "3.17.3"
 homepage: https://github.com/tangwz/follow-news
 source: https://github.com/tangwz/follow-news
-metadata: {"openclaw":{"requires":{"bins":["python3"]},"optionalBins":["opencli","mail","msmtp","gog","gh","openssl","weasyprint","yt-dlp"],"env":[{"name":"TWITTER_API_BACKEND","required":false,"description":"Twitter backend: auto, opencli, getxapi, twitterapiio, or official. Default: auto; auto tries OpenCLI first."},{"name":"OPENCLI_BIN","required":false,"description":"Optional path to the OpenCLI executable. Used when OpenCLI is not available on PATH."},{"name":"OPENCLI_MAX_WORKERS","required":false,"description":"Optional OpenCLI concurrency limit. Defaults to 10."},{"name":"OPENCLI_CLOSE_TABS_AFTER_RUN","required":false,"description":"Close OpenCLI-created X/Twitter tabs after fetch when set to 1. Default: 1."},{"name":"OPENCLI_CLOSE_CHROME_WINDOWS_AFTER_RUN","required":false,"description":"Close OpenCLI-created Chrome automation windows on macOS when set to 1. Default: 1."},{"name":"GETX_API_KEY","required":false,"description":"GetXAPI key for Twitter/X fallback."},{"name":"X_BEARER_TOKEN","required":false,"description":"Twitter/X API bearer token for KOL monitoring."},{"name":"TWITTERAPI_IO_KEY","required":false,"description":"twitterapi.io API key for KOL monitoring."},{"name":"TAVILY_API_KEY","required":false,"description":"Tavily Search API key."},{"name":"WEB_SEARCH_BACKEND","required":false,"description":"Web search backend: auto, brave, or tavily."},{"name":"BRAVE_API_KEYS","required":false,"description":"Brave Search API keys, comma-separated for rotation."},{"name":"BRAVE_API_KEY","required":false,"description":"Brave Search API key, single key fallback."},{"name":"GITHUB_TOKEN","required":false,"description":"GitHub token for higher API rate limits."},{"name":"GH_APP_ID","required":false,"description":"GitHub App ID for automatic installation token generation."},{"name":"GH_APP_INSTALL_ID","required":false,"description":"GitHub App Installation ID for automatic token generation."},{"name":"GH_APP_KEY_FILE","required":false,"description":"Path to GitHub App private key PEM file."},{"name":"YTDLP_BIN","required":false,"description":"Optional path to the yt-dlp executable for YouTube podcast metadata and transcript fetching."}],"tools":[{"bin":"python3","required":true,"description":"Runs data collection and merge scripts."},{"bin":"opencli","required":false,"description":"Preferred Twitter/X backend in auto mode."},{"bin":"mail","required":false,"description":"msmtp-based mail command for email delivery."},{"bin":"msmtp","required":false,"description":"SMTP transport used by mail."},{"bin":"gog","required":false,"description":"Gmail CLI fallback for email delivery."},{"bin":"gh","required":false,"description":"GitHub CLI fallback for repository auth."},{"bin":"openssl","required":false,"description":"GitHub App JWT signing fallback."},{"bin":"weasyprint","required":false,"description":"PDF rendering backend."},{"bin":"yt-dlp","required":false,"description":"YouTube podcast metadata and transcript backend."},{"script":"scripts/fetch-podcast.py","required":false,"description":"Fetches podcast and YouTube episode metadata, with optional yt-dlp transcript enrichment."}],"files":{"read":[{"path":"config/defaults/","description":"Default source and topic configurations."},{"path":"references/","description":"Prompt templates and output templates."},{"path":"scripts/","description":"Python pipeline scripts."},{"path":"<workspace>/archive/follow-news/","description":"Previous digests for deduplication."}],"write":[{"path":"/tmp/td-*.json","description":"Temporary pipeline intermediate outputs."},{"path":"/tmp/td-email.html","description":"Temporary email HTML body."},{"path":"/tmp/td-digest.pdf","description":"Generated PDF digest."},{"path":"<workspace>/archive/follow-news/","description":"Saved digest archives."}]}}}
+metadata: {"openclaw":{"requires":{"bins":["python3"]},"optionalBins":["opencli","mail","msmtp","gog","gh","openssl","weasyprint","yt-dlp"],"env":[{"name":"TWITTER_API_BACKEND","required":false,"description":"Twitter backend: auto, opencli, getxapi, twitterapiio, or official. Default: auto; auto tries OpenCLI first."},{"name":"OPENCLI_BIN","required":false,"description":"Optional path to the OpenCLI executable for Twitter/X and Xiaoyuzhou podcast sources. Used when OpenCLI is not available on PATH."},{"name":"OPENCLI_MAX_WORKERS","required":false,"description":"Optional OpenCLI concurrency limit. Defaults to 10."},{"name":"OPENCLI_CLOSE_TABS_AFTER_RUN","required":false,"description":"Close OpenCLI-created X/Twitter tabs after fetch when set to 1. Default: 1."},{"name":"OPENCLI_CLOSE_CHROME_WINDOWS_AFTER_RUN","required":false,"description":"Close OpenCLI-created Chrome automation windows on macOS when set to 1. Default: 1."},{"name":"GETX_API_KEY","required":false,"description":"GetXAPI key for Twitter/X fallback."},{"name":"X_BEARER_TOKEN","required":false,"description":"Twitter/X API bearer token for KOL monitoring."},{"name":"TWITTERAPI_IO_KEY","required":false,"description":"twitterapi.io API key for KOL monitoring."},{"name":"TAVILY_API_KEY","required":false,"description":"Tavily Search API key."},{"name":"WEB_SEARCH_BACKEND","required":false,"description":"Web search backend: auto, brave, or tavily."},{"name":"BRAVE_API_KEYS","required":false,"description":"Brave Search API keys, comma-separated for rotation."},{"name":"BRAVE_API_KEY","required":false,"description":"Brave Search API key, single key fallback."},{"name":"GITHUB_TOKEN","required":false,"description":"GitHub token for higher API rate limits."},{"name":"GH_APP_ID","required":false,"description":"GitHub App ID for automatic installation token generation."},{"name":"GH_APP_INSTALL_ID","required":false,"description":"GitHub App Installation ID for automatic token generation."},{"name":"GH_APP_KEY_FILE","required":false,"description":"Path to GitHub App private key PEM file."},{"name":"YTDLP_BIN","required":false,"description":"Optional path to the yt-dlp executable for YouTube podcast metadata and transcript fetching."}],"tools":[{"bin":"python3","required":true,"description":"Runs data collection and merge scripts."},{"bin":"opencli","required":false,"description":"Preferred Twitter/X backend in auto mode, required for Xiaoyuzhou metadata discovery, and the documented supported Xiaoyuzhou transcript path."},{"bin":"mail","required":false,"description":"msmtp-based mail command for email delivery."},{"bin":"msmtp","required":false,"description":"SMTP transport used by mail."},{"bin":"gog","required":false,"description":"Gmail CLI fallback for email delivery."},{"bin":"gh","required":false,"description":"GitHub CLI fallback for repository auth."},{"bin":"openssl","required":false,"description":"GitHub App JWT signing fallback."},{"bin":"weasyprint","required":false,"description":"PDF rendering backend."},{"bin":"yt-dlp","required":false,"description":"YouTube podcast metadata and transcript backend."},{"script":"scripts/fetch-podcast.py","required":false,"description":"Fetches RSS, YouTube, and Xiaoyuzhou podcast metadata, with optional transcript enrichment."}],"files":{"read":[{"path":"config/defaults/","description":"Default source and topic configurations."},{"path":"references/","description":"Prompt templates and output templates."},{"path":"scripts/","description":"Python pipeline scripts."},{"path":"<workspace>/archive/follow-news/","description":"Previous digests for deduplication."}],"write":[{"path":"/tmp/td-*.json","description":"Temporary pipeline intermediate outputs."},{"path":"/tmp/td-email.html","description":"Temporary email HTML body."},{"path":"/tmp/td-digest.pdf","description":"Generated PDF digest."},{"path":"<workspace>/archive/follow-news/","description":"Saved digest archives."}]}}}
 ---
 
 # Follow News
@@ -15,7 +15,7 @@ Required binary:
 - `python3` - Runs data collection and merge scripts.
 
 Optional binaries:
-- `opencli` - Preferred Twitter/X backend in auto mode.
+- `opencli` - Preferred Twitter/X backend in auto mode, required for Xiaoyuzhou metadata discovery, and the documented supported Xiaoyuzhou transcript path.
 - `mail` - msmtp-based mail command for email delivery.
 - `msmtp` - SMTP transport used by `mail`.
 - `gog` - Gmail CLI fallback for email delivery.
@@ -29,7 +29,7 @@ Environment variables:
 | Name | Required | Description |
 | --- | --- | --- |
 | `TWITTER_API_BACKEND` | No | Twitter backend: `auto`, `opencli`, `getxapi`, `twitterapiio`, or `official`. Default: `auto`; auto tries OpenCLI first. |
-| `OPENCLI_BIN` | No | Optional path to the OpenCLI executable. Used when OpenCLI is not available on PATH. |
+| `OPENCLI_BIN` | No | Optional path to the OpenCLI executable for Twitter/X and Xiaoyuzhou podcast sources. Used when OpenCLI is not available on PATH. |
 | `OPENCLI_MAX_WORKERS` | No | Optional OpenCLI concurrency limit. Defaults to 10. |
 | `OPENCLI_CLOSE_TABS_AFTER_RUN` | No | Close OpenCLI-created X/Twitter tabs after fetch when set to 1. Default: 1. |
 | `OPENCLI_CLOSE_CHROME_WINDOWS_AFTER_RUN` | No | Close OpenCLI-created Chrome automation windows on macOS when set to 1. Default: 1. |
@@ -96,7 +96,7 @@ Automated tech news digest system with unified data source model, quality scorin
 
 2. **Environment Variables**: 
    - `TWITTER_API_BACKEND` - Twitter backend: auto|opencli|getxapi|twitterapiio|official (optional, default: auto)
-   - `OPENCLI_BIN` - OpenCLI executable path override (optional)
+   - `OPENCLI_BIN` - OpenCLI executable path override for Twitter/X and Xiaoyuzhou podcast sources (optional)
    - `OPENCLI_MAX_WORKERS` - OpenCLI concurrency limit (optional, default: 10)
    - `OPENCLI_CLOSE_TABS_AFTER_RUN` - close OpenCLI-created X/Twitter tabs after fetch (optional, default: 1)
    - `OPENCLI_CLOSE_CHROME_WINDOWS_AFTER_RUN` - close Chrome automation windows opened by OpenCLI on macOS (optional, default: 1)
@@ -113,6 +113,8 @@ Automated tech news digest system with unified data source model, quality scorin
    OpenCLI is the preferred Twitter/X backend in `auto` mode. In OpenClaw environments where `jackwener/opencli` is installed, the agent should use that skill to validate `opencli doctor`, browser bridge state, and X login before asking for API keys.
 
    To use the OpenCLI backend, the user must install the OpenCLI executable and expose it on `PATH`, or set `OPENCLI_BIN` to its absolute path. OpenClaw users should also install the `jackwener/opencli` Skill so the agent can run `opencli doctor` and diagnose browser bridge or X login-state issues. OpenCLI requests default to 10 workers (`OPENCLI_MAX_WORKERS=10`). The fetcher closes X/Twitter tabs created during an OpenCLI run by default (`OPENCLI_CLOSE_TABS_AFTER_RUN=1`) and closes Chrome automation windows opened by OpenCLI on macOS (`OPENCLI_CLOSE_CHROME_WINDOWS_AFTER_RUN=1`) while preserving tabs and windows that existed before the run.
+
+   Xiaoyuzhou podcast metadata discovery uses OpenCLI. The user must install, configure, and authenticate OpenCLI for Xiaoyuzhou metadata discovery. Xiaoyuzhou source URLs use `https://www.xiaoyuzhoufm.com/podcast/<podcast_id>` with `platform: "xiaoyuzhou"`. Xiaoyuzhou metadata discovery has no direct API or HTML fallback. For transcripts, backend `auto`/`opencli` uses OpenCLI for Xiaoyuzhou episodes. The `opencli` transcript backend is only valid for Xiaoyuzhou sources.
 
 3. **Generate Digest**:
    ```bash
@@ -168,6 +170,21 @@ Automated tech news digest system with unified data source model, quality scorin
         "languages": ["en", "zh", "zh-Hans"]
       },
       "note": "YouTube podcast playlist with optional transcript enrichment"
+    },
+    {
+      "id": "xiaoyuzhou-example",
+      "type": "podcast",
+      "name": "Xiaoyuzhou Example",
+      "url": "https://www.xiaoyuzhoufm.com/podcast/686a1832222ae2de21fea940",
+      "platform": "xiaoyuzhou",
+      "enabled": true,
+      "topics": ["podcast"],
+      "transcript": {
+        "enabled": true,
+        "backend": "opencli",
+        "languages": ["zh"]
+      },
+      "note": "Xiaoyuzhou podcast using OpenCLI for metadata and transcripts"
     }
   ]
 }
@@ -265,7 +282,7 @@ python3 scripts/fetch-reddit.py [--defaults DIR] [--config DIR] [--hours 48] [--
 - Parallel fetching (4 workers), public JSON API (no auth required)
 - 8 subreddits with score filtering
 
-#### `fetch-podcast.py` - Podcast and YouTube Fetcher
+#### `fetch-podcast.py` - Podcast, YouTube, and Xiaoyuzhou Fetcher
 ```bash
 python3 scripts/fetch-podcast.py [--defaults DIR] [--config DIR] [--hours 48] [--output FILE] [--verbose]
 ```
@@ -273,7 +290,10 @@ python3 scripts/fetch-podcast.py [--defaults DIR] [--config DIR] [--hours 48] [-
 - Supports RSS podcast feeds without extra tools.
 - Supports YouTube playlists/channels via `platform: "youtube"` when `yt-dlp` is available.
 - YouTube metadata and transcript fetching require `yt-dlp`; set `YTDLP_BIN` when it is not available on `PATH`.
-- Transcript backends: `auto` or `yt-dlp`; missing `yt-dlp` fails only that YouTube podcast source instead of the full pipeline.
+- Supports Xiaoyuzhou podcasts via `platform: "xiaoyuzhou"` and URLs like `https://www.xiaoyuzhoufm.com/podcast/<podcast_id>`.
+- Xiaoyuzhou metadata discovery requires installed, configured, and authenticated OpenCLI; set `OPENCLI_BIN` when it is not available on `PATH`.
+- Transcript backends: `auto`, `yt-dlp`, or `opencli`; missing `yt-dlp` fails only that YouTube podcast source instead of the full pipeline.
+- Xiaoyuzhou metadata discovery has no direct API or HTML fallback. For transcripts, backend `auto`/`opencli` uses OpenCLI for Xiaoyuzhou episodes. The `opencli` transcript backend is rejected for non-Xiaoyuzhou podcast sources.
 
 #### `enrich-articles.py` - Article Full-Text Enrichment
 ```bash
@@ -392,7 +412,7 @@ Place custom configs in `workspace/config/` to override defaults:
 - **GitHub Repos (23)**: Major open-source projects (LangChain, vLLM, DeepSeek, Llama, etc.)
 - **Reddit (8)**: r/MachineLearning, r/LocalLLaMA, r/OpenAI, r/ExperiencedDevs, etc.
 - **Web Search (6 topics)**: `llm`, `ai-agent`, `builder`, `kol`, `frontier-tech`, `podcast`
-- **Podcast (custom)**: RSS podcast feeds and YouTube podcast playlists/channels, with optional `yt-dlp` transcript enrichment
+- **Podcast (custom)**: RSS podcast feeds, YouTube podcast playlists/channels, and Xiaoyuzhou podcasts, with optional transcript enrichment
 
 All sources pre-configured with appropriate topic tags and priority levels.
 
@@ -406,6 +426,7 @@ pip install -r requirements.txt
 - `feedparser>=6.0.0` - Better RSS parsing (fallback to regex if unavailable)
 - `jsonschema>=4.0.0` - Configuration validation
 - `yt-dlp` - Optional runtime binary for YouTube podcast metadata and transcripts. Set `YTDLP_BIN` to override lookup.
+- `opencli` - Required for Xiaoyuzhou metadata discovery and the documented supported Xiaoyuzhou transcript path. Install, configure, and authenticate it for Xiaoyuzhou; set `OPENCLI_BIN` to override lookup.
 
 **All scripts work with Python 3.8+ standard library only.**
 
@@ -489,7 +510,7 @@ export YTDLP_BIN="/path/to/yt-dlp"          # Optional; defaults to yt-dlp on PA
 - **Web Search**: Tavily (preferred in auto mode) or Brave. Without a configured search API key, the web search layer is skipped while the rest of the pipeline continues.
 - **GitHub**: Auto-generates token from GitHub App if PAT not set; unauthenticated fallback (60 req/hr)
 - **Reddit**: No API key needed (uses public JSON API)
-- **Podcast**: RSS podcast feeds require no extra binary. YouTube podcast sources use `yt-dlp` for metadata and optional transcript fetching; set `YTDLP_BIN` if needed.
+- **Podcast**: RSS podcast feeds require no extra binary. YouTube podcast sources use `yt-dlp` for metadata and optional transcript fetching; set `YTDLP_BIN` if needed. Xiaoyuzhou podcast metadata discovery uses OpenCLI with `platform: "xiaoyuzhou"`; set `OPENCLI_BIN` if needed. Xiaoyuzhou metadata discovery has no direct API or HTML fallback. For transcripts, backend `auto`/`opencli` uses OpenCLI for Xiaoyuzhou episodes; non-Xiaoyuzhou podcast sources cannot use `opencli`.
 
 ## Cron / Scheduled Task Integration
 
@@ -575,7 +596,7 @@ This is a security feature, not a bug — it prevents accidental cross-context d
 This skill uses a **prompt template pattern**: the agent reads `digest-prompt.md` and follows its instructions. This is the standard OpenClaw skill execution model — the agent interprets structured instructions from skill-provided files. All instructions are shipped with the skill bundle and can be audited before installation.
 
 ### Network Access
-The Python scripts make outbound requests to:
+The Python scripts and configured helper CLIs make outbound requests to:
 - RSS feed URLs and podcast feed URLs (configured in `follow-news-sources.json`)
 - Twitter/X API (`api.x.com` or `api.twitterapi.io`)
 - Brave Search API (`api.search.brave.com`)
@@ -583,8 +604,9 @@ The Python scripts make outbound requests to:
 - GitHub API (`api.github.com`)
 - Reddit JSON API (`reddit.com`)
 - YouTube URLs for `platform: "youtube"` podcast sources, resolved through `yt-dlp`
+- OpenCLI browser/session traffic for Twitter/X and Xiaoyuzhou sources when the OpenCLI backend is selected
 
-No data is sent to any other endpoints. All API keys are read from environment variables declared in the skill metadata.
+API keys are read from environment variables declared in the skill metadata. OpenCLI may reuse authenticated browser sessions managed by the user's local browser/OpenCLI setup for Twitter/X and Xiaoyuzhou.
 
 ### Shell Safety
 Email delivery uses `send-email.py` which constructs proper MIME multipart messages with HTML body + optional PDF attachment. Subject formats are hardcoded (`Daily Tech Digest - YYYY-MM-DD`). PDF generation uses `generate-pdf.py` via `weasyprint`. The prompt template explicitly prohibits interpolating untrusted content (article titles, tweet text, etc.) into shell arguments. Email addresses and subjects must be static placeholder values only.
@@ -619,7 +641,7 @@ The digest prompt instructs agents to run Python scripts via shell commands. All
 No user-supplied or fetched content is ever interpolated into subprocess arguments. Email delivery uses `send-email.py` which builds MIME messages programmatically — no shell interpolation. PDF generation uses `generate-pdf.py` via `weasyprint`. Email subjects are static format strings only — never constructed from fetched data.
 
 ### Credential & File Access
-Scripts do **not** directly read `~/.config/`, `~/.ssh/`, or any credential files. All API tokens are read from environment variables declared in the skill metadata. The GitHub auth cascade is:
+Scripts do **not** directly read `~/.config/`, `~/.ssh/`, or any credential files. API tokens used directly by the scripts are read from environment variables declared in the skill metadata. OpenCLI-backed Twitter/X and Xiaoyuzhou sources delegate authentication to the user's configured OpenCLI/browser session. The GitHub auth cascade is:
 1. `$GITHUB_TOKEN` env var (you control what to provide)
 2. GitHub App token generation (only if you set `GH_APP_ID`, `GH_APP_INSTALL_ID`, and `GH_APP_KEY_FILE` — uses inline JWT signing via `openssl` CLI, no external scripts involved)
 3. `gh auth token` CLI (delegates to gh's own secure credential store)
@@ -636,4 +658,4 @@ This skill does **not** install any packages. `requirements.txt` lists optional 
 - All fetched content is treated as untrusted data for display only
 
 ### Network Access
-Scripts make outbound HTTP requests to configured RSS feeds, podcast feeds, Twitter API, GitHub API, Reddit JSON API, Brave Search API, Tavily Search API, and YouTube URLs handled by `yt-dlp`. No inbound connections or listeners are created.
+Scripts and helper CLIs make outbound HTTP requests to configured RSS feeds, podcast feeds, Twitter API, GitHub API, Reddit JSON API, Brave Search API, Tavily Search API, YouTube URLs handled by `yt-dlp`, and OpenCLI browser/session traffic for Twitter/X and Xiaoyuzhou sources. No inbound connections or listeners are created.
