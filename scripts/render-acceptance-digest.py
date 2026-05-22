@@ -394,6 +394,7 @@ def fixed_hacker_news_articles(data: Dict[str, Any]) -> List[Dict[str, Any]]:
         article
         for article in iter_articles(data)
         if is_hacker_news_article(article)
+        and has_hacker_news_metadata(article)
         and (hacker_news_url(article) or hacker_news_article_url(article))
     ]
 
@@ -645,6 +646,19 @@ def is_hacker_news_article(article: Dict[str, Any]) -> bool:
     return isinstance(all_sources, list) and "Hacker News Frontpage" in all_sources
 
 
+def is_direct_hacker_news_article(article: Dict[str, Any]) -> bool:
+    return (
+        article.get("source_id") == "hn-rss"
+        or article.get("source_name") == "Hacker News Frontpage"
+    )
+
+
+def has_hacker_news_metadata(article: Dict[str, Any]) -> bool:
+    if hacker_news_url(article) or is_direct_hacker_news_article(article):
+        return True
+    return article.get("hn_score") is not None
+
+
 def hacker_news_url(article: Dict[str, Any]) -> str:
     return compact_text(article.get("hn_url") or article.get("comments_url"))
 
@@ -665,11 +679,25 @@ def parse_int(value: Any) -> int:
 
 
 def hacker_news_score(article: Dict[str, Any]) -> int:
-    return parse_int(article.get("score") or article.get("hn_score"))
+    hn_score = parse_int(article.get("hn_score"))
+    if hn_score:
+        return hn_score
+    if hacker_news_url(article) or is_direct_hacker_news_article(article):
+        return parse_int(article.get("score"))
+    return 0
 
 
 def hacker_news_comments(article: Dict[str, Any]) -> int:
-    return parse_int(article.get("num_comments") or article.get("comments_count"))
+    hn_comments = parse_int(
+        article.get("hn_comments")
+        or article.get("hn_comments_count")
+        or article.get("hn_num_comments")
+    )
+    if hn_comments:
+        return hn_comments
+    if hacker_news_url(article) or is_direct_hacker_news_article(article):
+        return parse_int(article.get("num_comments") or article.get("comments_count"))
+    return 0
 
 
 def hacker_news_rank(article: Dict[str, Any]) -> int:
@@ -678,10 +706,7 @@ def hacker_news_rank(article: Dict[str, Any]) -> int:
 
 
 def is_ai_related_hacker_news_article(article: Dict[str, Any]) -> bool:
-    haystack = " ".join(
-        compact_text(article.get(field))
-        for field in ("title", "summary", "snippet", "description")
-    ).lower()
+    haystack = compact_text(article.get("title")).lower()
     return any(keyword_matches_text(keyword, haystack) for keyword in HN_AI_KEYWORDS)
 
 

@@ -2276,7 +2276,67 @@ class TestAcceptanceRenderer(unittest.TestCase):
         self.assertNotIn("**Paid XML email tooling**", text)
         self.assertIn("**LLM inference systems story**", text)
 
-    def test_hacker_news_top_includes_merged_story_without_hn_url(self):
+    def test_hacker_news_ai_related_extra_uses_title_only_keywords(self):
+        articles = [
+            {
+                "title": f"Top HN story {index}",
+                "link": f"https://example.com/top-title-{index}",
+                "hn_url": f"https://news.ycombinator.com/item?id={200 + index}",
+                "source_type": "rss",
+                "source_name": "Hacker News Frontpage",
+                "source_id": "hn-rss",
+                "score": 1000 - index,
+                "num_comments": index,
+                "summary": f"Summary {index}.",
+                "quality_score": 10,
+            }
+            for index in range(1, 11)
+        ]
+        articles.extend(
+            [
+                {
+                    "title": "Distributed queue incident report",
+                    "link": "https://example.com/non-ai-summary",
+                    "hn_url": "https://news.ycombinator.com/item?id=301",
+                    "source_type": "rss",
+                    "source_name": "Hacker News Frontpage",
+                    "source_id": "hn-rss",
+                    "score": 900,
+                    "num_comments": 11,
+                    "summary": "The post mentions an AI model in background context.",
+                    "quality_score": 10,
+                },
+                {
+                    "title": "Machine learning inference systems",
+                    "link": "https://example.com/title-ai-extra",
+                    "hn_url": "https://news.ycombinator.com/item?id=302",
+                    "source_type": "rss",
+                    "source_name": "Hacker News Frontpage",
+                    "source_id": "hn-rss",
+                    "score": 899,
+                    "num_comments": 12,
+                    "summary": "A systems discussion.",
+                    "quality_score": 10,
+                },
+            ]
+        )
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": len(articles)},
+            "topics": {"supplemental": {"articles": articles}},
+        }
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=[],
+            report_date="2026-05-22",
+            version="3.17.0",
+        )
+
+        self.assertNotIn("**Distributed queue incident report**", text)
+        self.assertIn("**Machine learning inference systems**", text)
+
+    def test_hacker_news_top_excludes_merged_story_without_hn_metadata(self):
         data = {
             "input_sources": {},
             "output_stats": {"total_articles": 1},
@@ -2306,8 +2366,43 @@ class TestAcceptanceRenderer(unittest.TestCase):
             version="3.17.0",
         )
 
+        self.assertNotIn("## 📰 Hacker News Top", text)
+        self.assertNotIn("**Merged HN story**", text)
+
+    def test_hacker_news_top_includes_merged_story_with_hn_metadata(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 1},
+            "topics": {
+                "supplemental": {
+                    "articles": [
+                        {
+                            "title": "Merged HN story",
+                            "link": "https://example.com/merged-hn",
+                            "source_type": "article",
+                            "source_name": "Example",
+                            "all_sources": ["Example", "Hacker News Frontpage"],
+                            "score": 1,
+                            "num_comments": 2,
+                            "hn_score": 120,
+                            "hn_comments": 18,
+                            "summary": "A merged story retained from Hacker News.",
+                            "quality_score": 10,
+                        }
+                    ]
+                }
+            },
+        }
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=[],
+            report_date="2026-05-22",
+            version="3.17.0",
+        )
+
         self.assertIn("## 📰 Hacker News Top", text)
-        self.assertIn("**Merged HN story**", text)
+        self.assertIn("**Merged HN story** — 120↑ · 18 comments", text)
         self.assertEqual(text.count("https://example.com/merged-hn"), 1)
 
     def test_chat_hacker_news_top_uses_fixed_numbered_shape(self):
