@@ -43,6 +43,47 @@ RSS_CACHE_PATH = "/tmp/follow-news-rss-cache.json"
 RSS_CACHE_TTL_HOURS = 24
 
 
+def is_hnrss_feed(feed_url: str) -> bool:
+    return "hnrss.org/" in feed_url
+
+
+def parse_hnrss_metadata(description: str, comments_url: str = "") -> Dict[str, Any]:
+    """Extract HN discussion metadata from hnrss.org item descriptions."""
+    metadata: Dict[str, Any] = {}
+    if comments_url:
+        metadata["hn_url"] = comments_url
+
+    article_match = re.search(
+        r"Article URL:\s*<a\s+href=[\"']([^\"']+)[\"']",
+        description,
+        re.IGNORECASE,
+    )
+    if article_match:
+        metadata["external_url"] = article_match.group(1)
+
+    comments_match = re.search(
+        r"Comments URL:\s*<a\s+href=[\"']([^\"']+)[\"']",
+        description,
+        re.IGNORECASE,
+    )
+    if comments_match:
+        metadata["hn_url"] = comments_match.group(1)
+
+    points_match = re.search(r"Points:\s*([0-9]+)", description, re.IGNORECASE)
+    if points_match:
+        metadata["score"] = int(points_match.group(1))
+
+    comments_count_match = re.search(
+        r"#\s*Comments:\s*([0-9]+)",
+        description,
+        re.IGNORECASE,
+    )
+    if comments_count_match:
+        metadata["num_comments"] = int(comments_count_match.group(1))
+
+    return metadata
+
+
 def setup_logging(verbose: bool) -> logging.Logger:
     """Setup logging configuration."""
     level = logging.DEBUG if verbose else logging.INFO
@@ -141,7 +182,7 @@ def parse_feed_feedparser(content: str, cutoff: datetime, feed_url: str) -> List
     try:
         feed = feedparser.parse(content)
         
-        for entry in feed.entries[:MAX_ARTICLES_PER_FEED]:
+        for index, entry in enumerate(feed.entries[:MAX_ARTICLES_PER_FEED], 1):
             title = entry.get('title', '').strip()
             link = entry.get('link', '').strip()
             
@@ -164,11 +205,20 @@ def parse_feed_feedparser(content: str, cutoff: datetime, feed_url: str) -> List
                             break
                             
             if title and link and pub_date and pub_date >= cutoff:
-                articles.append({
+                article = {
                     "title": title[:200],
                     "link": resolve_link(link, feed_url),
                     "date": pub_date.isoformat(),
-                })
+                }
+                if is_hnrss_feed(feed_url):
+                    article.update(
+                        parse_hnrss_metadata(
+                            entry.get("description", ""),
+                            entry.get("comments", ""),
+                        )
+                    )
+                    article["hn_rank"] = index
+                articles.append(article)
                 
     except Exception as e:
         logging.debug(f"feedparser parsing failed: {e}")
@@ -181,7 +231,10 @@ def parse_feed_regex(content: str, cutoff: datetime, feed_url: str) -> List[Dict
     articles = []
 
     # RSS 2.0 items
-    for item in re.finditer(r"<item[^>]*>(.*?)</item>", content, re.DOTALL):
+    for index, item in enumerate(
+        re.finditer(r"<item[^>]*>(.*?)</item>", content, re.DOTALL),
+        1,
+    ):
         block = item.group(1)
         title = strip_tags(get_tag(block, "title"))
         link = resolve_link(get_tag(block, "link"), feed_url)
@@ -189,11 +242,20 @@ def parse_feed_regex(content: str, cutoff: datetime, feed_url: str) -> List[Dict
         pub = parse_date_regex(date_str)
 
         if title and link and pub and pub >= cutoff:
-            articles.append({
+            article = {
                 "title": title[:200],
                 "link": link,
                 "date": pub.isoformat(),
-            })
+            }
+            if is_hnrss_feed(feed_url):
+                article.update(
+                    parse_hnrss_metadata(
+                        get_tag(block, "description"),
+                        get_tag(block, "comments"),
+                    )
+                )
+                article["hn_rank"] = index
+            articles.append(article)
 
     # Atom entries fallback
     if not articles:

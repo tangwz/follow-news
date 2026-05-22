@@ -76,7 +76,7 @@ When `<TEMPLATE>` is `chat`, follow `references/templates/chat.md` exactly: each
 
 Select articles **purely by quality_score regardless of source type**. When an article has a `full_text` field, use it to write a richer 2-3 sentence summary instead of relying solely on the title/snippet. Articles in merged JSON are already sorted by quality_score descending within each topic — respect this order. For Reddit posts, identify the subreddit when present, but do not append visible score values.
 
-Visible deduplication applies across the whole digest. If a URL or equivalent title is already visible in a topic section, do not repeat it in KOL Updates, GitHub Releases, GitHub Trending, Blog Picks, or Podcast Remix. Topic sections take precedence over fixed sections.
+Visible deduplication applies across the whole digest. If a URL or equivalent title is already visible in a topic section, do not repeat it in KOL Updates, Hacker News Top, GitHub Releases, GitHub Trending, Blog Picks, or Podcast Remix. Topic sections take precedence over fixed sections.
 
 When an item has multiple candidate topics, prefer the topic supported by the item title, snippet, summary, or full text over the source's broad default topic list. Policy, public-sector technology, open-source governance, security-operations, or industry-adoption stories should not be placed under LLM unless the item itself is about language models, model capabilities, model releases, inference, or benchmarks.
 
@@ -124,6 +124,15 @@ When `<TEMPLATE>` is `chat`, use the fixed three-block item shape from `referenc
 Read `display_name` and `metrics` (impression_count→👁, reply_count→💬, retweet_count→🔁, like_count→❤️) from merged JSON. Always show all 4 metrics, use K/M formatting, wrap in backticks. One tweet per bullet. Write the summary according to `references/summarize-tweets.md`.
 
 **<EXTRA_SECTIONS>**
+
+**📰 Hacker News Top** — Top Hacker News frontpage stories. Format:
+```
+1. **Article Title** — 234↑ · 56 comments
+   1-2 sentence summary of the article or discussion context
+   <https://news.ycombinator.com/item?id=xxx>
+   <https://original-article.example.com>
+```
+Filter for Hacker News Frontpage items from merged JSON (`source_id == "hn-rss"`, `source_name == "Hacker News Frontpage"`, or `hn_url` present). Default to the top 10 frontpage items by HN score. If an item ranked 11-20 is AI/LLM/ML-related by title keywords, include it as an exception so AI stories are not buried. Each item should include title, HN score, comment count, HN discussion URL, original article URL when present, and a concise 1-2 sentence summary. Place this section after topic sections and before GitHub Releases.
 
 **📦 GitHub Releases** — Notable new releases from watched repos. Format:
 ```
