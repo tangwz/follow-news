@@ -35,9 +35,8 @@ SCORE_PODCAST_TRANSCRIPT_READY = 2
 MIN_TRANSCRIPT_READY_CHARS = 200
 PENALTY_DUPLICATE = -10     # Duplicate/very similar title
 PENALTY_OLD_REPORT = -5     # Already in previous digest
-TOPIC_ALIASES = {
+STABLE_TOPIC_ALIASES = {
     "ai_agent": "ai-agent",
-    "builder": "kol",
 }
 
 # Deduplication thresholds
@@ -456,17 +455,25 @@ def group_by_topics(
             "uncategorized": 5,
         }
 
-    for alias, canonical in TOPIC_ALIASES.items():
+    configured_topic_ids = set(topic_priority)
+    if allowed_topics is not None:
+        configured_topic_ids.update(allowed_topics)
+
+    topic_aliases = dict(STABLE_TOPIC_ALIASES)
+    if "kol" in configured_topic_ids and "builder" not in configured_topic_ids:
+        topic_aliases["builder"] = "kol"
+
+    for alias, canonical in topic_aliases.items():
         if canonical in topic_priority:
             topic_priority.setdefault(alias, topic_priority[canonical])
         if alias in topic_priority:
             topic_priority.setdefault(canonical, topic_priority[alias])
 
     def canonical_topic(topic: str) -> str:
-        return TOPIC_ALIASES.get(topic, topic)
+        return topic_aliases.get(topic, topic)
 
     def _add_topic_aliases(topics: Set[str]) -> None:
-        for alias, canonical in TOPIC_ALIASES.items():
+        for alias, canonical in topic_aliases.items():
             if canonical in topics:
                 topics.add(alias)
             if alias in topics:
@@ -488,9 +495,15 @@ def group_by_topics(
         if not topic_keywords:
             return 0
 
-        keywords = topic_keywords.get(topic, [])
-        if not keywords:
-            keywords = topic_keywords.get(canonical_topic(topic), [])
+        keyword_candidates = [topic, canonical_topic(topic)]
+        keyword_candidates.extend(
+            alias
+            for alias, canonical in topic_aliases.items()
+            if canonical == canonical_topic(topic)
+        )
+        keywords = []
+        for candidate in dict.fromkeys(keyword_candidates):
+            keywords.extend(topic_keywords.get(candidate, []))
         if not keywords:
             return 0
 
