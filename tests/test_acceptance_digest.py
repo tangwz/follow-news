@@ -1507,11 +1507,8 @@ class TestAcceptanceRenderer(unittest.TestCase):
         self.assertIn("Use a tendency-based structure", prompt)
         self.assertIn("full_text > summary > snippet > title", prompt)
         self.assertIn("Lower-priority fields may provide supplemental context", prompt)
-        self.assertIn("metrics.impression_count", prompt)
-        self.assertIn("metrics.reply_count", prompt)
-        self.assertIn("metrics.retweet_count", prompt)
-        self.assertIn("metrics.like_count", prompt)
-        self.assertIn("Missing, null, empty, or unparsable metric values render as 0.", prompt)
+        self.assertIn("do not render engagement metrics", prompt)
+        self.assertIn("Metrics may remain in merged JSON for internal ranking", prompt)
         self.assertIn("Discord and email length limits take precedence over sentence-count targets.", prompt)
 
     def test_templates_document_non_github_summary_contract(self):
@@ -1836,7 +1833,7 @@ class TestAcceptanceRenderer(unittest.TestCase):
         self.assertNotIn("12.5K", topic_text)
         self.assertNotIn("views", topic_text.lower())
 
-    def test_chat_kol_metrics_render_zero_for_missing_values(self):
+    def test_chat_kol_updates_do_not_render_metrics(self):
         data = {
             "input_sources": {},
             "output_stats": {"total_articles": 1},
@@ -1873,9 +1870,14 @@ class TestAcceptanceRenderer(unittest.TestCase):
         )
 
         kol_text = text.split("## 📢 KOL Updates", 1)[1]
-        self.assertIn("`👁 0 | 💬 0 | 🔁 0 | ❤️ 0`", kol_text)
+        self.assertIn("Example Lab shared a sparse benchmark note.", kol_text)
+        self.assertNotIn("👁", kol_text)
+        self.assertNotIn("💬", kol_text)
+        self.assertNotIn("🔁", kol_text)
+        self.assertNotIn("❤️", kol_text)
+        self.assertNotIn("not-a-number", kol_text)
 
-    def test_chat_kol_metrics_render_zero_for_invalid_metrics_container(self):
+    def test_discord_kol_updates_do_not_render_metrics(self):
         data = {
             "input_sources": {},
             "output_stats": {"total_articles": 1},
@@ -1903,11 +1905,17 @@ class TestAcceptanceRenderer(unittest.TestCase):
             topic_defs,
             report_date="2026-02-27",
             version="3.17.0",
-            template="chat",
         )
 
         kol_text = text.split("## 📢 KOL Updates", 1)[1]
-        self.assertIn("`👁 0 | 💬 0 | 🔁 0 | ❤️ 0`", kol_text)
+        self.assertIn(
+            "• **Example Lab** (@example) — Example Lab shared another benchmark note.",
+            kol_text,
+        )
+        self.assertNotIn("👁", kol_text)
+        self.assertNotIn("💬", kol_text)
+        self.assertNotIn("🔁", kol_text)
+        self.assertNotIn("❤️", kol_text)
 
     def test_chat_kol_updates_skips_empty_section(self):
         data = {

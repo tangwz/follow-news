@@ -76,7 +76,7 @@ Discord length limits take precedence over sentence-count targets. When space is
 
 ## 📢 KOL Updates
 
-• **Elon Musk** (@elonmusk) — Confirmed X's crypto trading feature `👁 2.1M | 💬 12.3K | 🔁 8.5K | ❤️ 49.8K`
+• **Example Builder** (@example) — Shared a concrete product update with implementation context.
   🔗 https://twitter.com/elonmusk/status/123456789
 
 ---
