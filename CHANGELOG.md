@@ -1,5 +1,13 @@
 # Changelog
 
+## v3.17.4 — 2026-05-22
+
+### Changed
+- Default the unified pipeline and individual fetchers to a 24h news window for
+  more realtime-focused digests.
+- Default web search freshness to 24h while keeping explicit longer windows
+  available through CLI flags.
+
 ## v3.17.0 — 2026-05-14
 
 ### Added
