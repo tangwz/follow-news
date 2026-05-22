@@ -1,7 +1,7 @@
 ---
 name: follow-news
-description: Generate tech news digests with unified source model, quality scoring, and multi-format output. Seven-source data collection from RSS feeds, Twitter/X KOLs, GitHub releases, GitHub Trending, Reddit, web search, and podcasts. Pipeline-based scripts with retry mechanisms and deduplication. Supports Discord, email, and markdown templates.
-version: "3.17.4"
+description: Generate tech news digests with unified source model, internal ranking, and multi-format output. Seven-source data collection from RSS feeds, Twitter/X KOLs, GitHub releases, GitHub Trending, Reddit, web search, and podcasts. Pipeline-based scripts with retry mechanisms and deduplication. Supports Discord, email, and markdown templates.
+version: "3.17.5"
 homepage: https://github.com/tangwz/follow-news
 source: https://github.com/tangwz/follow-news
 metadata: {"openclaw":{"requires":{"bins":["python3"]},"optionalBins":["opencli","mail","msmtp","gog","gh","openssl","weasyprint","yt-dlp"],"env":[{"name":"TWITTER_API_BACKEND","required":false,"description":"Twitter backend: auto, opencli, getxapi, twitterapiio, or official. Default: auto; auto tries OpenCLI first."},{"name":"OPENCLI_BIN","required":false,"description":"Optional path to the OpenCLI executable for Twitter/X and Xiaoyuzhou podcast sources. Used when OpenCLI is not available on PATH."},{"name":"OPENCLI_MAX_WORKERS","required":false,"description":"Optional OpenCLI concurrency limit. Defaults to 10."},{"name":"OPENCLI_CLOSE_TABS_AFTER_RUN","required":false,"description":"Close OpenCLI-created X/Twitter tabs after fetch when set to 1. Default: 1."},{"name":"OPENCLI_CLOSE_CHROME_WINDOWS_AFTER_RUN","required":false,"description":"Close OpenCLI-created Chrome automation windows on macOS when set to 1. Default: 1."},{"name":"GETX_API_KEY","required":false,"description":"GetXAPI key for Twitter/X fallback."},{"name":"X_BEARER_TOKEN","required":false,"description":"Twitter/X API bearer token for KOL monitoring."},{"name":"TWITTERAPI_IO_KEY","required":false,"description":"twitterapi.io API key for KOL monitoring."},{"name":"TAVILY_API_KEY","required":false,"description":"Tavily Search API key."},{"name":"WEB_SEARCH_BACKEND","required":false,"description":"Web search backend: auto, brave, or tavily."},{"name":"BRAVE_API_KEYS","required":false,"description":"Brave Search API keys, comma-separated for rotation."},{"name":"BRAVE_API_KEY","required":false,"description":"Brave Search API key, single key fallback."},{"name":"GITHUB_TOKEN","required":false,"description":"GitHub token for higher API rate limits."},{"name":"GH_APP_ID","required":false,"description":"GitHub App ID for automatic installation token generation."},{"name":"GH_APP_INSTALL_ID","required":false,"description":"GitHub App Installation ID for automatic token generation."},{"name":"GH_APP_KEY_FILE","required":false,"description":"Path to GitHub App private key PEM file."},{"name":"YTDLP_BIN","required":false,"description":"Optional path to the yt-dlp executable for YouTube podcast metadata and transcript fetching."}],"tools":[{"bin":"python3","required":true,"description":"Runs data collection and merge scripts."},{"bin":"opencli","required":false,"description":"Preferred Twitter/X backend in auto mode, required for Xiaoyuzhou metadata discovery, and the documented supported Xiaoyuzhou transcript path."},{"bin":"mail","required":false,"description":"msmtp-based mail command for email delivery."},{"bin":"msmtp","required":false,"description":"SMTP transport used by mail."},{"bin":"gog","required":false,"description":"Gmail CLI fallback for email delivery."},{"bin":"gh","required":false,"description":"GitHub CLI fallback for repository auth."},{"bin":"openssl","required":false,"description":"GitHub App JWT signing fallback."},{"bin":"weasyprint","required":false,"description":"PDF rendering backend."},{"bin":"yt-dlp","required":false,"description":"YouTube podcast metadata and transcript backend."},{"script":"scripts/fetch-podcast.py","required":false,"description":"Fetches RSS, YouTube, and Xiaoyuzhou podcast metadata, with optional transcript enrichment."}],"files":{"read":[{"path":"config/defaults/","description":"Default source and topic configurations."},{"path":"references/","description":"Prompt templates and output templates."},{"path":"scripts/","description":"Python pipeline scripts."},{"path":"<workspace>/archive/follow-news/","description":"Previous digests for deduplication."}],"write":[{"path":"/tmp/td-*.json","description":"Temporary pipeline intermediate outputs."},{"path":"/tmp/td-email.html","description":"Temporary email HTML body."},{"path":"/tmp/td-digest.pdf","description":"Generated PDF digest."},{"path":"<workspace>/archive/follow-news/","description":"Saved digest archives."}]}}}
@@ -83,7 +83,7 @@ Priority rule:
 - Operational/config queries take precedence over full news generation.
 - When a source fails, keep the run result transparent: explicit success/failure source count and failure reason list.
 
-Automated tech news digest system with unified data source model, quality scoring pipeline, and template-based output generation.
+Automated tech news digest system with unified data source model, internal ranking pipeline, and template-based output generation.
 
 ## Quick Start
 
@@ -223,7 +223,7 @@ python3 scripts/run-pipeline.py \
   --archive-dir workspace/archive/follow-news/ \
   --output /tmp/td-merged.json --verbose --force
 ```
-- **Features**: Runs all 7 fetch steps in parallel, then merges + deduplicates + scores
+- **Features**: Runs all 7 fetch steps in parallel, then merges, ranks, and deduplicates articles
 - **Output**: Final merged JSON ready for report generation (~30s total)
 - **Metadata**: Saves per-step timing and counts to `*.meta.json`
 - **GitHub Auth**: Auto-generates GitHub App token if `$GITHUB_TOKEN` not set
@@ -273,14 +273,14 @@ python3 scripts/fetch-github.py [--defaults DIR] [--config DIR] [--hours 24] [--
 python3 scripts/fetch-github.py --trending [--hours 24] [--output FILE] [--verbose]
 ```
 - Searches GitHub API for trending repos across configured topics (`llm`, `ai-agent`, `builder`, `kol`, `frontier-tech`)
-- Quality scoring: base 5 + daily_stars_est / 10, max 15
+- Internal ranking: base 5 + daily_stars_est / 10, max 15
 
 #### `fetch-reddit.py` - Reddit Posts Fetcher
 ```bash
 python3 scripts/fetch-reddit.py [--defaults DIR] [--config DIR] [--hours 24] [--output FILE]
 ```
 - Parallel fetching (4 workers), public JSON API (no auth required)
-- 8 subreddits with score filtering
+- 8 subreddits with internal ranking filters
 
 #### `fetch-podcast.py` - Podcast, YouTube, and Xiaoyuzhou Fetcher
 ```bash
@@ -299,17 +299,17 @@ python3 scripts/fetch-podcast.py [--defaults DIR] [--config DIR] [--hours 24] [-
 ```bash
 python3 scripts/enrich-articles.py --input merged.json --output enriched.json [--min-score 10] [--max-articles 15] [--verbose]
 ```
-- Fetches full article text for high-scoring articles
+- Fetches full article text for high-priority articles
 - Cloudflare Markdown for Agents (preferred) → HTML extraction (fallback) → Skip (paywalled/social)
-- Blog domain whitelist with lower score threshold (≥3)
+- Blog domain whitelist with a lower internal ranking threshold
 - Parallel fetching (5 workers, 10s timeout)
 
-#### `merge-sources.py` - Quality Scoring & Deduplication
+#### `merge-sources.py` - Ranking & Deduplication
 ```bash
 python3 scripts/merge-sources.py --rss FILE --twitter FILE --web FILE --github FILE --trending FILE --reddit FILE --podcast FILE
 ```
-- Quality scoring, title similarity dedup (85%), previous digest penalty
-- Output: topic-grouped articles sorted by score
+- Internal ranking, title similarity dedup (85%), previous digest penalty
+- Output: topic-grouped articles in priority order
 
 #### `validate-config.py` - Configuration Validator
 ```bash
@@ -343,7 +343,7 @@ python3 scripts/source-health.py --rss FILE --twitter FILE --github FILE --reddi
 python3 scripts/summarize-merged.py --input merged.json [--top N] [--topic TOPIC]
 ```
 - Human-readable summary of merged data for LLM consumption
-- Shows top articles per topic with scores and metrics
+- Shows top articles per topic with source metrics
 
 ## User Customization
 
@@ -389,6 +389,11 @@ Place custom configs in `workspace/config/` to override defaults:
 - In degraded mode, show scope explicitly (for example: `2/7 sources available`) and avoid claiming completeness.
 
 ## Templates & Output
+
+### Summary References
+- Twitter/X and KOL summaries: `references/summarize-tweets.md`
+- Podcast remixes: `references/summarize-podcast.md`
+- Chinese and bilingual translation: `references/translate.md`
 
 ### Discord Template (`references/templates/discord.md`)
 - Bullet list format with link suppression (`<link>`)

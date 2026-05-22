@@ -627,6 +627,12 @@ class TestVisibleArticleDedupe(unittest.TestCase):
 
 
 class TestAcceptanceRenderer(unittest.TestCase):
+    def test_chat_title_uses_unicode_bold_text(self):
+        self.assertEqual(
+            render_mod.bold_chat_title_text("OpenAI 123 发布"),
+            "𝐎𝐩𝐞𝐧𝐀𝐈 𝟏𝟐𝟑 发布",
+        )
+
     def test_daily_digest_matches_golden(self):
         assert_or_update_golden(self, DAILY_GOLDEN, render_daily_digest())
 
@@ -638,11 +644,15 @@ class TestAcceptanceRenderer(unittest.TestCase):
         lines = text.splitlines()
 
         self.assertTrue(text.startswith("# 🚀 Tech Digest - 2026-02-27\n"))
-        self.assertIn("评分说明：相关性 + 新鲜度 + 影响面。", text)
+        self.assertNotIn("评分说明：", text)
         self.assertIn("今日看点", text)
         self.assertIn("## 🧠 LLM / 大模型", text)
-        self.assertIn("1. [9/10] OpenAI ships structured agent evaluation suite", text)
-        self.assertNotIn("1. 🧠 [9/10]", text)
+        self.assertIn(
+            f"1. {render_mod.bold_chat_title_text('OpenAI ships structured agent evaluation suite')}",
+            text,
+        )
+        self.assertNotRegex(text, r"(?m)^[0-9]+\. \[[0-9]+(?:\.[0-9]+)?/10\] ")
+        self.assertNotIn("1. 🧠", text)
         self.assertNotIn("来源：", text)
         self.assertIn("🔗 https://openai.com/research/agent-evals", text)
         self.assertNotIn("<https://", text)
@@ -651,12 +661,12 @@ class TestAcceptanceRenderer(unittest.TestCase):
         title_lines = [
             line
             for line in lines
-            if re.match(r"^[0-9]+\. \[[0-9]+(?:\.[0-9]+)?/10\] .+", line)
+            if re.match(r"^[0-9]+\. .+", line)
         ]
         self.assertGreater(len(title_lines), 0)
 
         for index, line in enumerate(lines):
-            if not re.match(r"^[0-9]+\. \[[0-9]+(?:\.[0-9]+)?/10\] .+", line):
+            if not re.match(r"^[0-9]+\. .+", line):
                 continue
             self.assertLess(index + 4, len(lines))
             self.assertEqual(lines[index + 1], "")
@@ -676,7 +686,7 @@ class TestAcceptanceRenderer(unittest.TestCase):
             section_text = "\n".join(lines[start:end])
             self.assertRegex(
                 section_text,
-                r"(?m)^[0-9]+\. \[[0-9]+(?:\.[0-9]+)?/10\] .+",
+                r"(?m)^[0-9]+\. .+",
                 lines[start],
             )
 
@@ -721,7 +731,10 @@ class TestAcceptanceRenderer(unittest.TestCase):
         self.assertIn("## 📦 GitHub Releases / 发布", text)
         self.assertIn("## 📝 Blog Picks / 博客精选", text)
         fixed_text = text.split("## 📦 GitHub Releases / 发布", 1)[1]
-        self.assertIn("1. [5/10] Example Tool v1.0.0", fixed_text)
+        self.assertIn(
+            f"1. {render_mod.bold_chat_title_text('Example Tool v1.0.0')}",
+            fixed_text,
+        )
         self.assertNotIn("来源：", fixed_text)
         self.assertNotRegex(fixed_text, r"(?m)^• ")
 
@@ -831,7 +844,7 @@ class TestAcceptanceRenderer(unittest.TestCase):
         )
 
         self.assertIn("## 📦 GitHub Releases / 发布", text)
-        self.assertIn("Example Tool v1.0.0", text)
+        self.assertIn(render_mod.bold_chat_title_text("Example Tool v1.0.0"), text)
 
     def test_chat_github_releases_filter_named_dependency_bump(self):
         data = {
@@ -958,7 +971,7 @@ class TestAcceptanceRenderer(unittest.TestCase):
         )
 
         self.assertIn("## 📦 GitHub Releases / 发布", text)
-        self.assertIn("AlphaFold v1.0.0", text)
+        self.assertIn(render_mod.bold_chat_title_text("AlphaFold v1.0.0"), text)
 
     def test_chat_github_releases_filter_dotted_release_candidate_tag(self):
         data = {
@@ -1147,7 +1160,7 @@ class TestAcceptanceRenderer(unittest.TestCase):
         )
 
         self.assertIn("## 📦 GitHub Releases", text)
-        self.assertIn("Example Tool v1.1.0", text)
+        self.assertIn(render_mod.bold_chat_title_text("Example Tool v1.1.0"), text)
 
     def test_group_by_topics_prefers_content_keyword_match_over_topic_order(self):
         articles = [
@@ -1487,7 +1500,9 @@ class TestAcceptanceRenderer(unittest.TestCase):
         )
 
         self.assertIn("### Non-GitHub Summary Quality Contract", prompt)
-        self.assertIn("This contract applies to KOL, non-GitHub topic, Blog Picks, Reddit, and Podcast items.", prompt)
+        self.assertIn("references/summarize-tweets.md", prompt)
+        self.assertIn("references/summarize-podcast.md", prompt)
+        self.assertIn("references/translate.md", prompt)
         self.assertIn("It does not apply to GitHub Releases or GitHub Trending.", prompt)
         self.assertIn("Use a tendency-based structure", prompt)
         self.assertIn("full_text > summary > snippet > title", prompt)
@@ -1510,7 +1525,9 @@ class TestAcceptanceRenderer(unittest.TestCase):
             with self.subTest(template=template_path.name):
                 text = template_path.read_text(encoding="utf-8")
                 self.assertIn("Non-GitHub Summary Quality", text)
-                self.assertIn("KOL, non-GitHub topic, Blog Picks, Reddit, and Podcast", text)
+                self.assertIn("references/summarize-tweets.md", text)
+                self.assertIn("references/summarize-podcast.md", text)
+                self.assertIn("references/translate.md", text)
                 self.assertIn("GitHub Releases and GitHub Trending keep their existing concise style.", text)
                 self.assertIn("Use a tendency-based structure", text)
                 self.assertIn("full_text > summary > snippet > title", text)
@@ -1561,10 +1578,10 @@ class TestAcceptanceRenderer(unittest.TestCase):
         self.assertNotIn("## 🧠 LLM / Large Models", text)
         self.assertNotIn("No link item", text)
         self.assertIn("## 🤖 AI Agent", text)
-        self.assertIn("1. [5/10] Visible agent item", text)
+        self.assertIn(f"1. {render_mod.bold_chat_title_text('Visible agent item')}", text)
         self.assertIn("🔗 https://example.com/agent", text)
 
-    def test_chat_digest_invalid_score_uses_zero_fallback(self):
+    def test_chat_digest_invalid_score_does_not_render_score_prefix(self):
         data = {
             "input_sources": {},
             "output_stats": {"total_articles": 1},
@@ -1592,7 +1609,8 @@ class TestAcceptanceRenderer(unittest.TestCase):
             template="chat",
         )
 
-        self.assertIn("1. [0/10] Invalid score item", text)
+        self.assertIn(f"1. {render_mod.bold_chat_title_text('Invalid score item')}", text)
+        self.assertNotRegex(text, r"(?m)^[0-9]+\. \[[0-9]+(?:\.[0-9]+)?/10\] ")
 
     def test_default_discord_digest_filters_invalid_score_items(self):
         data = {
@@ -1700,7 +1718,7 @@ class TestAcceptanceRenderer(unittest.TestCase):
         )
         summary = extract_chat_summary(
             text,
-            "1. [5/10] Snippet-only model note",
+            f"1. {render_mod.bold_chat_title_text('Snippet-only model note')}",
         )
 
         self.assertEqual(summary, "Only this snippet is available.")
@@ -1740,7 +1758,7 @@ class TestAcceptanceRenderer(unittest.TestCase):
         )
         summary = extract_chat_summary(
             text,
-            "1. [5/10] Title-level fallback only",
+            f"1. {render_mod.bold_chat_title_text('Title-level fallback only')}",
         )
 
         self.assertEqual(summary, "Full text evidence should win.")
@@ -1931,36 +1949,19 @@ class TestAcceptanceRenderer(unittest.TestCase):
         self.assertIn("---\n", text)
         self.assertIn("Powered by OpenClaw", text)
 
-        article_lines = [line for line in lines if line.startswith("• 🔥")]
+        self.assertNotIn("🔥", text)
+        article_lines = [
+            line
+            for line in lines
+            if line.startswith("• ") and not line.startswith("• **")
+        ]
         self.assertGreater(len(article_lines), 0)
         for index, line in enumerate(lines):
-            if not line.startswith("• 🔥"):
+            if not line.startswith("• "):
                 continue
-            self.assertRegex(line, r"^• 🔥[0-9]+(?:\.[0-9]+)? \| .+")
+            self.assertNotRegex(line, r"^• 🔥[0-9]+(?:\.[0-9]+)? \| ")
             self.assertLess(index + 1, len(lines))
             self.assertRegex(lines[index + 1], r"^  🔗 https?://.+$")
-
-        section_starts = [
-            index for index, line in enumerate(lines) if line.startswith("## ")
-        ]
-        for position, start in enumerate(section_starts):
-            section_title = lines[start]
-            if section_title in FIXED_DIGEST_SECTIONS:
-                continue
-
-            end = (
-                section_starts[position + 1]
-                if position + 1 < len(section_starts)
-                else len(lines)
-            )
-            scores = [
-                float(match.group(1))
-                for line in lines[start:end]
-                for match in [re.match(r"^• 🔥([0-9]+(?:\.[0-9]+)?) \| ", line)]
-                if match
-            ]
-            self.assertGreater(len(scores), 0, section_title)
-            self.assertEqual(scores, sorted(scores, reverse=True), section_title)
 
     def test_update_golden_requires_explicit_environment_flag(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -1989,7 +1990,8 @@ class TestAcceptanceRenderer(unittest.TestCase):
 
         self.assertIn("# 🚀 Tech Digest - 2026-02-27", text)
         self.assertIn("## 🧠 LLM / 大模型", text)
-        self.assertIn("• 🔥18 | OpenAI ships structured agent evaluation suite", text)
+        self.assertIn("• OpenAI ships structured agent evaluation suite", text)
+        self.assertNotRegex(text, r"(?m)^• 🔥[0-9]+(?:\.[0-9]+)? \| ")
         self.assertIn("  🔗 https://openai.com/research/agent-evals", text)
         self.assertIn("  *[3 sources]*", text)
         self.assertNotIn("Low scoring model rumor should not render", text)
@@ -2088,6 +2090,50 @@ class TestAcceptanceRenderer(unittest.TestCase):
             text.count("https://www.youtube.com/watch?v=unseenpodcast"),
             1,
         )
+
+    def test_github_trending_fixed_sections_limit_to_top_five_repos(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 7},
+            "topics": {
+                "supplemental": {
+                    "articles": [
+                        {
+                            "title": f"example/trending-{index}",
+                            "link": f"https://github.com/example/trending-{index}",
+                            "source_type": "github_trending",
+                            "repo": f"example/trending-{index}",
+                            "stars": 1000 + index,
+                            "daily_stars_est": 100 - index,
+                            "language": "TypeScript",
+                            "description": f"Trending repo {index}.",
+                            "quality_score": 10,
+                        }
+                        for index in range(7)
+                    ]
+                }
+            },
+        }
+
+        discord_text = render_mod.render_digest(
+            data,
+            topic_defs=[],
+            report_date="2026-05-22",
+            version="3.17.0",
+        )
+        chat_text = render_mod.render_digest(
+            data,
+            topic_defs=[],
+            report_date="2026-05-22",
+            version="3.17.0",
+            template="chat",
+        )
+
+        for text in (discord_text, chat_text):
+            self.assertIn("example/trending-0", text)
+            self.assertIn("example/trending-4", text)
+            self.assertNotIn("example/trending-5", text)
+            self.assertNotIn("example/trending-6", text)
 
     def test_footer_uses_current_github_trending_count_key(self):
         data = {
@@ -2374,7 +2420,11 @@ class TestAcceptanceRenderer(unittest.TestCase):
 
             self.assertEqual(result.returncode, 0, result.stderr)
             text = output_path.read_text(encoding="utf-8")
-            self.assertIn("1. [9/10] OpenAI ships structured agent evaluation suite", text)
+            self.assertIn(
+                f"1. {render_mod.bold_chat_title_text('OpenAI ships structured agent evaluation suite')}",
+                text,
+            )
+            self.assertNotRegex(text, r"(?m)^[0-9]+\. \[[0-9]+(?:\.[0-9]+)?/10\] ")
             self.assertIn("🔗 https://openai.com/research/agent-evals", text)
             self.assertNotIn("<https://", text)
 
