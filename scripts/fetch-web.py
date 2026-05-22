@@ -6,7 +6,7 @@ Reads topics.json, performs web searches for each topic's search queries,
 and outputs structured JSON with search results tagged by topics.
 
 Usage:
-    python3 fetch-web.py [--config CONFIG_DIR] [--freshness 48h] [--output FILE] [--verbose]
+    python3 fetch-web.py [--config CONFIG_DIR] [--freshness 24h] [--output FILE] [--verbose]
 
 Note: This script can use Brave Search API if BRAVE_API_KEY is set, otherwise
 it provides a JSON interface for agents to use web_search tool.
@@ -531,8 +531,8 @@ Examples:
     
     parser.add_argument(
         "--freshness",
-        default="48h",
-        help="Search freshness: 24h, 48h, 1w, 1m (default: 48h)"
+        default="24h",
+        help="Search freshness: 24h, 48h, 1w, 1m (default: 24h)"
     )
     
     parser.add_argument(
@@ -675,8 +675,8 @@ Examples:
                     try:
                         freshness_hours = int(args.freshness.rstrip('h'))
                     except ValueError:
-                        logger.warning(f"Unrecognized freshness format '{args.freshness}', defaulting to 48h")
-                        freshness_hours = 48
+                        logger.warning(f"Unrecognized freshness format '{args.freshness}', defaulting to 24h")
+                        freshness_hours = 24
                 brave_freshness = convert_freshness(freshness_hours)
             
             results = []

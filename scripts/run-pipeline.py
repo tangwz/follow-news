@@ -12,7 +12,7 @@ Usage:
     python3 run-pipeline.py \
       --defaults <SKILL_DIR>/config/defaults \
       --config <WORKSPACE>/config \
-      --hours 48 --freshness pd \
+      --hours 24 --freshness pd \
       --archive-dir <WORKSPACE>/archive/follow-news/ \
       --output /tmp/td-merged.json \
       --verbose
@@ -31,6 +31,7 @@ from typing import Dict, Any
 
 SCRIPTS_DIR = Path(__file__).parent
 DEFAULT_TIMEOUT = 900  # per-step timeout in seconds
+DEFAULT_FETCH_HOURS = 24
 
 
 def setup_logging(verbose: bool) -> logging.Logger:
@@ -115,7 +116,7 @@ def run_step(
         }
 
 
-def main() -> int:
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Run the full follow-news data pipeline in one shot.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -124,7 +125,7 @@ def main() -> int:
     _default_defaults = _script_dir.parent / "config" / "defaults"
     parser.add_argument("--defaults", type=Path, default=_default_defaults, help="Skill defaults config dir (default: <skill>/config/defaults)")
     parser.add_argument("--config", type=Path, default=None, help="User config overlay dir")
-    parser.add_argument("--hours", type=int, default=48, help="Time window in hours")
+    parser.add_argument("--hours", type=int, default=DEFAULT_FETCH_HOURS, help="Time window in hours")
     parser.add_argument("--freshness", type=str, default="pd", help="Web search freshness (pd/pw/pm)")
     parser.add_argument("--archive-dir", type=Path, default=None, help="Archive dir for dedup penalty")
     parser.add_argument("--output", "-o", type=Path, default=Path("/tmp/td-merged.json"), help="Final merged output")
@@ -137,7 +138,11 @@ def main() -> int:
     parser.add_argument("--only", type=str, default="", help="Comma-separated list of steps to run (rss,twitter,github,trending,reddit,web,podcast). Others are skipped.")
     parser.add_argument("--reuse-dir", type=Path, default=None, help="Reuse existing intermediate directory instead of creating new one")
     parser.add_argument("--debug", action="store_true", help="Keep intermediate fetch outputs (rss.json, twitter.json, etc.) alongside final output")
+    return parser
 
+
+def main() -> int:
+    parser = build_parser()
     args = parser.parse_args()
     logger = setup_logging(args.verbose)
 

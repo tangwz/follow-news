@@ -1,7 +1,7 @@
 ---
 name: follow-news
 description: Generate tech news digests with unified source model, quality scoring, and multi-format output. Seven-source data collection from RSS feeds, Twitter/X KOLs, GitHub releases, GitHub Trending, Reddit, web search, and podcasts. Pipeline-based scripts with retry mechanisms and deduplication. Supports Discord, email, and markdown templates.
-version: "3.17.3"
+version: "3.17.4"
 homepage: https://github.com/tangwz/follow-news
 source: https://github.com/tangwz/follow-news
 metadata: {"openclaw":{"requires":{"bins":["python3"]},"optionalBins":["opencli","mail","msmtp","gog","gh","openssl","weasyprint","yt-dlp"],"env":[{"name":"TWITTER_API_BACKEND","required":false,"description":"Twitter backend: auto, opencli, getxapi, twitterapiio, or official. Default: auto; auto tries OpenCLI first."},{"name":"OPENCLI_BIN","required":false,"description":"Optional path to the OpenCLI executable for Twitter/X and Xiaoyuzhou podcast sources. Used when OpenCLI is not available on PATH."},{"name":"OPENCLI_MAX_WORKERS","required":false,"description":"Optional OpenCLI concurrency limit. Defaults to 10."},{"name":"OPENCLI_CLOSE_TABS_AFTER_RUN","required":false,"description":"Close OpenCLI-created X/Twitter tabs after fetch when set to 1. Default: 1."},{"name":"OPENCLI_CLOSE_CHROME_WINDOWS_AFTER_RUN","required":false,"description":"Close OpenCLI-created Chrome automation windows on macOS when set to 1. Default: 1."},{"name":"GETX_API_KEY","required":false,"description":"GetXAPI key for Twitter/X fallback."},{"name":"X_BEARER_TOKEN","required":false,"description":"Twitter/X API bearer token for KOL monitoring."},{"name":"TWITTERAPI_IO_KEY","required":false,"description":"twitterapi.io API key for KOL monitoring."},{"name":"TAVILY_API_KEY","required":false,"description":"Tavily Search API key."},{"name":"WEB_SEARCH_BACKEND","required":false,"description":"Web search backend: auto, brave, or tavily."},{"name":"BRAVE_API_KEYS","required":false,"description":"Brave Search API keys, comma-separated for rotation."},{"name":"BRAVE_API_KEY","required":false,"description":"Brave Search API key, single key fallback."},{"name":"GITHUB_TOKEN","required":false,"description":"GitHub token for higher API rate limits."},{"name":"GH_APP_ID","required":false,"description":"GitHub App ID for automatic installation token generation."},{"name":"GH_APP_INSTALL_ID","required":false,"description":"GitHub App Installation ID for automatic token generation."},{"name":"GH_APP_KEY_FILE","required":false,"description":"Path to GitHub App private key PEM file."},{"name":"YTDLP_BIN","required":false,"description":"Optional path to the yt-dlp executable for YouTube podcast metadata and transcript fetching."}],"tools":[{"bin":"python3","required":true,"description":"Runs data collection and merge scripts."},{"bin":"opencli","required":false,"description":"Preferred Twitter/X backend in auto mode, required for Xiaoyuzhou metadata discovery, and the documented supported Xiaoyuzhou transcript path."},{"bin":"mail","required":false,"description":"msmtp-based mail command for email delivery."},{"bin":"msmtp","required":false,"description":"SMTP transport used by mail."},{"bin":"gog","required":false,"description":"Gmail CLI fallback for email delivery."},{"bin":"gh","required":false,"description":"GitHub CLI fallback for repository auth."},{"bin":"openssl","required":false,"description":"GitHub App JWT signing fallback."},{"bin":"weasyprint","required":false,"description":"PDF rendering backend."},{"bin":"yt-dlp","required":false,"description":"YouTube podcast metadata and transcript backend."},{"script":"scripts/fetch-podcast.py","required":false,"description":"Fetches RSS, YouTube, and Xiaoyuzhou podcast metadata, with optional transcript enrichment."}],"files":{"read":[{"path":"config/defaults/","description":"Default source and topic configurations."},{"path":"references/","description":"Prompt templates and output templates."},{"path":"scripts/","description":"Python pipeline scripts."},{"path":"<workspace>/archive/follow-news/","description":"Previous digests for deduplication."}],"write":[{"path":"/tmp/td-*.json","description":"Temporary pipeline intermediate outputs."},{"path":"/tmp/td-email.html","description":"Temporary email HTML body."},{"path":"/tmp/td-digest.pdf","description":"Generated PDF digest."},{"path":"<workspace>/archive/follow-news/","description":"Saved digest archives."}]}}}
@@ -122,7 +122,7 @@ Automated tech news digest system with unified data source model, quality scorin
    python3 scripts/run-pipeline.py \
      --defaults config/defaults \
      --config workspace/config \
-     --hours 48 --freshness pd \
+     --hours 24 --freshness pd \
      --archive-dir workspace/archive/follow-news/ \
      --output /tmp/td-merged.json --verbose --force
    ```
@@ -219,7 +219,7 @@ Automated tech news digest system with unified data source model, quality scorin
 ```bash
 python3 scripts/run-pipeline.py \
   --defaults config/defaults [--config CONFIG_DIR] \
-  --hours 48 --freshness pd \
+  --hours 24 --freshness pd \
   --archive-dir workspace/archive/follow-news/ \
   --output /tmp/td-merged.json --verbose --force
 ```
@@ -241,14 +241,14 @@ python3 scripts/run-pipeline.py \
 
 #### `fetch-rss.py` - RSS Feed Fetcher
 ```bash
-python3 scripts/fetch-rss.py [--defaults DIR] [--config DIR] [--hours 48] [--output FILE] [--verbose]
+python3 scripts/fetch-rss.py [--defaults DIR] [--config DIR] [--hours 24] [--output FILE] [--verbose]
 ```
 - Parallel fetching (10 workers), retry with backoff, feedparser + regex fallback
 - Timeout: 30s per feed, ETag/Last-Modified caching
 
 #### `fetch-twitter.py` - Twitter/X KOL Monitor
 ```bash
-python3 scripts/fetch-twitter.py [--defaults DIR] [--config DIR] [--hours 48] [--output FILE] [--backend auto|opencli|getxapi|twitterapiio|official]
+python3 scripts/fetch-twitter.py [--defaults DIR] [--config DIR] [--hours 24] [--output FILE] [--backend auto|opencli|getxapi|twitterapiio|official]
 ```
 - Backend auto-detection: tries OpenCLI first, then GetXAPI, twitterapi.io, and official X API v2
 - Rate limit handling, engagement metrics, retry with backoff
@@ -262,7 +262,7 @@ python3 scripts/fetch-web.py [--defaults DIR] [--config DIR] [--freshness pd] [-
 
 #### `fetch-github.py` - GitHub Releases Monitor
 ```bash
-python3 scripts/fetch-github.py [--defaults DIR] [--config DIR] [--hours 168] [--output FILE]
+python3 scripts/fetch-github.py [--defaults DIR] [--config DIR] [--hours 24] [--output FILE]
 ```
 - Parallel fetching (10 workers), 30s timeout
 - Auth priority: `$GITHUB_TOKEN` → GitHub App auto-generate → `gh` CLI → unauthenticated (60 req/hr)
@@ -270,21 +270,21 @@ python3 scripts/fetch-github.py [--defaults DIR] [--config DIR] [--hours 168] [-
 
 #### `fetch-github.py --trending` - GitHub Trending Repos
 ```bash
-python3 scripts/fetch-github.py --trending [--hours 48] [--output FILE] [--verbose]
+python3 scripts/fetch-github.py --trending [--hours 24] [--output FILE] [--verbose]
 ```
 - Searches GitHub API for trending repos across configured topics (`llm`, `ai-agent`, `builder`, `kol`, `frontier-tech`)
 - Quality scoring: base 5 + daily_stars_est / 10, max 15
 
 #### `fetch-reddit.py` - Reddit Posts Fetcher
 ```bash
-python3 scripts/fetch-reddit.py [--defaults DIR] [--config DIR] [--hours 48] [--output FILE]
+python3 scripts/fetch-reddit.py [--defaults DIR] [--config DIR] [--hours 24] [--output FILE]
 ```
 - Parallel fetching (4 workers), public JSON API (no auth required)
 - 8 subreddits with score filtering
 
 #### `fetch-podcast.py` - Podcast, YouTube, and Xiaoyuzhou Fetcher
 ```bash
-python3 scripts/fetch-podcast.py [--defaults DIR] [--config DIR] [--hours 48] [--output FILE] [--verbose]
+python3 scripts/fetch-podcast.py [--defaults DIR] [--config DIR] [--hours 24] [--output FILE] [--verbose]
 ```
 - Loads custom `type: "podcast"` sources from the unified source config.
 - Supports RSS podcast feeds without extra tools.
@@ -450,7 +450,7 @@ python3 scripts/fetch-twitter.py --hours 1 --verbose
 2. `python3 scripts/fetch-rss.py --hours 1 --verbose`
 3. `python3 scripts/run-pipeline.py --defaults config/defaults --hours 24 --freshness pd --archive-dir workspace/archive/follow-news/ --output /tmp/td-merged.json --verbose`
 
-If all pass, run the full windowed pipeline (`--hours 48` or `--hours 168`) with the requested template.
+If all pass, run the default 24h pipeline, or pass a longer `--hours` window when the requested digest explicitly needs historical coverage.
 
 ### Archive Management
 - Digests automatically archived to `<workspace>/archive/follow-news/`

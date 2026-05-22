@@ -6,7 +6,7 @@ Reads sources.json, filters GitHub sources, fetches releases in parallel with re
 mechanism, and outputs structured JSON with releases tagged by topics.
 
 Usage:
-    python3 fetch-github.py [--config CONFIG_DIR] [--hours 48] [--output FILE] [--verbose]
+    python3 fetch-github.py [--config CONFIG_DIR] [--hours 24] [--output FILE] [--verbose]
 """
 
 import json
@@ -423,7 +423,7 @@ def main():
         epilog="""
 Examples:
     python3 fetch-github.py
-    python3 fetch-github.py --defaults config/defaults --config workspace/config --hours 168 -o results.json
+    python3 fetch-github.py --defaults config/defaults --config workspace/config --hours 24 -o results.json
     python3 fetch-github.py --config workspace/config --verbose  # backward compatibility
     
 Environment Variables:
@@ -447,8 +447,8 @@ Environment Variables:
     parser.add_argument(
         "--hours",
         type=int,
-        default=168,  # 1 week default for releases
-        help="Time window in hours for releases (default: 168 = 1 week)"
+        default=24,
+        help="Time window in hours for releases (default: 24)"
     )
     
     parser.add_argument(
@@ -708,7 +708,7 @@ def fetch_trending_repos(
 def cmd_trending():
     """CLI entrypoint for trending repos."""
     parser = argparse.ArgumentParser(description="Fetch GitHub trending repos")
-    parser.add_argument("--hours", type=int, default=48, help="Lookback window (default: 48)")
+    parser.add_argument("--hours", type=int, default=24, help="Lookback window (default: 24)")
     parser.add_argument("--min-stars", type=int, default=50, help="Minimum stars (default: 50)")
     parser.add_argument("--per-topic", type=int, default=15, help="Max repos per topic (default: 15)")
     parser.add_argument(

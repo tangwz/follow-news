@@ -1141,7 +1141,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Fetch podcast episode metadata")
     parser.add_argument("--defaults", type=Path, default=Path("config/defaults"))
     parser.add_argument("--config", type=Path, default=None)
-    parser.add_argument("--hours", type=int, default=336)
+    parser.add_argument("--hours", type=int, default=24)
     parser.add_argument("--output", "-o", type=Path, default=None)
     parser.add_argument("--verbose", "-v", action="store_true")
     parser.add_argument("--no-cache", action="store_true")

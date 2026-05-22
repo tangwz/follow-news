@@ -6,7 +6,7 @@ Reads sources.json, filters Twitter sources, fetches recent posts using
 either the official X API v2 or twitterapi.io, and outputs structured JSON.
 
 Usage:
-    python3 fetch-twitter.py [--config CONFIG_DIR] [--hours 48] [--output FILE] [--verbose]
+    python3 fetch-twitter.py [--config CONFIG_DIR] [--hours 24] [--output FILE] [--verbose]
     python3 fetch-twitter.py --backend twitterapiio  # force twitterapi.io backend
 
 Environment:
@@ -2575,8 +2575,8 @@ Examples:
     parser.add_argument(
         "--hours",
         type=int,
-        default=48,
-        help="Time window in hours for tweets (default: 48)"
+        default=24,
+        help="Time window in hours for tweets (default: 24)"
     )
 
     parser.add_argument(

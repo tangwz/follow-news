@@ -6,7 +6,7 @@ Reads sources.json, filters RSS sources, fetches feeds in parallel with retry
 mechanism, and outputs structured JSON with articles tagged by topics.
 
 Usage:
-    python3 fetch-rss.py [--config CONFIG_DIR] [--hours 48] [--output FILE] [--verbose]
+    python3 fetch-rss.py [--config CONFIG_DIR] [--hours 24] [--output FILE] [--verbose]
 """
 
 import json
@@ -412,7 +412,7 @@ def main():
         epilog="""
 Examples:
     python3 fetch-rss.py
-    python3 fetch-rss.py --defaults config/defaults --config workspace/config --hours 48 -o results.json
+    python3 fetch-rss.py --defaults config/defaults --config workspace/config --hours 24 -o results.json
     python3 fetch-rss.py --config workspace/config --verbose  # backward compatibility
         """
     )
@@ -433,8 +433,8 @@ Examples:
     parser.add_argument(
         "--hours",
         type=int,
-        default=48,
-        help="Time window in hours for articles (default: 48)"
+        default=24,
+        help="Time window in hours for articles (default: 24)"
     )
     
     parser.add_argument(
