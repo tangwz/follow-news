@@ -510,7 +510,6 @@ def render_kol_updates(
 
     lines = ["## 📢 KOL Updates", ""]
     for article in tweets:
-        metric_text = format_kol_metric_text(article)
         display_name = (
             article.get("display_name") or article.get("source_name") or "Unknown"
         )
@@ -518,23 +517,11 @@ def render_kol_updates(
         summary = article.get("summary") or article.get("snippet") or article.get(
             "title", ""
         )
-        lines.append(f"• **{display_name}** (@{handle}) — {summary} `{metric_text}`")
+        lines.append(f"• **{display_name}** (@{handle}) — {summary}")
         lines.append(render_link(article_link(article)))
         lines.append("")
 
     return "\n".join(lines).rstrip()
-
-
-def format_kol_metric_text(article: Dict[str, Any]) -> str:
-    metrics = article.get("metrics", {})
-    if not isinstance(metrics, dict):
-        metrics = {}
-    return (
-        f"👁 {format_count(metrics.get('impression_count'))} | "
-        f"💬 {format_count(metrics.get('reply_count'))} | "
-        f"🔁 {format_count(metrics.get('retweet_count'))} | "
-        f"❤️ {format_count(metrics.get('like_count'))}"
-    )
 
 
 def is_low_signal_github_release(article: Dict[str, Any]) -> bool:
@@ -751,10 +738,9 @@ def render_chat_kol_updates(
 
     lines = ["## 📢 KOL Updates / 观点动态", ""]
     for index, article in enumerate(tweets, 1):
-        metric_text = format_kol_metric_text(article)
         lines.append(chat_title_line(article, index, "📢"))
         lines.append("")
-        lines.append(f"{chat_summary(article)} `{metric_text}`")
+        lines.append(chat_summary(article))
         lines.append("")
         lines.append(f"🔗 {article_link(article)}")
         lines.append("")

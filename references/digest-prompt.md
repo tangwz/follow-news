@@ -96,7 +96,7 @@ Use this evidence priority as weight, not exclusivity: `full_text > summary > sn
 
 Non-GitHub summaries normally use 2-4 sentences. Chat can keep this target when space permits. Discord and email length limits take precedence over sentence-count targets. When space is tight, compress to 1-2 sentences while preserving the most specific evidence-backed fact.
 
-For KOL/Twitter fixed sections, always render the four metrics from `metrics.impression_count`, `metrics.reply_count`, `metrics.retweet_count`, and `metrics.like_count` in that order. Missing, null, empty, or unparsable metric values render as 0. A real value of 0 also renders as 0. Metrics are context for reach and discussion, not proof that a claim is true.
+For KOL/Twitter fixed sections, keep author attribution and summary visible, but do not render engagement metrics. Metrics may remain in merged JSON for internal ranking and diagnostics only.
 
 Avoid unsupported significance words such as "major", "landmark", "strategic", "long-term impact", or "rare sober voice" unless the evidence explicitly supports that judgment. Prefer concrete facts and restrained reader impact.
 
@@ -118,10 +118,10 @@ When `<TEMPLATE>` is `chat`, use the fixed three-block item shape from `referenc
 
 **📢 KOL Updates** — Top Twitter KOLs + notable blog authors. Format:
 ```
-• **Display Name** (@handle) — summary `👁 12.3K | 💬 45 | 🔁 230 | ❤️ 1.2K`
+• **Display Name** (@handle) — summary
   <https://twitter.com/handle/status/ID>
 ```
-Read `display_name` and `metrics` (impression_count→👁, reply_count→💬, retweet_count→🔁, like_count→❤️) from merged JSON. Always show all 4 metrics, use K/M formatting, wrap in backticks. One tweet per bullet. Write the summary according to `references/summarize-tweets.md`.
+Read `display_name` and `handle` from merged JSON. Keep `metrics` fields available internally, but do not render views, replies, reposts, or likes in any output template. One tweet per bullet. Write the summary according to `references/summarize-tweets.md`.
 
 **<EXTRA_SECTIONS>**
 

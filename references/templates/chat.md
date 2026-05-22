@@ -72,7 +72,7 @@ Avoid unsupported significance words such as "major", "landmark", "strategic", "
 
 ## Source Rules
 
-- Twitter/X and KOL: follow `references/summarize-tweets.md`. In fixed KOL sections, always include interaction metrics from merged JSON fields `metrics.impression_count`, `metrics.reply_count`, `metrics.retweet_count`, and `metrics.like_count` as `👁 views | 💬 replies | 🔁 reposts | ❤️ likes`. Missing, null, empty, or unparsable metric values render as `0`. Never omit these metrics when an item appears in the section.
+- Twitter/X and KOL: follow `references/summarize-tweets.md`. Keep author attribution visible, but do not render engagement metrics such as views, replies, reposts, or likes. Metrics may remain in merged JSON for internal ranking and diagnostics only.
 - RSS and Web: prefer concrete product, model, version, company, person, metric, and publication-time details when present.
 - Reddit: distinguish the linked item from subreddit discussion. Treat subreddit activity and controversy as discussion context, not factual proof.
 - Podcast: follow `references/summarize-podcast.md` when transcript text is available. Without transcript, summarize only title, show name, snippet, duration, and source metadata.
