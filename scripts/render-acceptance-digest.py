@@ -13,6 +13,7 @@ from urllib.parse import parse_qsl, parse_qs, urlencode, urlparse
 
 MIN_QUALITY_SCORE = 5
 MAX_GITHUB_TRENDING_ITEMS = 5
+MAX_PODCAST_REMIX_ITEMS = 3
 TRACKING_QUERY_PARAMS = {
     "fbclid",
     "gclid",
@@ -370,9 +371,7 @@ def fixed_podcast_articles(data: Dict[str, Any]) -> List[Dict[str, Any]]:
     return [
         article
         for article in iter_articles(data)
-        if article.get("transcript_status") == "ok"
-        and article.get("transcript")
-        and article.get("source_type") == "podcast"
+        if article.get("source_type") == "podcast"
         and article_link(article)
     ]
 
@@ -704,22 +703,74 @@ def render_podcast_remix(
 
     episodes = sorted(episodes, key=quality_score, reverse=True)
     episodes = visible_registry.filter_unseen(episodes)
+    episodes = episodes[:MAX_PODCAST_REMIX_ITEMS]
     if not episodes:
         return None
 
     lines = ["## 🎙️ Podcast Remix", ""]
     for article in episodes:
         show_name = article.get("show_name") or article.get("source_name") or "Unknown"
-        summary = article.get("snippet") or article.get("summary") or ""
-        quote = str(article.get("transcript", "")).strip().splitlines()[0]
-        lines.append(
-            f"• **{article.get('title', '?')}** — {show_name} | "
-            f'{summary} Quote: "{quote}"'
-        )
+        lines.append(f"• **{article.get('title', '?')}** — {show_name}")
+        lines.append(f"  {podcast_digest_summary(article)}")
+        quote = podcast_quote(article)
+        if quote:
+            lines.append(f'  Quote: "{quote}"')
         lines.append(render_link(article_link(article)))
         lines.append("")
 
     return "\n".join(lines).rstrip()
+
+
+def podcast_has_transcript(article: Dict[str, Any]) -> bool:
+    return bool(
+        article.get("transcript_status") == "ok"
+        and compact_text(article.get("transcript"))
+    )
+
+
+def podcast_digest_summary(article: Dict[str, Any]) -> str:
+    explicit_summary = (
+        compact_text(article.get("chat_summary"))
+        or compact_text(article.get("summary"))
+        or compact_text(article.get("snippet"))
+    )
+    if explicit_summary:
+        return explicit_summary
+
+    title = compact_text(article.get("title")) or "This episode"
+    show_name = compact_text(article.get("show_name") or article.get("source_name"))
+    show_context = f" from {show_name}" if show_name else ""
+    if podcast_has_transcript(article):
+        return (
+            f"{title}{show_context} has a usable transcript, but no prepared "
+            "summary field was provided. Use the transcript quote below as the "
+            "only specific evidence in this deterministic preview."
+        )
+
+    return (
+        f"{title}{show_context} has no available transcript, so this metadata-only "
+        "preview does not infer claims beyond the title and source metadata."
+    )
+
+
+def podcast_quote(article: Dict[str, Any]) -> str:
+    if not podcast_has_transcript(article):
+        return ""
+
+    transcript = str(article.get("transcript", ""))
+    for raw_line in transcript.splitlines():
+        line = compact_text(raw_line)
+        if not line:
+            continue
+        line = re.sub(
+            r"^[^|]{1,40}\|\s*"
+            r"\d{1,2}:\d{2}(?::\d{2})?\s*-\s*"
+            r"\d{1,2}:\d{2}(?::\d{2})?\s*",
+            "",
+            line,
+        )
+        return line[:220]
+    return ""
 
 
 def render_chat_article_section(
@@ -805,7 +856,19 @@ def render_chat_podcast_remix(
     episodes = fixed_podcast_articles(data)
     episodes = sorted(episodes, key=quality_score, reverse=True)
     episodes = visible_registry.filter_unseen(episodes)
-    return render_chat_article_section("## 🎙️ Podcast Remix / 播客精选", "🎙️", episodes)
+    episodes = episodes[:MAX_PODCAST_REMIX_ITEMS]
+    if not episodes:
+        return None
+
+    lines = ["## 🎙️ Podcast Remix / 播客精选", ""]
+    for index, article in enumerate(episodes, 1):
+        lines.append(chat_title_line(article, index, "🎙️"))
+        lines.append("")
+        lines.append(podcast_digest_summary(article))
+        lines.append("")
+        lines.append(f"🔗 {article_link(article)}")
+        lines.append("")
+    return "\n".join(lines).rstrip()
 
 
 def first_sentence(text: str) -> str:

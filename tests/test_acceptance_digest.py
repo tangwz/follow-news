@@ -2091,6 +2091,82 @@ class TestAcceptanceRenderer(unittest.TestCase):
             1,
         )
 
+    def test_discord_podcast_remix_renders_metadata_only_episode(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 1},
+            "topics": {
+                "supplemental": {
+                    "articles": [
+                        {
+                            "title": "Agent taste preview",
+                            "link": "https://example.com/podcast",
+                            "source_type": "podcast",
+                            "show_name": "Training Data",
+                            "transcript_status": "missing",
+                            "snippet": "A short preview for an upcoming episode about agent product taste.",
+                            "quality_score": 12,
+                        }
+                    ]
+                }
+            },
+        }
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=[],
+            report_date="2026-05-22",
+            version="3.17.0",
+        )
+
+        self.assertIn("## 🎙️ Podcast Remix", text)
+        self.assertIn("• **Agent taste preview** — Training Data", text)
+        self.assertIn(
+            "A short preview for an upcoming episode about agent product taste.",
+            text,
+        )
+        self.assertNotIn("Quote:", text)
+
+    def test_discord_podcast_remix_renders_clean_transcript_quote(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 1},
+            "topics": {
+                "supplemental": {
+                    "articles": [
+                        {
+                            "title": "Why agents need product taste",
+                            "link": "https://example.com/podcast-transcript",
+                            "source_type": "podcast",
+                            "show_name": "Training Data",
+                            "transcript_status": "ok",
+                            "transcript": "Host | 00:00 - 00:05 Taste is the difference between a demo and a daily tool.",
+                            "summary": "The episode explains why product taste, evaluation loops, and reliability decide whether agent tools become daily workflow infrastructure.",
+                            "quality_score": 12,
+                        }
+                    ]
+                }
+            },
+        }
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=[],
+            report_date="2026-05-22",
+            version="3.17.0",
+        )
+
+        self.assertIn("• **Why agents need product taste** — Training Data", text)
+        self.assertIn(
+            "The episode explains why product taste, evaluation loops, and reliability decide whether agent tools become daily workflow infrastructure.",
+            text,
+        )
+        self.assertIn(
+            'Quote: "Taste is the difference between a demo and a daily tool."',
+            text,
+        )
+        self.assertNotIn("Host | 00:00", text)
+
     def test_github_trending_fixed_sections_limit_to_top_five_repos(self):
         data = {
             "input_sources": {},
