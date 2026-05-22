@@ -174,6 +174,30 @@ class VisibleArticleRegistry:
             visible.append(article)
         return visible
 
+    def filter_unseen_limited(
+        self,
+        articles: Iterable[Dict[str, Any]],
+        limit: int,
+    ) -> List[Dict[str, Any]]:
+        visible = []
+        for article in articles:
+            keys = article_dedupe_keys(article)
+            if not keys:
+                visible.append(article)
+            else:
+                self.register_aliases([article])
+                component_keys = self._component_keys(keys)
+                if component_keys & self.seen_keys:
+                    self.seen_keys.update(component_keys)
+                    continue
+
+                self.seen_keys.update(component_keys)
+                visible.append(article)
+
+            if len(visible) >= limit:
+                break
+        return visible
+
     def register_aliases(self, articles: Iterable[Dict[str, Any]]) -> None:
         for article in articles:
             keys = article_dedupe_keys(article)
@@ -376,10 +400,28 @@ def fixed_podcast_articles(data: Dict[str, Any]) -> List[Dict[str, Any]]:
     ]
 
 
-def podcast_remix_articles(data: Dict[str, Any]) -> List[Dict[str, Any]]:
+def podcast_has_transcript(article: Dict[str, Any]) -> bool:
+    return bool(
+        article.get("transcript_status") == "ok"
+        and compact_text(article.get("transcript"))
+    )
+
+
+def podcast_remix_sort_key(article: Dict[str, Any]) -> tuple:
+    return (
+        not podcast_has_transcript(article),
+        -quality_score(article),
+        compact_text(article.get("title")),
+    )
+
+
+def podcast_remix_candidates(data: Dict[str, Any]) -> List[Dict[str, Any]]:
     episodes = fixed_podcast_articles(data)
-    episodes = sorted(episodes, key=quality_score, reverse=True)
-    return episodes[:MAX_PODCAST_REMIX_ITEMS]
+    return sorted(episodes, key=podcast_remix_sort_key)
+
+
+def podcast_remix_articles(data: Dict[str, Any]) -> List[Dict[str, Any]]:
+    return podcast_remix_candidates(data)[:MAX_PODCAST_REMIX_ITEMS]
 
 
 def chat_topic_articles(topic_data: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -703,11 +745,11 @@ def render_podcast_remix(
     data: Dict[str, Any],
     visible_registry: VisibleArticleRegistry,
 ) -> Optional[str]:
-    episodes = podcast_remix_articles(data)
+    episodes = podcast_remix_candidates(data)
     if not episodes:
         return None
 
-    episodes = visible_registry.filter_unseen(episodes)
+    episodes = visible_registry.filter_unseen_limited(episodes, MAX_PODCAST_REMIX_ITEMS)
     if not episodes:
         return None
 
@@ -723,13 +765,6 @@ def render_podcast_remix(
         lines.append("")
 
     return "\n".join(lines).rstrip()
-
-
-def podcast_has_transcript(article: Dict[str, Any]) -> bool:
-    return bool(
-        article.get("transcript_status") == "ok"
-        and compact_text(article.get("transcript"))
-    )
 
 
 def podcast_digest_summary(
@@ -873,8 +908,8 @@ def render_chat_podcast_remix(
     data: Dict[str, Any],
     visible_registry: VisibleArticleRegistry,
 ) -> Optional[str]:
-    episodes = podcast_remix_articles(data)
-    episodes = visible_registry.filter_unseen(episodes)
+    episodes = podcast_remix_candidates(data)
+    episodes = visible_registry.filter_unseen_limited(episodes, MAX_PODCAST_REMIX_ITEMS)
     if not episodes:
         return None
 

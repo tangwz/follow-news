@@ -2275,6 +2275,94 @@ class TestAcceptanceRenderer(unittest.TestCase):
 
         self.assertIn('Quote: "Concrete evidence matters."', text)
 
+    def test_podcast_remix_prioritizes_transcript_backed_episodes(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 4},
+            "topics": {
+                "supplemental": {
+                    "articles": [
+                        {
+                            "title": f"Metadata episode {index}",
+                            "link": f"https://example.com/metadata-podcast-{index}",
+                            "source_type": "podcast",
+                            "show_name": "Example Show",
+                            "transcript_status": "missing",
+                            "summary": f"Metadata summary {index}.",
+                            "quality_score": 100 - index,
+                        }
+                        for index in range(3)
+                    ]
+                    + [
+                        {
+                            "title": "Transcript episode",
+                            "link": "https://example.com/transcript-podcast",
+                            "source_type": "podcast",
+                            "show_name": "Example Show",
+                            "transcript_status": "ok",
+                            "transcript": "Guest | 00:00 - 00:05 Transcript evidence.",
+                            "quality_score": 1,
+                        }
+                    ]
+                }
+            },
+        }
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=[],
+            report_date="2026-05-22",
+            version="3.17.0",
+        )
+
+        self.assertIn("**Transcript episode**", text)
+        self.assertIn('Quote: "Transcript evidence."', text)
+        self.assertNotIn("**Metadata episode 2**", text)
+
+    def test_podcast_remix_backfills_after_dedupe(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 5},
+            "topics": {
+                "ai-agent": {
+                    "articles": [
+                        {
+                            "title": "Topic already used this podcast URL",
+                            "link": "https://example.com/podcast-0",
+                            "summary": "Topic summary.",
+                            "quality_score": 20,
+                        }
+                    ]
+                },
+                "supplemental": {
+                    "articles": [
+                        {
+                            "title": f"Podcast {index}",
+                            "link": f"https://example.com/podcast-{index}",
+                            "source_type": "podcast",
+                            "show_name": "Example Show",
+                            "transcript_status": "missing",
+                            "summary": f"Podcast summary {index}.",
+                            "quality_score": 10 - index,
+                        }
+                        for index in range(4)
+                    ]
+                },
+            },
+        }
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=[{"id": "ai-agent", "label": "AI Agent", "emoji": "🤖"}],
+            report_date="2026-05-22",
+            version="3.17.0",
+        )
+
+        self.assertIn("**Podcast 1**", text)
+        self.assertIn("**Podcast 2**", text)
+        self.assertIn("**Podcast 3**", text)
+        self.assertNotIn("**Podcast 0**", text)
+
     def test_podcast_alias_candidates_do_not_include_items_beyond_remix_limit(self):
         data = {
             "input_sources": {},
