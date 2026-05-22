@@ -2155,6 +2155,161 @@ class TestAcceptanceRenderer(unittest.TestCase):
         self.assertIn("🔗 https://news.ycombinator.com/item?id=18", text)
         self.assertIn("↗ https://example.com/llm-inference", text)
 
+    def test_hacker_news_top_selects_default_items_by_score_not_rank(self):
+        articles = [
+            {
+                "title": "High score later HN story",
+                "link": "https://example.com/high-score",
+                "hn_url": "https://news.ycombinator.com/item?id=999",
+                "source_type": "rss",
+                "source_name": "Hacker News Frontpage",
+                "source_id": "hn-rss",
+                "hn_rank": 19,
+                "score": 500,
+                "num_comments": 12,
+                "summary": "A high scoring story outside the old rank gate.",
+                "quality_score": 10,
+            },
+            {
+                "title": "Low score frontpage HN story",
+                "link": "https://example.com/low-score",
+                "hn_url": "https://news.ycombinator.com/item?id=1",
+                "source_type": "rss",
+                "source_name": "Hacker News Frontpage",
+                "source_id": "hn-rss",
+                "hn_rank": 1,
+                "score": 1,
+                "num_comments": 1,
+                "summary": "A low scoring story with an early feed position.",
+                "quality_score": 10,
+            },
+        ]
+        articles.extend(
+            {
+                "title": f"Scored HN story {index}",
+                "link": f"https://example.com/scored-{index}",
+                "hn_url": f"https://news.ycombinator.com/item?id={index}",
+                "source_type": "rss",
+                "source_name": "Hacker News Frontpage",
+                "source_id": "hn-rss",
+                "hn_rank": index,
+                "score": 100 - index,
+                "num_comments": index,
+                "summary": f"Summary {index}.",
+                "quality_score": 10,
+            }
+            for index in range(2, 11)
+        )
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": len(articles)},
+            "topics": {"supplemental": {"articles": articles}},
+        }
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=[],
+            report_date="2026-05-22",
+            version="3.17.0",
+        )
+
+        self.assertIn("**High score later HN story**", text)
+        self.assertNotIn("**Low score frontpage HN story**", text)
+
+    def test_hacker_news_ai_related_extra_uses_token_boundaries(self):
+        articles = [
+            {
+                "title": f"Top HN story {index}",
+                "link": f"https://example.com/top-{index}",
+                "hn_url": f"https://news.ycombinator.com/item?id={index}",
+                "source_type": "rss",
+                "source_name": "Hacker News Frontpage",
+                "source_id": "hn-rss",
+                "score": 1000 - index,
+                "num_comments": index,
+                "summary": f"Summary {index}.",
+                "quality_score": 10,
+            }
+            for index in range(1, 11)
+        ]
+        articles.extend(
+            [
+                {
+                    "title": "Paid XML email tooling",
+                    "link": "https://example.com/false-positive",
+                    "hn_url": "https://news.ycombinator.com/item?id=101",
+                    "source_type": "rss",
+                    "source_name": "Hacker News Frontpage",
+                    "source_id": "hn-rss",
+                    "score": 900,
+                    "num_comments": 11,
+                    "summary": "Text that should not match short tokens.",
+                    "quality_score": 10,
+                },
+                {
+                    "title": "LLM inference systems story",
+                    "link": "https://example.com/llm-extra",
+                    "hn_url": "https://news.ycombinator.com/item?id=102",
+                    "source_type": "rss",
+                    "source_name": "Hacker News Frontpage",
+                    "source_id": "hn-rss",
+                    "score": 899,
+                    "num_comments": 12,
+                    "summary": "A real AI systems discussion.",
+                    "quality_score": 10,
+                },
+            ]
+        )
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": len(articles)},
+            "topics": {"supplemental": {"articles": articles}},
+        }
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=[],
+            report_date="2026-05-22",
+            version="3.17.0",
+        )
+
+        self.assertNotIn("**Paid XML email tooling**", text)
+        self.assertIn("**LLM inference systems story**", text)
+
+    def test_hacker_news_top_includes_merged_story_without_hn_url(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 1},
+            "topics": {
+                "supplemental": {
+                    "articles": [
+                        {
+                            "title": "Merged HN story",
+                            "link": "https://example.com/merged-hn",
+                            "source_type": "article",
+                            "source_name": "Example",
+                            "all_sources": ["Example", "Hacker News Frontpage"],
+                            "score": 120,
+                            "num_comments": 18,
+                            "summary": "A merged story retained from Hacker News.",
+                            "quality_score": 10,
+                        }
+                    ]
+                }
+            },
+        }
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=[],
+            report_date="2026-05-22",
+            version="3.17.0",
+        )
+
+        self.assertIn("## 📰 Hacker News Top", text)
+        self.assertIn("**Merged HN story**", text)
+        self.assertEqual(text.count("https://example.com/merged-hn"), 1)
+
     def test_chat_hacker_news_top_uses_fixed_numbered_shape(self):
         data = {
             "input_sources": {},
@@ -2214,6 +2369,7 @@ class TestAcceptanceRenderer(unittest.TestCase):
         )
         self.assertEqual(metadata["score"], 234)
         self.assertEqual(metadata["num_comments"], 56)
+        self.assertNotIn("hn_rank", metadata)
 
     def test_github_trending_fixed_sections_limit_to_top_five_repos(self):
         data = {

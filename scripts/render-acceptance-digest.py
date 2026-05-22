@@ -393,7 +393,8 @@ def fixed_hacker_news_articles(data: Dict[str, Any]) -> List[Dict[str, Any]]:
     return [
         article
         for article in iter_articles(data)
-        if is_hacker_news_article(article) and hacker_news_url(article)
+        if is_hacker_news_article(article)
+        and (hacker_news_url(article) or hacker_news_article_url(article))
     ]
 
 
@@ -652,6 +653,10 @@ def hacker_news_article_url(article: Dict[str, Any]) -> str:
     return compact_text(article.get("external_url") or article_link(article))
 
 
+def hacker_news_primary_url(article: Dict[str, Any]) -> str:
+    return hacker_news_url(article) or hacker_news_article_url(article)
+
+
 def parse_int(value: Any) -> int:
     try:
         return int(value)
@@ -677,33 +682,32 @@ def is_ai_related_hacker_news_article(article: Dict[str, Any]) -> bool:
         compact_text(article.get(field))
         for field in ("title", "summary", "snippet", "description")
     ).lower()
-    return any(keyword in haystack for keyword in HN_AI_KEYWORDS)
+    return any(keyword_matches_text(keyword, haystack) for keyword in HN_AI_KEYWORDS)
+
+
+def keyword_matches_text(keyword: str, text: str) -> bool:
+    pattern = re.escape(keyword.lower()).replace(r"\ ", r"\s+")
+    return re.search(rf"(?<![a-z0-9]){pattern}(?![a-z0-9])", text) is not None
 
 
 def select_hacker_news_top_articles(
     articles: Sequence[Dict[str, Any]],
 ) -> List[Dict[str, Any]]:
-    selected = [
-        article
-        for article in articles
-        if hacker_news_rank(article) <= HN_DEFAULT_LIMIT
-        or (
-            hacker_news_rank(article) <= HN_AI_RELATED_LIMIT
-            and is_ai_related_hacker_news_article(article)
-        )
-    ]
-    if not selected:
-        selected = list(articles)
-
-    selected = sorted(
-        selected,
+    sorted_articles = sorted(
+        articles,
         key=lambda article: (
             -hacker_news_score(article),
             hacker_news_rank(article),
             compact_text(article.get("title")),
         ),
     )
-    return selected[:HN_AI_RELATED_LIMIT]
+    default_articles = sorted_articles[:HN_DEFAULT_LIMIT]
+    ai_related_extras = [
+        article
+        for article in sorted_articles[HN_DEFAULT_LIMIT:HN_AI_RELATED_LIMIT]
+        if is_ai_related_hacker_news_article(article)
+    ]
+    return default_articles + ai_related_extras
 
 
 def hacker_news_summary(article: Dict[str, Any]) -> str:
@@ -738,9 +742,10 @@ def render_hacker_news_top(
         summary = hacker_news_summary(article)
         if summary:
             lines.append(f"   {summary}")
-        lines.append(f"   🔗 {hacker_news_url(article)}")
+        lines.append(f"   🔗 {hacker_news_primary_url(article)}")
+        primary_url = hacker_news_primary_url(article)
         article_url = hacker_news_article_url(article)
-        if article_url and article_url != hacker_news_url(article):
+        if article_url and article_url != primary_url:
             lines.append(f"   ↗ {article_url}")
         lines.append("")
 
@@ -939,9 +944,10 @@ def render_chat_hacker_news_top(
             f"{hacker_news_summary(article)}"
         )
         lines.append("")
-        lines.append(f"🔗 {hacker_news_url(article)}")
+        lines.append(f"🔗 {hacker_news_primary_url(article)}")
+        primary_url = hacker_news_primary_url(article)
         article_url = hacker_news_article_url(article)
-        if article_url and article_url != hacker_news_url(article):
+        if article_url and article_url != primary_url:
             lines.append(f"↗ {article_url}")
         lines.append("")
     return "\n".join(lines).rstrip()

@@ -182,7 +182,7 @@ def parse_feed_feedparser(content: str, cutoff: datetime, feed_url: str) -> List
     try:
         feed = feedparser.parse(content)
         
-        for index, entry in enumerate(feed.entries[:MAX_ARTICLES_PER_FEED], 1):
+        for entry in feed.entries[:MAX_ARTICLES_PER_FEED]:
             title = entry.get('title', '').strip()
             link = entry.get('link', '').strip()
             
@@ -217,7 +217,6 @@ def parse_feed_feedparser(content: str, cutoff: datetime, feed_url: str) -> List
                             entry.get("comments", ""),
                         )
                     )
-                    article["hn_rank"] = index
                 articles.append(article)
                 
     except Exception as e:
@@ -231,10 +230,7 @@ def parse_feed_regex(content: str, cutoff: datetime, feed_url: str) -> List[Dict
     articles = []
 
     # RSS 2.0 items
-    for index, item in enumerate(
-        re.finditer(r"<item[^>]*>(.*?)</item>", content, re.DOTALL),
-        1,
-    ):
+    for item in re.finditer(r"<item[^>]*>(.*?)</item>", content, re.DOTALL):
         block = item.group(1)
         title = strip_tags(get_tag(block, "title"))
         link = resolve_link(get_tag(block, "link"), feed_url)
@@ -254,7 +250,6 @@ def parse_feed_regex(content: str, cutoff: datetime, feed_url: str) -> List[Dict
                         get_tag(block, "comments"),
                     )
                 )
-                article["hn_rank"] = index
             articles.append(article)
 
     # Atom entries fallback
