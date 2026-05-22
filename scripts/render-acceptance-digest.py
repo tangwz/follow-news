@@ -376,6 +376,12 @@ def fixed_podcast_articles(data: Dict[str, Any]) -> List[Dict[str, Any]]:
     ]
 
 
+def podcast_remix_articles(data: Dict[str, Any]) -> List[Dict[str, Any]]:
+    episodes = fixed_podcast_articles(data)
+    episodes = sorted(episodes, key=quality_score, reverse=True)
+    return episodes[:MAX_PODCAST_REMIX_ITEMS]
+
+
 def chat_topic_articles(topic_data: Dict[str, Any]) -> List[Dict[str, Any]]:
     articles = [
         article
@@ -413,7 +419,7 @@ def visible_alias_candidates(
     )
     candidates.extend(fixed_github_trending_articles(data))
     candidates.extend(fixed_blog_pick_articles(data))
-    candidates.extend(fixed_podcast_articles(data))
+    candidates.extend(podcast_remix_articles(data))
     return candidates
 
 
@@ -697,13 +703,11 @@ def render_podcast_remix(
     data: Dict[str, Any],
     visible_registry: VisibleArticleRegistry,
 ) -> Optional[str]:
-    episodes = fixed_podcast_articles(data)
+    episodes = podcast_remix_articles(data)
     if not episodes:
         return None
 
-    episodes = sorted(episodes, key=quality_score, reverse=True)
     episodes = visible_registry.filter_unseen(episodes)
-    episodes = episodes[:MAX_PODCAST_REMIX_ITEMS]
     if not episodes:
         return None
 
@@ -728,11 +732,25 @@ def podcast_has_transcript(article: Dict[str, Any]) -> bool:
     )
 
 
-def podcast_digest_summary(article: Dict[str, Any]) -> str:
-    explicit_summary = (
-        compact_text(article.get("chat_summary"))
-        or compact_text(article.get("summary"))
-        or compact_text(article.get("snippet"))
+def podcast_digest_summary(
+    article: Dict[str, Any],
+    prefer_chat_summary: bool = False,
+) -> str:
+    summary_fields = (
+        ("chat_summary", "summary", "snippet", "description")
+        if prefer_chat_summary
+        else ("summary", "snippet", "description")
+    )
+    explicit_summary = next(
+        (
+            text
+            for text in (
+                compact_text(article.get(field))
+                for field in summary_fields
+            )
+            if text
+        ),
+        "",
     )
     if explicit_summary:
         return explicit_summary
@@ -769,6 +787,8 @@ def podcast_quote(article: Dict[str, Any]) -> str:
             "",
             line,
         )
+        if not line:
+            continue
         return line[:220]
     return ""
 
@@ -853,10 +873,8 @@ def render_chat_podcast_remix(
     data: Dict[str, Any],
     visible_registry: VisibleArticleRegistry,
 ) -> Optional[str]:
-    episodes = fixed_podcast_articles(data)
-    episodes = sorted(episodes, key=quality_score, reverse=True)
+    episodes = podcast_remix_articles(data)
     episodes = visible_registry.filter_unseen(episodes)
-    episodes = episodes[:MAX_PODCAST_REMIX_ITEMS]
     if not episodes:
         return None
 
@@ -864,7 +882,10 @@ def render_chat_podcast_remix(
     for index, article in enumerate(episodes, 1):
         lines.append(chat_title_line(article, index, "🎙️"))
         lines.append("")
-        lines.append(podcast_digest_summary(article))
+        lines.append(podcast_digest_summary(article, prefer_chat_summary=True))
+        quote = podcast_quote(article)
+        if quote:
+            lines.append(f'Quote: "{quote}"')
         lines.append("")
         lines.append(f"🔗 {article_link(article)}")
         lines.append("")

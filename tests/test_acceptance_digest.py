@@ -2167,6 +2167,156 @@ class TestAcceptanceRenderer(unittest.TestCase):
         )
         self.assertNotIn("Host | 00:00", text)
 
+    def test_podcast_remix_uses_description_metadata_fallback(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 1},
+            "topics": {
+                "supplemental": {
+                    "articles": [
+                        {
+                            "title": "Metadata-only episode",
+                            "link": "https://example.com/podcast-description",
+                            "source_type": "podcast",
+                            "show_name": "Example Show",
+                            "transcript_status": "missing",
+                            "description": "Description-only context should remain visible.",
+                            "quality_score": 12,
+                        }
+                    ]
+                }
+            },
+        }
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=[],
+            report_date="2026-05-22",
+            version="3.17.0",
+        )
+
+        self.assertIn("Description-only context should remain visible.", text)
+        self.assertNotIn("has no available transcript", text)
+
+    def test_discord_podcast_remix_prefers_standard_summary_over_chat_summary(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 1},
+            "topics": {
+                "supplemental": {
+                    "articles": [
+                        {
+                            "title": "Localized summary episode",
+                            "link": "https://example.com/podcast-localized",
+                            "source_type": "podcast",
+                            "show_name": "Example Show",
+                            "transcript_status": "missing",
+                            "chat_summary": "这是一段只适合 chat 的摘要。",
+                            "summary": "This summary is intended for default digest output.",
+                            "quality_score": 12,
+                        }
+                    ]
+                }
+            },
+        }
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=[],
+            report_date="2026-05-22",
+            version="3.17.0",
+        )
+
+        self.assertIn("This summary is intended for default digest output.", text)
+        self.assertNotIn("这是一段只适合 chat 的摘要", text)
+
+    def test_podcast_quote_skips_empty_cleaned_transcript_lines(self):
+        article = {
+            "transcript_status": "ok",
+            "transcript": (
+                "Host | 00:00 - 00:05\n"
+                "Guest | 00:05 - 00:10 Evaluation loops create product taste."
+            ),
+        }
+
+        self.assertEqual(
+            render_mod.podcast_quote(article),
+            "Evaluation loops create product taste.",
+        )
+
+    def test_chat_podcast_remix_renders_transcript_quote(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 1},
+            "topics": {
+                "supplemental": {
+                    "articles": [
+                        {
+                            "title": "Transcript-only episode",
+                            "link": "https://example.com/podcast-chat-quote",
+                            "source_type": "podcast",
+                            "show_name": "Example Show",
+                            "transcript_status": "ok",
+                            "transcript": "Host | 00:00 - 00:05 Concrete evidence matters.",
+                            "quality_score": 12,
+                        }
+                    ]
+                }
+            },
+        }
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=[],
+            report_date="2026-05-22",
+            version="3.17.0",
+            template="chat",
+        )
+
+        self.assertIn('Quote: "Concrete evidence matters."', text)
+
+    def test_podcast_alias_candidates_do_not_include_items_beyond_remix_limit(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 4},
+            "topics": {
+                "supplemental": {
+                    "articles": [
+                        {
+                            "title": f"Podcast {index}",
+                            "link": f"https://example.com/podcast-{index}",
+                            "source_type": "podcast",
+                            "show_name": "Example Show",
+                            "transcript_status": "missing",
+                            "summary": f"Podcast summary {index}.",
+                            "quality_score": 10 - index,
+                        }
+                        for index in range(4)
+                    ]
+                }
+            },
+        }
+
+        candidates = render_mod.visible_alias_candidates(
+            data,
+            topic_defs=[],
+            template="chat",
+        )
+
+        podcast_links = [
+            article["link"]
+            for article in candidates
+            if article.get("source_type") == "podcast"
+        ]
+        self.assertEqual(
+            podcast_links,
+            [
+                "https://example.com/podcast-0",
+                "https://example.com/podcast-1",
+                "https://example.com/podcast-2",
+            ],
+        )
+
     def test_github_trending_fixed_sections_limit_to_top_five_repos(self):
         data = {
             "input_sources": {},
