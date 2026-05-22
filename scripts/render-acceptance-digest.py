@@ -14,6 +14,29 @@ from urllib.parse import parse_qsl, parse_qs, urlencode, urlparse
 MIN_QUALITY_SCORE = 5
 MAX_GITHUB_TRENDING_ITEMS = 5
 MAX_PODCAST_REMIX_ITEMS = 3
+HN_DEFAULT_LIMIT = 10
+HN_AI_RELATED_LIMIT = 20
+HN_AI_KEYWORDS = (
+    "ai",
+    "artificial intelligence",
+    "llm",
+    "gpt",
+    "claude",
+    "gemini",
+    "openai",
+    "anthropic",
+    "deepmind",
+    "machine learning",
+    "ml",
+    "neural",
+    "transformer",
+    "agent",
+    "embedding",
+    "fine-tune",
+    "finetune",
+    "inference",
+    "model",
+)
 TRACKING_QUERY_PARAMS = {
     "fbclid",
     "gclid",
@@ -391,6 +414,16 @@ def fixed_blog_pick_articles(data: Dict[str, Any]) -> List[Dict[str, Any]]:
     ]
 
 
+def fixed_hacker_news_articles(data: Dict[str, Any]) -> List[Dict[str, Any]]:
+    return [
+        article
+        for article in iter_articles(data)
+        if is_hacker_news_article(article)
+        and has_hacker_news_metadata(article)
+        and (hacker_news_url(article) or hacker_news_article_url(article))
+    ]
+
+
 def fixed_podcast_articles(data: Dict[str, Any]) -> List[Dict[str, Any]]:
     return [
         article
@@ -459,6 +492,7 @@ def visible_alias_candidates(
             filter_low_signal=(template == "chat"),
         )
     )
+    candidates.extend(fixed_hacker_news_articles(data))
     candidates.extend(fixed_github_trending_articles(data))
     candidates.extend(fixed_blog_pick_articles(data))
     candidates.extend(podcast_remix_candidates(data))
@@ -633,6 +667,176 @@ def release_tag_text(article: Dict[str, Any]) -> str:
         title,
     )
     return " ".join(matches)
+
+
+def is_hacker_news_article(article: Dict[str, Any]) -> bool:
+    if compact_text(article.get("hn_url")):
+        return True
+    if article.get("source_id") == "hn-rss":
+        return True
+    if article.get("source_name") == "Hacker News Frontpage":
+        return True
+    all_sources = article.get("all_sources", [])
+    return isinstance(all_sources, list) and "Hacker News Frontpage" in all_sources
+
+
+def is_direct_hacker_news_article(article: Dict[str, Any]) -> bool:
+    return (
+        article.get("source_id") == "hn-rss"
+        or article.get("source_name") == "Hacker News Frontpage"
+    )
+
+
+def has_hacker_news_metadata(article: Dict[str, Any]) -> bool:
+    return (
+        hacker_news_score_value(article) is not None
+        and hacker_news_comments_value(article) is not None
+    )
+
+
+def hacker_news_url(article: Dict[str, Any]) -> str:
+    return compact_text(article.get("hn_url") or article.get("comments_url"))
+
+
+def hacker_news_article_url(article: Dict[str, Any]) -> str:
+    return compact_text(article.get("external_url") or article_link(article))
+
+
+def hacker_news_primary_url(article: Dict[str, Any]) -> str:
+    return hacker_news_url(article) or hacker_news_article_url(article)
+
+
+def parse_int(value: Any) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
+
+
+def parse_optional_int(value: Any) -> Optional[int]:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def hacker_news_score_value(article: Dict[str, Any]) -> Optional[int]:
+    hn_score = parse_optional_int(article.get("hn_score"))
+    if hn_score is not None:
+        return hn_score
+    if hacker_news_url(article) or is_direct_hacker_news_article(article):
+        return parse_optional_int(article.get("score"))
+    return None
+
+
+def hacker_news_score(article: Dict[str, Any]) -> int:
+    return hacker_news_score_value(article) or 0
+
+
+def hacker_news_comments_value(article: Dict[str, Any]) -> Optional[int]:
+    hn_comments = parse_optional_int(
+        article.get("hn_comments")
+        or article.get("hn_comments_count")
+        or article.get("hn_num_comments")
+    )
+    if hn_comments is not None:
+        return hn_comments
+    if hacker_news_url(article) or is_direct_hacker_news_article(article):
+        return parse_optional_int(
+            article.get("num_comments") or article.get("comments_count")
+        )
+    return None
+
+
+def hacker_news_comments(article: Dict[str, Any]) -> int:
+    return hacker_news_comments_value(article) or 0
+
+
+def hacker_news_rank(article: Dict[str, Any]) -> int:
+    rank = parse_int(article.get("hn_rank") or article.get("rank"))
+    return rank if rank > 0 else 9999
+
+
+def is_ai_related_hacker_news_article(article: Dict[str, Any]) -> bool:
+    haystack = compact_text(article.get("title")).lower()
+    return any(keyword_matches_text(keyword, haystack) for keyword in HN_AI_KEYWORDS)
+
+
+def keyword_matches_text(keyword: str, text: str) -> bool:
+    pattern = re.escape(keyword.lower()).replace(r"\ ", r"[\s-]+")
+    return re.search(rf"(?<![a-z0-9]){pattern}(?![a-z0-9])", text) is not None
+
+
+def select_hacker_news_top_articles(
+    articles: Sequence[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    sorted_articles = sorted(
+        articles,
+        key=lambda article: (
+            -hacker_news_score(article),
+            hacker_news_rank(article),
+            compact_text(article.get("title")),
+        ),
+    )
+    default_articles = sorted_articles[:HN_DEFAULT_LIMIT]
+    default_article_ids = {id(article) for article in default_articles}
+    ai_related_extras = [
+        article
+        for article in sorted(
+            articles,
+            key=lambda article: (
+                hacker_news_rank(article),
+                -hacker_news_score(article),
+                compact_text(article.get("title")),
+            ),
+        )
+        if id(article) not in default_article_ids
+        and HN_DEFAULT_LIMIT < hacker_news_rank(article) <= HN_AI_RELATED_LIMIT
+        and is_ai_related_hacker_news_article(article)
+    ]
+    return default_articles + ai_related_extras
+
+
+def hacker_news_summary(article: Dict[str, Any]) -> str:
+    return (
+        compact_text(article.get("chat_summary"))
+        or compact_text(article.get("summary"))
+        or compact_text(article.get("snippet"))
+        or compact_text(article.get("description"))
+        or compact_text(article.get("title"))
+    )
+
+
+def render_hacker_news_top(
+    data: Dict[str, Any],
+    visible_registry: VisibleArticleRegistry,
+) -> Optional[str]:
+    articles = fixed_hacker_news_articles(data)
+    if not articles:
+        return None
+
+    articles = select_hacker_news_top_articles(articles)
+    articles = visible_registry.filter_unseen(articles)
+    if not articles:
+        return None
+
+    lines = ["## 📰 Hacker News Top", ""]
+    for index, article in enumerate(articles, 1):
+        title = article.get("title", "?")
+        score = hacker_news_score(article)
+        comments = hacker_news_comments(article)
+        lines.append(f"{index}. **{title}** — {score}↑ · {comments} comments")
+        summary = hacker_news_summary(article)
+        if summary:
+            lines.append(f"   {summary}")
+        lines.append(f"   🔗 {hacker_news_primary_url(article)}")
+        primary_url = hacker_news_primary_url(article)
+        article_url = hacker_news_article_url(article)
+        if article_url and article_url != primary_url:
+            lines.append(f"   ↗ {article_url}")
+        lines.append("")
+
+    return "\n".join(lines).rstrip()
 
 
 def render_github_releases(
@@ -863,6 +1067,35 @@ def render_chat_github_releases(
     return render_chat_article_section("## 📦 GitHub Releases / 发布", "📦", releases)
 
 
+def render_chat_hacker_news_top(
+    data: Dict[str, Any],
+    visible_registry: VisibleArticleRegistry,
+) -> Optional[str]:
+    articles = fixed_hacker_news_articles(data)
+    articles = select_hacker_news_top_articles(articles)
+    articles = visible_registry.filter_unseen(articles)
+    if not articles:
+        return None
+
+    lines = ["## 📰 Hacker News Top / 热榜", ""]
+    for index, article in enumerate(articles, 1):
+        lines.append(chat_title_line(article, index, "📰"))
+        lines.append("")
+        lines.append(
+            f"{hacker_news_score(article)}↑ · "
+            f"{hacker_news_comments(article)} comments · "
+            f"{hacker_news_summary(article)}"
+        )
+        lines.append("")
+        lines.append(f"🔗 {hacker_news_primary_url(article)}")
+        primary_url = hacker_news_primary_url(article)
+        article_url = hacker_news_article_url(article)
+        if article_url and article_url != primary_url:
+            lines.append(f"↗ {article_url}")
+        lines.append("")
+    return "\n".join(lines).rstrip()
+
+
 def render_chat_github_trending(
     data: Dict[str, Any],
     visible_registry: VisibleArticleRegistry,
@@ -1062,6 +1295,7 @@ def render_digest(
 
     for renderer in (
         render_kol_updates,
+        render_hacker_news_top,
         render_github_releases,
         render_github_trending,
         render_blog_picks,
@@ -1093,6 +1327,7 @@ def render_chat_digest(
 
     for renderer in (
         render_chat_kol_updates,
+        render_chat_hacker_news_top,
         render_chat_github_releases,
         render_chat_github_trending,
         render_chat_blog_picks,

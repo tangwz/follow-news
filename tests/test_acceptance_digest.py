@@ -9,6 +9,7 @@ import re
 import subprocess
 import tempfile
 import unittest
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
 
@@ -23,6 +24,7 @@ DAILY_GOLDEN = GOLDEN_DIR / "daily-discord.md"
 DAILY_CHAT_GOLDEN = GOLDEN_DIR / "daily-chat.md"
 FIXED_DIGEST_SECTIONS = {
     "## 📢 KOL Updates",
+    "## 📰 Hacker News Top",
     "## 📦 GitHub Releases",
     "## 🐙 GitHub Trending",
     "## 📝 Blog Picks",
@@ -49,6 +51,13 @@ fetch_github_spec = importlib.util.spec_from_file_location(
 )
 fetch_github_mod = importlib.util.module_from_spec(fetch_github_spec)
 fetch_github_spec.loader.exec_module(fetch_github_mod)
+
+fetch_rss_spec = importlib.util.spec_from_file_location(
+    "fetch_rss",
+    SCRIPTS_DIR / "fetch-rss.py",
+)
+fetch_rss_mod = importlib.util.module_from_spec(fetch_rss_spec)
+fetch_rss_spec.loader.exec_module(fetch_rss_mod)
 
 
 def load_acceptance_fixture():
@@ -2504,6 +2513,584 @@ class TestAcceptanceRenderer(unittest.TestCase):
                 "https://example.com/podcast-3",
             ],
         )
+
+    def test_hacker_news_top_renders_top_ten_plus_ai_related_top_twenty(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 12},
+            "topics": {
+                "supplemental": {
+                    "articles": [
+                        {
+                            "title": f"HN story {index}",
+                            "link": f"https://example.com/story-{index}",
+                            "hn_url": f"https://news.ycombinator.com/item?id={index}",
+                            "source_type": "rss",
+                            "source_name": "Hacker News Frontpage",
+                            "source_id": "hn-rss",
+                            "hn_rank": index,
+                            "score": 100 - index,
+                            "num_comments": index,
+                            "summary": f"Summary {index}.",
+                            "quality_score": 10,
+                        }
+                        for index in range(1, 12)
+                    ]
+                    + [
+                        {
+                            "title": "LLM inference systems story",
+                            "link": "https://example.com/llm-inference",
+                            "hn_url": "https://news.ycombinator.com/item?id=18",
+                            "source_type": "rss",
+                            "source_name": "Hacker News Frontpage",
+                            "source_id": "hn-rss",
+                            "hn_rank": 18,
+                            "score": 25,
+                            "num_comments": 7,
+                            "summary": "A detailed look at LLM inference systems.",
+                            "quality_score": 10,
+                        }
+                    ],
+                }
+            },
+        }
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=[],
+            report_date="2026-05-22",
+            version="3.17.0",
+        )
+
+        self.assertIn("## 📰 Hacker News Top", text)
+        self.assertIn("1. **HN story 1** — 99↑ · 1 comments", text)
+        self.assertIn("**HN story 10**", text)
+        self.assertNotIn("**HN story 11**", text)
+        self.assertIn("**LLM inference systems story**", text)
+        self.assertIn("🔗 https://news.ycombinator.com/item?id=18", text)
+        self.assertIn("↗ https://example.com/llm-inference", text)
+
+    def test_hacker_news_top_selects_default_items_by_score_not_rank(self):
+        articles = [
+            {
+                "title": "High score later HN story",
+                "link": "https://example.com/high-score",
+                "hn_url": "https://news.ycombinator.com/item?id=999",
+                "source_type": "rss",
+                "source_name": "Hacker News Frontpage",
+                "source_id": "hn-rss",
+                "hn_rank": 19,
+                "score": 500,
+                "num_comments": 12,
+                "summary": "A high scoring story outside the old rank gate.",
+                "quality_score": 10,
+            },
+            {
+                "title": "Low score frontpage HN story",
+                "link": "https://example.com/low-score",
+                "hn_url": "https://news.ycombinator.com/item?id=1",
+                "source_type": "rss",
+                "source_name": "Hacker News Frontpage",
+                "source_id": "hn-rss",
+                "hn_rank": 1,
+                "score": 1,
+                "num_comments": 1,
+                "summary": "A low scoring story with an early feed position.",
+                "quality_score": 10,
+            },
+        ]
+        articles.extend(
+            {
+                "title": f"Scored HN story {index}",
+                "link": f"https://example.com/scored-{index}",
+                "hn_url": f"https://news.ycombinator.com/item?id={index}",
+                "source_type": "rss",
+                "source_name": "Hacker News Frontpage",
+                "source_id": "hn-rss",
+                "hn_rank": index,
+                "score": 100 - index,
+                "num_comments": index,
+                "summary": f"Summary {index}.",
+                "quality_score": 10,
+            }
+            for index in range(2, 11)
+        )
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": len(articles)},
+            "topics": {"supplemental": {"articles": articles}},
+        }
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=[],
+            report_date="2026-05-22",
+            version="3.17.0",
+        )
+
+        self.assertIn("**High score later HN story**", text)
+        self.assertNotIn("**Low score frontpage HN story**", text)
+
+    def test_hacker_news_ai_related_extra_uses_token_boundaries(self):
+        articles = [
+            {
+                "title": f"Top HN story {index}",
+                "link": f"https://example.com/top-{index}",
+                "hn_url": f"https://news.ycombinator.com/item?id={index}",
+                "source_type": "rss",
+                "source_name": "Hacker News Frontpage",
+                "source_id": "hn-rss",
+                "score": 1000 - index,
+                "num_comments": index,
+                "summary": f"Summary {index}.",
+                "quality_score": 10,
+            }
+            for index in range(1, 11)
+        ]
+        articles.extend(
+            [
+                {
+                    "title": "Paid XML email tooling",
+                    "link": "https://example.com/false-positive",
+                    "hn_url": "https://news.ycombinator.com/item?id=101",
+                    "source_type": "rss",
+                    "source_name": "Hacker News Frontpage",
+                    "source_id": "hn-rss",
+                    "hn_rank": 18,
+                    "score": 900,
+                    "num_comments": 11,
+                    "summary": "Text that should not match short tokens.",
+                    "quality_score": 10,
+                },
+                {
+                    "title": "LLM inference systems story",
+                    "link": "https://example.com/llm-extra",
+                    "hn_url": "https://news.ycombinator.com/item?id=102",
+                    "source_type": "rss",
+                    "source_name": "Hacker News Frontpage",
+                    "source_id": "hn-rss",
+                    "hn_rank": 19,
+                    "score": 899,
+                    "num_comments": 12,
+                    "summary": "A real AI systems discussion.",
+                    "quality_score": 10,
+                },
+            ]
+        )
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": len(articles)},
+            "topics": {"supplemental": {"articles": articles}},
+        }
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=[],
+            report_date="2026-05-22",
+            version="3.17.0",
+        )
+
+        self.assertNotIn("**Paid XML email tooling**", text)
+        self.assertIn("**LLM inference systems story**", text)
+
+    def test_hacker_news_ai_related_extra_matches_hyphenated_phrases(self):
+        article = {"title": "Machine-learning inference systems"}
+
+        self.assertTrue(render_mod.is_ai_related_hacker_news_article(article))
+
+    def test_hacker_news_ai_related_extra_uses_title_only_keywords(self):
+        articles = [
+            {
+                "title": f"Top HN story {index}",
+                "link": f"https://example.com/top-title-{index}",
+                "hn_url": f"https://news.ycombinator.com/item?id={200 + index}",
+                "source_type": "rss",
+                "source_name": "Hacker News Frontpage",
+                "source_id": "hn-rss",
+                "score": 1000 - index,
+                "num_comments": index,
+                "summary": f"Summary {index}.",
+                "quality_score": 10,
+            }
+            for index in range(1, 11)
+        ]
+        articles.extend(
+            [
+                {
+                    "title": "Distributed queue incident report",
+                    "link": "https://example.com/non-ai-summary",
+                    "hn_url": "https://news.ycombinator.com/item?id=301",
+                    "source_type": "rss",
+                    "source_name": "Hacker News Frontpage",
+                    "source_id": "hn-rss",
+                    "hn_rank": 18,
+                    "score": 900,
+                    "num_comments": 11,
+                    "summary": "The post mentions an AI model in background context.",
+                    "quality_score": 10,
+                },
+                {
+                    "title": "Machine learning inference systems",
+                    "link": "https://example.com/title-ai-extra",
+                    "hn_url": "https://news.ycombinator.com/item?id=302",
+                    "source_type": "rss",
+                    "source_name": "Hacker News Frontpage",
+                    "source_id": "hn-rss",
+                    "hn_rank": 19,
+                    "score": 899,
+                    "num_comments": 12,
+                    "summary": "A systems discussion.",
+                    "quality_score": 10,
+                },
+            ]
+        )
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": len(articles)},
+            "topics": {"supplemental": {"articles": articles}},
+        }
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=[],
+            report_date="2026-05-22",
+            version="3.17.0",
+        )
+
+        self.assertNotIn("**Distributed queue incident report**", text)
+        self.assertIn("**Machine learning inference systems**", text)
+
+    def test_hacker_news_ai_related_extra_requires_rank_eleven_to_twenty(self):
+        articles = [
+            {
+                "title": f"Top HN story {index}",
+                "link": f"https://example.com/ranked-top-{index}",
+                "hn_url": f"https://news.ycombinator.com/item?id={400 + index}",
+                "source_type": "rss",
+                "source_name": "Hacker News Frontpage",
+                "source_id": "hn-rss",
+                "hn_rank": index,
+                "score": 1000 - index,
+                "num_comments": index,
+                "summary": f"Summary {index}.",
+                "quality_score": 10,
+            }
+            for index in range(1, 11)
+        ]
+        articles.extend(
+            [
+                {
+                    "title": "AI story with rank ten",
+                    "link": "https://example.com/ai-rank-10",
+                    "hn_url": "https://news.ycombinator.com/item?id=501",
+                    "source_type": "rss",
+                    "source_name": "Hacker News Frontpage",
+                    "source_id": "hn-rss",
+                    "hn_rank": 10,
+                    "score": 10,
+                    "num_comments": 10,
+                    "summary": "Below the score top ten but not an extra rank.",
+                    "quality_score": 10,
+                },
+                {
+                    "title": "AI story with rank eighteen",
+                    "link": "https://example.com/ai-rank-18",
+                    "hn_url": "https://news.ycombinator.com/item?id=502",
+                    "source_type": "rss",
+                    "source_name": "Hacker News Frontpage",
+                    "source_id": "hn-rss",
+                    "hn_rank": 18,
+                    "score": 9,
+                    "num_comments": 9,
+                    "summary": "This qualifies for the title keyword exception.",
+                    "quality_score": 10,
+                },
+                {
+                    "title": "AI story with rank twenty one",
+                    "link": "https://example.com/ai-rank-21",
+                    "hn_url": "https://news.ycombinator.com/item?id=503",
+                    "source_type": "rss",
+                    "source_name": "Hacker News Frontpage",
+                    "source_id": "hn-rss",
+                    "hn_rank": 21,
+                    "score": 8,
+                    "num_comments": 8,
+                    "summary": "This is outside the exception rank window.",
+                    "quality_score": 10,
+                },
+            ]
+        )
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": len(articles)},
+            "topics": {"supplemental": {"articles": articles}},
+        }
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=[],
+            report_date="2026-05-22",
+            version="3.17.0",
+        )
+
+        self.assertNotIn("**AI story with rank ten**", text)
+        self.assertIn("**AI story with rank eighteen**", text)
+        self.assertNotIn("**AI story with rank twenty one**", text)
+
+    def test_hacker_news_top_excludes_merged_story_without_hn_metadata(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 1},
+            "topics": {
+                "supplemental": {
+                    "articles": [
+                        {
+                            "title": "Merged HN story",
+                            "link": "https://example.com/merged-hn",
+                            "source_type": "article",
+                            "source_name": "Example",
+                            "all_sources": ["Example", "Hacker News Frontpage"],
+                            "score": 120,
+                            "num_comments": 18,
+                            "summary": "A merged story retained from Hacker News.",
+                            "quality_score": 10,
+                        }
+                    ]
+                }
+            },
+        }
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=[],
+            report_date="2026-05-22",
+            version="3.17.0",
+        )
+
+        self.assertNotIn("## 📰 Hacker News Top", text)
+        self.assertNotIn("**Merged HN story**", text)
+
+    def test_hacker_news_top_excludes_direct_story_without_metrics(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 1},
+            "topics": {
+                "supplemental": {
+                    "articles": [
+                        {
+                            "title": "HN story without metrics",
+                            "link": "https://example.com/no-metrics",
+                            "hn_url": "https://news.ycombinator.com/item?id=601",
+                            "source_type": "rss",
+                            "source_name": "Hacker News Frontpage",
+                            "source_id": "hn-rss",
+                            "summary": "Missing score and comments metadata.",
+                            "quality_score": 10,
+                        }
+                    ]
+                }
+            },
+        }
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=[],
+            report_date="2026-05-22",
+            version="3.17.0",
+        )
+
+        self.assertNotIn("## 📰 Hacker News Top", text)
+        self.assertNotIn("0↑ · 0 comments", text)
+
+    def test_hacker_news_top_includes_merged_story_with_hn_metadata(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 1},
+            "topics": {
+                "supplemental": {
+                    "articles": [
+                        {
+                            "title": "Merged HN story",
+                            "link": "https://example.com/merged-hn",
+                            "source_type": "article",
+                            "source_name": "Example",
+                            "all_sources": ["Example", "Hacker News Frontpage"],
+                            "score": 1,
+                            "num_comments": 2,
+                            "hn_score": 120,
+                            "hn_comments": 18,
+                            "summary": "A merged story retained from Hacker News.",
+                            "quality_score": 10,
+                        }
+                    ]
+                }
+            },
+        }
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=[],
+            report_date="2026-05-22",
+            version="3.17.0",
+        )
+
+        self.assertIn("## 📰 Hacker News Top", text)
+        self.assertIn("**Merged HN story** — 120↑ · 18 comments", text)
+        self.assertEqual(text.count("https://example.com/merged-hn"), 1)
+
+    def test_chat_hacker_news_top_uses_fixed_numbered_shape(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 1},
+            "topics": {
+                "supplemental": {
+                    "articles": [
+                        {
+                            "title": "Show HN: Useful Tool",
+                            "link": "https://example.com/tool",
+                            "hn_url": "https://news.ycombinator.com/item?id=42",
+                            "source_type": "rss",
+                            "source_name": "Hacker News Frontpage",
+                            "source_id": "hn-rss",
+                            "hn_rank": 1,
+                            "score": 234,
+                            "num_comments": 56,
+                            "summary": "A tool builders are discussing.",
+                            "quality_score": 10,
+                        }
+                    ]
+                }
+            },
+        }
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=[],
+            report_date="2026-05-22",
+            version="3.17.0",
+            template="chat",
+        )
+
+        self.assertIn("## 📰 Hacker News Top / 热榜", text)
+        self.assertIn(
+            f"1. {render_mod.bold_chat_title_text('Show HN: Useful Tool')}",
+            text,
+        )
+        self.assertIn("234↑ · 56 comments · A tool builders are discussing.", text)
+        self.assertIn("🔗 https://news.ycombinator.com/item?id=42", text)
+        self.assertIn("↗ https://example.com/tool", text)
+
+    def test_hnrss_metadata_is_parsed_from_description(self):
+        description = """
+        <p>Article URL: <a href="https://example.com/article">https://example.com/article</a></p>
+        <p>Comments URL: <a href="https://news.ycombinator.com/item?id=123">https://news.ycombinator.com/item?id=123</a></p>
+        <p>Points: 234</p>
+        <p># Comments: 56</p>
+        """
+
+        metadata = fetch_rss_mod.parse_hnrss_metadata(description)
+
+        self.assertEqual(metadata["external_url"], "https://example.com/article")
+        self.assertEqual(
+            metadata["hn_url"],
+            "https://news.ycombinator.com/item?id=123",
+        )
+        self.assertEqual(metadata["score"], 234)
+        self.assertEqual(metadata["num_comments"], 56)
+
+    def test_hnrss_regex_parser_preserves_feed_rank_for_ai_exceptions(self):
+        content = """
+        <rss><channel>
+          <item>
+            <title>Machine-learning systems</title>
+            <link>https://example.com/story</link>
+            <pubDate>Fri, 22 May 2026 12:00:00 +0000</pubDate>
+            <description><![CDATA[
+              <p>Article URL: <a href="https://example.com/story">https://example.com/story</a></p>
+              <p>Comments URL: <a href="https://news.ycombinator.com/item?id=789">https://news.ycombinator.com/item?id=789</a></p>
+              <p>Points: 345</p>
+              <p># Comments: 67</p>
+            ]]></description>
+          </item>
+        </channel></rss>
+        """
+
+        articles = fetch_rss_mod.parse_feed_regex(
+            content,
+            cutoff=datetime(2026, 5, 22, tzinfo=timezone.utc),
+            feed_url="https://hnrss.org/frontpage",
+        )
+
+        self.assertEqual(articles[0]["hn_rank"], 1)
+
+    def test_hnrss_atom_fallback_parses_metadata_from_summary(self):
+        content = """
+        <feed>
+          <entry>
+            <title>Atom HN story</title>
+            <link href="https://example.com/atom-story" />
+            <updated>2026-05-22T12:00:00Z</updated>
+            <summary><![CDATA[
+              <p>Article URL: <a href="https://example.com/atom-article">https://example.com/atom-article</a></p>
+              <p>Comments URL: <a href="https://news.ycombinator.com/item?id=789">https://news.ycombinator.com/item?id=789</a></p>
+              <p>Points: 345</p>
+              <p># Comments: 67</p>
+            ]]></summary>
+          </entry>
+        </feed>
+        """
+
+        articles = fetch_rss_mod.parse_feed_regex(
+            content,
+            cutoff=datetime(2026, 5, 22, tzinfo=timezone.utc),
+            feed_url="https://hnrss.org/frontpage.atom",
+        )
+
+        self.assertEqual(len(articles), 1)
+        self.assertEqual(articles[0]["external_url"], "https://example.com/atom-article")
+        self.assertEqual(
+            articles[0]["hn_url"],
+            "https://news.ycombinator.com/item?id=789",
+        )
+        self.assertEqual(articles[0]["score"], 345)
+        self.assertEqual(articles[0]["num_comments"], 67)
+        self.assertEqual(articles[0]["hn_rank"], 1)
+
+    def test_hnrss_feedparser_path_parses_atom_summary_metadata(self):
+        if not fetch_rss_mod.HAS_FEEDPARSER:
+            self.skipTest("feedparser is not installed")
+
+        content = """
+        <feed>
+          <entry>
+            <title>Atom HN story</title>
+            <link href="https://example.com/atom-story" />
+            <updated>2026-05-22T12:00:00Z</updated>
+            <summary><![CDATA[
+              <p>Article URL: <a href="https://example.com/atom-article">https://example.com/atom-article</a></p>
+              <p>Comments URL: <a href="https://news.ycombinator.com/item?id=790">https://news.ycombinator.com/item?id=790</a></p>
+              <p>Points: 456</p>
+              <p># Comments: 78</p>
+            ]]></summary>
+          </entry>
+        </feed>
+        """
+
+        articles = fetch_rss_mod.parse_feed_feedparser(
+            content,
+            cutoff=datetime(2026, 5, 22, tzinfo=timezone.utc),
+            feed_url="https://hnrss.org/frontpage.atom",
+        )
+
+        self.assertEqual(len(articles), 1)
+        self.assertEqual(articles[0]["external_url"], "https://example.com/atom-article")
+        self.assertEqual(
+            articles[0]["hn_url"],
+            "https://news.ycombinator.com/item?id=790",
+        )
+        self.assertEqual(articles[0]["score"], 456)
+        self.assertEqual(articles[0]["num_comments"], 78)
+        self.assertEqual(articles[0]["hn_rank"], 1)
 
     def test_github_trending_fixed_sections_limit_to_top_five_repos(self):
         data = {
