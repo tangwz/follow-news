@@ -122,7 +122,7 @@ Automated tech news digest system with unified data source model, quality scorin
    python3 scripts/run-pipeline.py \
      --defaults config/defaults \
      --config workspace/config \
-     --hours 48 --freshness pd \
+     --hours 24 --freshness pd \
      --archive-dir workspace/archive/follow-news/ \
      --output /tmp/td-merged.json --verbose --force
    ```
@@ -219,7 +219,7 @@ Automated tech news digest system with unified data source model, quality scorin
 ```bash
 python3 scripts/run-pipeline.py \
   --defaults config/defaults [--config CONFIG_DIR] \
-  --hours 48 --freshness pd \
+  --hours 24 --freshness pd \
   --archive-dir workspace/archive/follow-news/ \
   --output /tmp/td-merged.json --verbose --force
 ```
@@ -241,14 +241,14 @@ python3 scripts/run-pipeline.py \
 
 #### `fetch-rss.py` - RSS Feed Fetcher
 ```bash
-python3 scripts/fetch-rss.py [--defaults DIR] [--config DIR] [--hours 48] [--output FILE] [--verbose]
+python3 scripts/fetch-rss.py [--defaults DIR] [--config DIR] [--hours 24] [--output FILE] [--verbose]
 ```
 - Parallel fetching (10 workers), retry with backoff, feedparser + regex fallback
 - Timeout: 30s per feed, ETag/Last-Modified caching
 
 #### `fetch-twitter.py` - Twitter/X KOL Monitor
 ```bash
-python3 scripts/fetch-twitter.py [--defaults DIR] [--config DIR] [--hours 48] [--output FILE] [--backend auto|opencli|getxapi|twitterapiio|official]
+python3 scripts/fetch-twitter.py [--defaults DIR] [--config DIR] [--hours 24] [--output FILE] [--backend auto|opencli|getxapi|twitterapiio|official]
 ```
 - Backend auto-detection: tries OpenCLI first, then GetXAPI, twitterapi.io, and official X API v2
 - Rate limit handling, engagement metrics, retry with backoff
@@ -262,7 +262,7 @@ python3 scripts/fetch-web.py [--defaults DIR] [--config DIR] [--freshness pd] [-
 
 #### `fetch-github.py` - GitHub Releases Monitor
 ```bash
-python3 scripts/fetch-github.py [--defaults DIR] [--config DIR] [--hours 168] [--output FILE]
+python3 scripts/fetch-github.py [--defaults DIR] [--config DIR] [--hours 24] [--output FILE]
 ```
 - Parallel fetching (10 workers), 30s timeout
 - Auth priority: `$GITHUB_TOKEN` → GitHub App auto-generate → `gh` CLI → unauthenticated (60 req/hr)
@@ -270,21 +270,21 @@ python3 scripts/fetch-github.py [--defaults DIR] [--config DIR] [--hours 168] [-
 
 #### `fetch-github.py --trending` - GitHub Trending Repos
 ```bash
-python3 scripts/fetch-github.py --trending [--hours 48] [--output FILE] [--verbose]
+python3 scripts/fetch-github.py --trending [--hours 24] [--output FILE] [--verbose]
 ```
 - Searches GitHub API for trending repos across configured topics (`llm`, `ai-agent`, `builder`, `kol`, `frontier-tech`)
 - Quality scoring: base 5 + daily_stars_est / 10, max 15
 
 #### `fetch-reddit.py` - Reddit Posts Fetcher
 ```bash
-python3 scripts/fetch-reddit.py [--defaults DIR] [--config DIR] [--hours 48] [--output FILE]
+python3 scripts/fetch-reddit.py [--defaults DIR] [--config DIR] [--hours 24] [--output FILE]
 ```
 - Parallel fetching (4 workers), public JSON API (no auth required)
 - 8 subreddits with score filtering
 
 #### `fetch-podcast.py` - Podcast, YouTube, and Xiaoyuzhou Fetcher
 ```bash
-python3 scripts/fetch-podcast.py [--defaults DIR] [--config DIR] [--hours 48] [--output FILE] [--verbose]
+python3 scripts/fetch-podcast.py [--defaults DIR] [--config DIR] [--hours 24] [--output FILE] [--verbose]
 ```
 - Loads custom `type: "podcast"` sources from the unified source config.
 - Supports RSS podcast feeds without extra tools.
@@ -450,7 +450,7 @@ python3 scripts/fetch-twitter.py --hours 1 --verbose
 2. `python3 scripts/fetch-rss.py --hours 1 --verbose`
 3. `python3 scripts/run-pipeline.py --defaults config/defaults --hours 24 --freshness pd --archive-dir workspace/archive/follow-news/ --output /tmp/td-merged.json --verbose`
 
-If all pass, run the full windowed pipeline (`--hours 48` or `--hours 168`) with the requested template.
+If all pass, run the default 24h pipeline, or pass a longer `--hours` window when the requested digest explicitly needs historical coverage.
 
 ### Archive Management
 - Digests automatically archived to `<workspace>/archive/follow-news/`

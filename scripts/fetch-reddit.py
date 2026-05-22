@@ -6,7 +6,7 @@ Reads sources.json, filters Reddit sources, fetches posts via Reddit JSON API,
 and outputs structured JSON with posts tagged by topics.
 
 Usage:
-    python3 fetch-reddit.py [--defaults DEFAULTS_DIR] [--config CONFIG_DIR] [--hours 48] [--output FILE] [--verbose] [--force] [--no-cache]
+    python3 fetch-reddit.py [--defaults DEFAULTS_DIR] [--config CONFIG_DIR] [--hours 24] [--output FILE] [--verbose] [--force] [--no-cache]
 
 Environment:
     No API key required. Uses Reddit's public JSON API.
@@ -219,15 +219,15 @@ def main() -> int:
         epilog="""\
 Examples:
     python3 fetch-reddit.py --defaults config/defaults --output /tmp/td-reddit.json --verbose
-    python3 fetch-reddit.py --defaults config/defaults --config ~/workspace/config --hours 48
+    python3 fetch-reddit.py --defaults config/defaults --config ~/workspace/config --hours 24
     """
     )
     parser.add_argument('--defaults', type=Path, default=Path('config/defaults'),
                        help='Default config directory')
     parser.add_argument('--config', type=Path, default=None,
                        help='User config directory (overrides defaults)')
-    parser.add_argument('--hours', type=int, default=48,
-                       help='How many hours back to fetch (default: 48)')
+    parser.add_argument('--hours', type=int, default=24,
+                       help='How many hours back to fetch (default: 24)')
     parser.add_argument('--output', type=Path, default=None,
                        help='Output JSON file path')
     parser.add_argument('--verbose', action='store_true',
