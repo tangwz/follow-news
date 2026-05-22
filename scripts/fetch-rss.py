@@ -267,11 +267,21 @@ def parse_feed_regex(content: str, cutoff: datetime, feed_url: str) -> List[Dict
             pub = parse_date_regex(date_str)
 
             if title and link and pub and pub >= cutoff:
-                articles.append({
+                article = {
                     "title": title[:200],
                     "link": link,
                     "date": pub.isoformat(),
-                })
+                }
+                if is_hnrss_feed(feed_url):
+                    article.update(
+                        parse_hnrss_metadata(
+                            get_tag(block, "summary")
+                            or get_tag(block, "content")
+                            or get_tag(block, "description"),
+                            get_tag(block, "comments"),
+                        )
+                    )
+                articles.append(article)
 
     return articles[:MAX_ARTICLES_PER_FEED]
 

@@ -9,6 +9,7 @@ import re
 import subprocess
 import tempfile
 import unittest
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
 
@@ -2241,6 +2242,7 @@ class TestAcceptanceRenderer(unittest.TestCase):
                     "source_type": "rss",
                     "source_name": "Hacker News Frontpage",
                     "source_id": "hn-rss",
+                    "hn_rank": 18,
                     "score": 900,
                     "num_comments": 11,
                     "summary": "Text that should not match short tokens.",
@@ -2253,6 +2255,7 @@ class TestAcceptanceRenderer(unittest.TestCase):
                     "source_type": "rss",
                     "source_name": "Hacker News Frontpage",
                     "source_id": "hn-rss",
+                    "hn_rank": 19,
                     "score": 899,
                     "num_comments": 12,
                     "summary": "A real AI systems discussion.",
@@ -2301,6 +2304,7 @@ class TestAcceptanceRenderer(unittest.TestCase):
                     "source_type": "rss",
                     "source_name": "Hacker News Frontpage",
                     "source_id": "hn-rss",
+                    "hn_rank": 18,
                     "score": 900,
                     "num_comments": 11,
                     "summary": "The post mentions an AI model in background context.",
@@ -2313,6 +2317,7 @@ class TestAcceptanceRenderer(unittest.TestCase):
                     "source_type": "rss",
                     "source_name": "Hacker News Frontpage",
                     "source_id": "hn-rss",
+                    "hn_rank": 19,
                     "score": 899,
                     "num_comments": 12,
                     "summary": "A systems discussion.",
@@ -2335,6 +2340,83 @@ class TestAcceptanceRenderer(unittest.TestCase):
 
         self.assertNotIn("**Distributed queue incident report**", text)
         self.assertIn("**Machine learning inference systems**", text)
+
+    def test_hacker_news_ai_related_extra_requires_rank_eleven_to_twenty(self):
+        articles = [
+            {
+                "title": f"Top HN story {index}",
+                "link": f"https://example.com/ranked-top-{index}",
+                "hn_url": f"https://news.ycombinator.com/item?id={400 + index}",
+                "source_type": "rss",
+                "source_name": "Hacker News Frontpage",
+                "source_id": "hn-rss",
+                "hn_rank": index,
+                "score": 1000 - index,
+                "num_comments": index,
+                "summary": f"Summary {index}.",
+                "quality_score": 10,
+            }
+            for index in range(1, 11)
+        ]
+        articles.extend(
+            [
+                {
+                    "title": "AI story with rank ten",
+                    "link": "https://example.com/ai-rank-10",
+                    "hn_url": "https://news.ycombinator.com/item?id=501",
+                    "source_type": "rss",
+                    "source_name": "Hacker News Frontpage",
+                    "source_id": "hn-rss",
+                    "hn_rank": 10,
+                    "score": 10,
+                    "num_comments": 10,
+                    "summary": "Below the score top ten but not an extra rank.",
+                    "quality_score": 10,
+                },
+                {
+                    "title": "AI story with rank eighteen",
+                    "link": "https://example.com/ai-rank-18",
+                    "hn_url": "https://news.ycombinator.com/item?id=502",
+                    "source_type": "rss",
+                    "source_name": "Hacker News Frontpage",
+                    "source_id": "hn-rss",
+                    "hn_rank": 18,
+                    "score": 9,
+                    "num_comments": 9,
+                    "summary": "This qualifies for the title keyword exception.",
+                    "quality_score": 10,
+                },
+                {
+                    "title": "AI story with rank twenty one",
+                    "link": "https://example.com/ai-rank-21",
+                    "hn_url": "https://news.ycombinator.com/item?id=503",
+                    "source_type": "rss",
+                    "source_name": "Hacker News Frontpage",
+                    "source_id": "hn-rss",
+                    "hn_rank": 21,
+                    "score": 8,
+                    "num_comments": 8,
+                    "summary": "This is outside the exception rank window.",
+                    "quality_score": 10,
+                },
+            ]
+        )
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": len(articles)},
+            "topics": {"supplemental": {"articles": articles}},
+        }
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=[],
+            report_date="2026-05-22",
+            version="3.17.0",
+        )
+
+        self.assertNotIn("**AI story with rank ten**", text)
+        self.assertIn("**AI story with rank eighteen**", text)
+        self.assertNotIn("**AI story with rank twenty one**", text)
 
     def test_hacker_news_top_excludes_merged_story_without_hn_metadata(self):
         data = {
@@ -2368,6 +2450,38 @@ class TestAcceptanceRenderer(unittest.TestCase):
 
         self.assertNotIn("## 📰 Hacker News Top", text)
         self.assertNotIn("**Merged HN story**", text)
+
+    def test_hacker_news_top_excludes_direct_story_without_metrics(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 1},
+            "topics": {
+                "supplemental": {
+                    "articles": [
+                        {
+                            "title": "HN story without metrics",
+                            "link": "https://example.com/no-metrics",
+                            "hn_url": "https://news.ycombinator.com/item?id=601",
+                            "source_type": "rss",
+                            "source_name": "Hacker News Frontpage",
+                            "source_id": "hn-rss",
+                            "summary": "Missing score and comments metadata.",
+                            "quality_score": 10,
+                        }
+                    ]
+                }
+            },
+        }
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=[],
+            report_date="2026-05-22",
+            version="3.17.0",
+        )
+
+        self.assertNotIn("## 📰 Hacker News Top", text)
+        self.assertNotIn("0↑ · 0 comments", text)
 
     def test_hacker_news_top_includes_merged_story_with_hn_metadata(self):
         data = {
@@ -2465,6 +2579,38 @@ class TestAcceptanceRenderer(unittest.TestCase):
         self.assertEqual(metadata["score"], 234)
         self.assertEqual(metadata["num_comments"], 56)
         self.assertNotIn("hn_rank", metadata)
+
+    def test_hnrss_atom_fallback_parses_metadata_from_summary(self):
+        content = """
+        <feed>
+          <entry>
+            <title>Atom HN story</title>
+            <link href="https://example.com/atom-story" />
+            <updated>2026-05-22T12:00:00Z</updated>
+            <summary><![CDATA[
+              <p>Article URL: <a href="https://example.com/atom-article">https://example.com/atom-article</a></p>
+              <p>Comments URL: <a href="https://news.ycombinator.com/item?id=789">https://news.ycombinator.com/item?id=789</a></p>
+              <p>Points: 345</p>
+              <p># Comments: 67</p>
+            ]]></summary>
+          </entry>
+        </feed>
+        """
+
+        articles = fetch_rss_mod.parse_feed_regex(
+            content,
+            cutoff=datetime(2026, 5, 22, tzinfo=timezone.utc),
+            feed_url="https://hnrss.org/frontpage.atom",
+        )
+
+        self.assertEqual(len(articles), 1)
+        self.assertEqual(articles[0]["external_url"], "https://example.com/atom-article")
+        self.assertEqual(
+            articles[0]["hn_url"],
+            "https://news.ycombinator.com/item?id=789",
+        )
+        self.assertEqual(articles[0]["score"], 345)
+        self.assertEqual(articles[0]["num_comments"], 67)
 
     def test_github_trending_fixed_sections_limit_to_top_five_repos(self):
         data = {

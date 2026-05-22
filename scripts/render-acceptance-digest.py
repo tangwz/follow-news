@@ -654,9 +654,10 @@ def is_direct_hacker_news_article(article: Dict[str, Any]) -> bool:
 
 
 def has_hacker_news_metadata(article: Dict[str, Any]) -> bool:
-    if hacker_news_url(article) or is_direct_hacker_news_article(article):
-        return True
-    return article.get("hn_score") is not None
+    return (
+        hacker_news_score_value(article) is not None
+        and hacker_news_comments_value(article) is not None
+    )
 
 
 def hacker_news_url(article: Dict[str, Any]) -> str:
@@ -678,26 +679,43 @@ def parse_int(value: Any) -> int:
         return 0
 
 
-def hacker_news_score(article: Dict[str, Any]) -> int:
-    hn_score = parse_int(article.get("hn_score"))
-    if hn_score:
+def parse_optional_int(value: Any) -> Optional[int]:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def hacker_news_score_value(article: Dict[str, Any]) -> Optional[int]:
+    hn_score = parse_optional_int(article.get("hn_score"))
+    if hn_score is not None:
         return hn_score
     if hacker_news_url(article) or is_direct_hacker_news_article(article):
-        return parse_int(article.get("score"))
-    return 0
+        return parse_optional_int(article.get("score"))
+    return None
 
 
-def hacker_news_comments(article: Dict[str, Any]) -> int:
-    hn_comments = parse_int(
+def hacker_news_score(article: Dict[str, Any]) -> int:
+    return hacker_news_score_value(article) or 0
+
+
+def hacker_news_comments_value(article: Dict[str, Any]) -> Optional[int]:
+    hn_comments = parse_optional_int(
         article.get("hn_comments")
         or article.get("hn_comments_count")
         or article.get("hn_num_comments")
     )
-    if hn_comments:
+    if hn_comments is not None:
         return hn_comments
     if hacker_news_url(article) or is_direct_hacker_news_article(article):
-        return parse_int(article.get("num_comments") or article.get("comments_count"))
-    return 0
+        return parse_optional_int(
+            article.get("num_comments") or article.get("comments_count")
+        )
+    return None
+
+
+def hacker_news_comments(article: Dict[str, Any]) -> int:
+    return hacker_news_comments_value(article) or 0
 
 
 def hacker_news_rank(article: Dict[str, Any]) -> int:
@@ -727,10 +745,20 @@ def select_hacker_news_top_articles(
         ),
     )
     default_articles = sorted_articles[:HN_DEFAULT_LIMIT]
+    default_article_ids = {id(article) for article in default_articles}
     ai_related_extras = [
         article
-        for article in sorted_articles[HN_DEFAULT_LIMIT:HN_AI_RELATED_LIMIT]
-        if is_ai_related_hacker_news_article(article)
+        for article in sorted(
+            articles,
+            key=lambda article: (
+                hacker_news_rank(article),
+                -hacker_news_score(article),
+                compact_text(article.get("title")),
+            ),
+        )
+        if id(article) not in default_article_ids
+        and HN_DEFAULT_LIMIT < hacker_news_rank(article) <= HN_AI_RELATED_LIMIT
+        and is_ai_related_hacker_news_article(article)
     ]
     return default_articles + ai_related_extras
 
