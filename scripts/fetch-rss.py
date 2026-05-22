@@ -84,6 +84,27 @@ def parse_hnrss_metadata(description: str, comments_url: str = "") -> Dict[str, 
     return metadata
 
 
+def entry_text(entry: Any, *fields: str) -> str:
+    """Return the first usable feedparser text field value."""
+    for field in fields:
+        value = entry.get(field, "")
+        if isinstance(value, list):
+            parts = []
+            for item in value:
+                if isinstance(item, dict):
+                    parts.append(str(item.get("value", "")))
+                else:
+                    parts.append(str(item))
+            text = "\n".join(part for part in parts if part)
+        elif isinstance(value, dict):
+            text = str(value.get("value", ""))
+        else:
+            text = str(value) if value else ""
+        if text:
+            return text
+    return ""
+
+
 def setup_logging(verbose: bool) -> logging.Logger:
     """Setup logging configuration."""
     level = logging.DEBUG if verbose else logging.INFO
@@ -182,7 +203,7 @@ def parse_feed_feedparser(content: str, cutoff: datetime, feed_url: str) -> List
     try:
         feed = feedparser.parse(content)
         
-        for entry in feed.entries[:MAX_ARTICLES_PER_FEED]:
+        for index, entry in enumerate(feed.entries[:MAX_ARTICLES_PER_FEED], 1):
             title = entry.get('title', '').strip()
             link = entry.get('link', '').strip()
             
@@ -213,10 +234,16 @@ def parse_feed_feedparser(content: str, cutoff: datetime, feed_url: str) -> List
                 if is_hnrss_feed(feed_url):
                     article.update(
                         parse_hnrss_metadata(
-                            entry.get("description", ""),
+                            entry_text(
+                                entry,
+                                "description",
+                                "summary",
+                                "content",
+                            ),
                             entry.get("comments", ""),
                         )
                     )
+                    article["hn_rank"] = index
                 articles.append(article)
                 
     except Exception as e:
@@ -230,7 +257,10 @@ def parse_feed_regex(content: str, cutoff: datetime, feed_url: str) -> List[Dict
     articles = []
 
     # RSS 2.0 items
-    for item in re.finditer(r"<item[^>]*>(.*?)</item>", content, re.DOTALL):
+    for index, item in enumerate(
+        re.finditer(r"<item[^>]*>(.*?)</item>", content, re.DOTALL),
+        1,
+    ):
         block = item.group(1)
         title = strip_tags(get_tag(block, "title"))
         link = resolve_link(get_tag(block, "link"), feed_url)
@@ -250,11 +280,15 @@ def parse_feed_regex(content: str, cutoff: datetime, feed_url: str) -> List[Dict
                         get_tag(block, "comments"),
                     )
                 )
+                article["hn_rank"] = index
             articles.append(article)
 
     # Atom entries fallback
     if not articles:
-        for entry in re.finditer(r"<entry[^>]*>(.*?)</entry>", content, re.DOTALL):
+        for index, entry in enumerate(
+            re.finditer(r"<entry[^>]*>(.*?)</entry>", content, re.DOTALL),
+            1,
+        ):
             block = entry.group(1)
             title = strip_tags(get_tag(block, "title"))
             link_m = re.search(r'<link[^>]*href=["\']([^"\']+)["\']', block)
@@ -281,6 +315,7 @@ def parse_feed_regex(content: str, cutoff: datetime, feed_url: str) -> List[Dict
                             get_tag(block, "comments"),
                         )
                     )
+                    article["hn_rank"] = index
                 articles.append(article)
 
     return articles[:MAX_ARTICLES_PER_FEED]

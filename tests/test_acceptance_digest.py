@@ -402,6 +402,23 @@ class TestVisibleArticleDedupe(unittest.TestCase):
 
         self.assertEqual(visible, [])
 
+    def test_visible_registry_limited_filter_pre_registers_late_bridge_aliases(self):
+        registry = render_mod.VisibleArticleRegistry()
+
+        visible = registry.filter_unseen_limited(
+            [
+                {"title": "Canonical", "link": "https://example.com/a"},
+                {"title": "Bridge", "link": "https://example.com/b"},
+                {"title": "Bridge", "link": "https://example.com/a"},
+            ],
+            limit=2,
+        )
+
+        self.assertEqual(
+            [article["link"] for article in visible],
+            ["https://example.com/a"],
+        )
+
     def test_visible_registry_passes_no_key_articles_without_dedupe(self):
         registry = render_mod.VisibleArticleRegistry()
         articles = [{"source_type": "rss"}, {"source_type": "web"}]
@@ -1218,6 +1235,80 @@ class TestAcceptanceRenderer(unittest.TestCase):
         self.assertIn("ai-agent", groups)
         self.assertNotIn("ai_agent", groups)
 
+    def test_group_by_topics_maps_legacy_builder_topic_to_kol(self):
+        articles = [
+            {
+                "title": "Founder explains product launch lessons",
+                "snippet": "A founder shared practical execution notes for an AI startup.",
+                "topics": ["builder"],
+            }
+        ]
+        topic_priority = {"kol": 0, "uncategorized": 1}
+        topic_keywords = {
+            "kol": ["founder", "startup", "execution"],
+        }
+
+        groups = merge_mod.group_by_topics(
+            articles,
+            topic_priority=topic_priority,
+            allowed_topics={"kol"},
+            topic_keywords=topic_keywords,
+        )
+
+        self.assertIn("kol", groups)
+        self.assertNotIn("builder", groups)
+        self.assertEqual(groups["kol"][0]["primary_topic"], "kol")
+        self.assertEqual(groups["kol"][0]["all_topics"], ["kol"])
+
+    def test_group_by_topics_preserves_builder_when_configured(self):
+        articles = [
+            {
+                "title": "Founder explains product launch lessons",
+                "snippet": "A founder shared practical execution notes for an AI startup.",
+                "topics": ["builder"],
+            }
+        ]
+        topic_priority = {"builder": 0, "uncategorized": 1}
+        topic_keywords = {
+            "builder": ["founder", "startup", "execution"],
+        }
+
+        groups = merge_mod.group_by_topics(
+            articles,
+            topic_priority=topic_priority,
+            allowed_topics={"builder"},
+            topic_keywords=topic_keywords,
+        )
+
+        self.assertIn("builder", groups)
+        self.assertNotIn("kol", groups)
+        self.assertEqual(groups["builder"][0]["primary_topic"], "builder")
+        self.assertEqual(groups["builder"][0]["all_topics"], ["builder"])
+
+    def test_group_by_topics_uses_builder_keywords_when_routing_to_kol(self):
+        articles = [
+            {
+                "title": "Founder explains product launch lessons",
+                "snippet": "A founder shared practical execution notes for an AI startup.",
+                "topics": ["builder", "llm"],
+            }
+        ]
+        topic_priority = {"llm": 0, "kol": 1, "uncategorized": 2}
+        topic_keywords = {
+            "builder": ["founder", "startup", "execution"],
+            "llm": ["large language model"],
+        }
+
+        groups = merge_mod.group_by_topics(
+            articles,
+            topic_priority=topic_priority,
+            allowed_topics={"kol", "llm"},
+            topic_keywords=topic_keywords,
+        )
+
+        self.assertIn("kol", groups)
+        self.assertNotIn("llm", groups)
+
     def test_default_topics_keep_agent_benchmark_out_of_llm(self):
         topics = render_mod.load_topic_definitions(TOPICS_FILE)
         topic_priority = {topic["id"]: index for index, topic in enumerate(topics)}
@@ -1516,11 +1607,8 @@ class TestAcceptanceRenderer(unittest.TestCase):
         self.assertIn("Use a tendency-based structure", prompt)
         self.assertIn("full_text > summary > snippet > title", prompt)
         self.assertIn("Lower-priority fields may provide supplemental context", prompt)
-        self.assertIn("metrics.impression_count", prompt)
-        self.assertIn("metrics.reply_count", prompt)
-        self.assertIn("metrics.retweet_count", prompt)
-        self.assertIn("metrics.like_count", prompt)
-        self.assertIn("Missing, null, empty, or unparsable metric values render as 0.", prompt)
+        self.assertIn("do not render engagement metrics", prompt)
+        self.assertIn("Metrics may remain in merged JSON for internal ranking", prompt)
         self.assertIn("Discord and email length limits take precedence over sentence-count targets.", prompt)
 
     def test_templates_document_non_github_summary_contract(self):
@@ -1845,7 +1933,7 @@ class TestAcceptanceRenderer(unittest.TestCase):
         self.assertNotIn("12.5K", topic_text)
         self.assertNotIn("views", topic_text.lower())
 
-    def test_chat_kol_metrics_render_zero_for_missing_values(self):
+    def test_chat_kol_updates_do_not_render_metrics(self):
         data = {
             "input_sources": {},
             "output_stats": {"total_articles": 1},
@@ -1882,9 +1970,14 @@ class TestAcceptanceRenderer(unittest.TestCase):
         )
 
         kol_text = text.split("## 📢 KOL Updates", 1)[1]
-        self.assertIn("`👁 0 | 💬 0 | 🔁 0 | ❤️ 0`", kol_text)
+        self.assertIn("Example Lab shared a sparse benchmark note.", kol_text)
+        self.assertNotIn("👁", kol_text)
+        self.assertNotIn("💬", kol_text)
+        self.assertNotIn("🔁", kol_text)
+        self.assertNotIn("❤️", kol_text)
+        self.assertNotIn("not-a-number", kol_text)
 
-    def test_chat_kol_metrics_render_zero_for_invalid_metrics_container(self):
+    def test_discord_kol_updates_do_not_render_metrics(self):
         data = {
             "input_sources": {},
             "output_stats": {"total_articles": 1},
@@ -1912,11 +2005,17 @@ class TestAcceptanceRenderer(unittest.TestCase):
             topic_defs,
             report_date="2026-02-27",
             version="3.17.0",
-            template="chat",
         )
 
         kol_text = text.split("## 📢 KOL Updates", 1)[1]
-        self.assertIn("`👁 0 | 💬 0 | 🔁 0 | ❤️ 0`", kol_text)
+        self.assertIn(
+            "• **Example Lab** (@example) — Example Lab shared another benchmark note.",
+            kol_text,
+        )
+        self.assertNotIn("👁", kol_text)
+        self.assertNotIn("💬", kol_text)
+        self.assertNotIn("🔁", kol_text)
+        self.assertNotIn("❤️", kol_text)
 
     def test_chat_kol_updates_skips_empty_section(self):
         data = {
@@ -2100,6 +2199,321 @@ class TestAcceptanceRenderer(unittest.TestCase):
             1,
         )
 
+    def test_discord_podcast_remix_renders_metadata_only_episode(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 1},
+            "topics": {
+                "supplemental": {
+                    "articles": [
+                        {
+                            "title": "Agent taste preview",
+                            "link": "https://example.com/podcast",
+                            "source_type": "podcast",
+                            "show_name": "Training Data",
+                            "transcript_status": "missing",
+                            "snippet": "A short preview for an upcoming episode about agent product taste.",
+                            "quality_score": 12,
+                        }
+                    ]
+                }
+            },
+        }
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=[],
+            report_date="2026-05-22",
+            version="3.17.0",
+        )
+
+        self.assertIn("## 🎙️ Podcast Remix", text)
+        self.assertIn("• **Agent taste preview** — Training Data", text)
+        self.assertIn(
+            "A short preview for an upcoming episode about agent product taste.",
+            text,
+        )
+        self.assertNotIn("Quote:", text)
+
+    def test_discord_podcast_remix_renders_clean_transcript_quote(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 1},
+            "topics": {
+                "supplemental": {
+                    "articles": [
+                        {
+                            "title": "Why agents need product taste",
+                            "link": "https://example.com/podcast-transcript",
+                            "source_type": "podcast",
+                            "show_name": "Training Data",
+                            "transcript_status": "ok",
+                            "transcript": "Host | 00:00 - 00:05 Taste is the difference between a demo and a daily tool.",
+                            "summary": "The episode explains why product taste, evaluation loops, and reliability decide whether agent tools become daily workflow infrastructure.",
+                            "quality_score": 12,
+                        }
+                    ]
+                }
+            },
+        }
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=[],
+            report_date="2026-05-22",
+            version="3.17.0",
+        )
+
+        self.assertIn("• **Why agents need product taste** — Training Data", text)
+        self.assertIn(
+            "The episode explains why product taste, evaluation loops, and reliability decide whether agent tools become daily workflow infrastructure.",
+            text,
+        )
+        self.assertIn(
+            'Quote: "Taste is the difference between a demo and a daily tool."',
+            text,
+        )
+        self.assertNotIn("Host | 00:00", text)
+
+    def test_podcast_remix_uses_description_metadata_fallback(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 1},
+            "topics": {
+                "supplemental": {
+                    "articles": [
+                        {
+                            "title": "Metadata-only episode",
+                            "link": "https://example.com/podcast-description",
+                            "source_type": "podcast",
+                            "show_name": "Example Show",
+                            "transcript_status": "missing",
+                            "description": "Description-only context should remain visible.",
+                            "quality_score": 12,
+                        }
+                    ]
+                }
+            },
+        }
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=[],
+            report_date="2026-05-22",
+            version="3.17.0",
+        )
+
+        self.assertIn("Description-only context should remain visible.", text)
+        self.assertNotIn("has no available transcript", text)
+
+    def test_discord_podcast_remix_prefers_standard_summary_over_chat_summary(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 1},
+            "topics": {
+                "supplemental": {
+                    "articles": [
+                        {
+                            "title": "Localized summary episode",
+                            "link": "https://example.com/podcast-localized",
+                            "source_type": "podcast",
+                            "show_name": "Example Show",
+                            "transcript_status": "missing",
+                            "chat_summary": "这是一段只适合 chat 的摘要。",
+                            "summary": "This summary is intended for default digest output.",
+                            "quality_score": 12,
+                        }
+                    ]
+                }
+            },
+        }
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=[],
+            report_date="2026-05-22",
+            version="3.17.0",
+        )
+
+        self.assertIn("This summary is intended for default digest output.", text)
+        self.assertNotIn("这是一段只适合 chat 的摘要", text)
+
+    def test_podcast_quote_skips_empty_cleaned_transcript_lines(self):
+        article = {
+            "transcript_status": "ok",
+            "transcript": (
+                "Host | 00:00 - 00:05\n"
+                "Guest | 00:05 - 00:10 Evaluation loops create product taste."
+            ),
+        }
+
+        self.assertEqual(
+            render_mod.podcast_quote(article),
+            "Evaluation loops create product taste.",
+        )
+
+    def test_chat_podcast_remix_renders_transcript_quote(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 1},
+            "topics": {
+                "supplemental": {
+                    "articles": [
+                        {
+                            "title": "Transcript-only episode",
+                            "link": "https://example.com/podcast-chat-quote",
+                            "source_type": "podcast",
+                            "show_name": "Example Show",
+                            "transcript_status": "ok",
+                            "transcript": "Host | 00:00 - 00:05 Concrete evidence matters.",
+                            "quality_score": 12,
+                        }
+                    ]
+                }
+            },
+        }
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=[],
+            report_date="2026-05-22",
+            version="3.17.0",
+            template="chat",
+        )
+
+        self.assertIn('Quote: "Concrete evidence matters."', text)
+
+    def test_podcast_remix_prioritizes_transcript_backed_episodes(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 4},
+            "topics": {
+                "supplemental": {
+                    "articles": [
+                        {
+                            "title": f"Metadata episode {index}",
+                            "link": f"https://example.com/metadata-podcast-{index}",
+                            "source_type": "podcast",
+                            "show_name": "Example Show",
+                            "transcript_status": "missing",
+                            "summary": f"Metadata summary {index}.",
+                            "quality_score": 100 - index,
+                        }
+                        for index in range(3)
+                    ]
+                    + [
+                        {
+                            "title": "Transcript episode",
+                            "link": "https://example.com/transcript-podcast",
+                            "source_type": "podcast",
+                            "show_name": "Example Show",
+                            "transcript_status": "ok",
+                            "transcript": "Guest | 00:00 - 00:05 Transcript evidence.",
+                            "quality_score": 1,
+                        }
+                    ]
+                }
+            },
+        }
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=[],
+            report_date="2026-05-22",
+            version="3.17.0",
+        )
+
+        self.assertIn("**Transcript episode**", text)
+        self.assertIn('Quote: "Transcript evidence."', text)
+        self.assertNotIn("**Metadata episode 2**", text)
+
+    def test_podcast_remix_backfills_after_dedupe(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 5},
+            "topics": {
+                "ai-agent": {
+                    "articles": [
+                        {
+                            "title": "Topic already used this podcast URL",
+                            "link": "https://example.com/podcast-0",
+                            "summary": "Topic summary.",
+                            "quality_score": 20,
+                        }
+                    ]
+                },
+                "supplemental": {
+                    "articles": [
+                        {
+                            "title": f"Podcast {index}",
+                            "link": f"https://example.com/podcast-{index}",
+                            "source_type": "podcast",
+                            "show_name": "Example Show",
+                            "transcript_status": "missing",
+                            "summary": f"Podcast summary {index}.",
+                            "quality_score": 10 - index,
+                        }
+                        for index in range(4)
+                    ]
+                },
+            },
+        }
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=[{"id": "ai-agent", "label": "AI Agent", "emoji": "🤖"}],
+            report_date="2026-05-22",
+            version="3.17.0",
+        )
+
+        self.assertIn("**Podcast 1**", text)
+        self.assertIn("**Podcast 2**", text)
+        self.assertIn("**Podcast 3**", text)
+        self.assertNotIn("**Podcast 0**", text)
+
+    def test_podcast_alias_candidates_include_full_remix_candidate_graph(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 4},
+            "topics": {
+                "supplemental": {
+                    "articles": [
+                        {
+                            "title": f"Podcast {index}",
+                            "link": f"https://example.com/podcast-{index}",
+                            "source_type": "podcast",
+                            "show_name": "Example Show",
+                            "transcript_status": "missing",
+                            "summary": f"Podcast summary {index}.",
+                            "quality_score": 10 - index,
+                        }
+                        for index in range(4)
+                    ]
+                }
+            },
+        }
+
+        candidates = render_mod.visible_alias_candidates(
+            data,
+            topic_defs=[],
+            template="chat",
+        )
+
+        podcast_links = [
+            article["link"]
+            for article in candidates
+            if article.get("source_type") == "podcast"
+        ]
+        self.assertEqual(
+            podcast_links,
+            [
+                "https://example.com/podcast-0",
+                "https://example.com/podcast-1",
+                "https://example.com/podcast-2",
+                "https://example.com/podcast-3",
+            ],
+        )
+
     def test_hacker_news_top_renders_top_ten_plus_ai_related_top_twenty(self):
         data = {
             "input_sources": {},
@@ -2136,7 +2550,7 @@ class TestAcceptanceRenderer(unittest.TestCase):
                             "summary": "A detailed look at LLM inference systems.",
                             "quality_score": 10,
                         }
-                    ]
+                    ],
                 }
             },
         }
@@ -2278,6 +2692,11 @@ class TestAcceptanceRenderer(unittest.TestCase):
 
         self.assertNotIn("**Paid XML email tooling**", text)
         self.assertIn("**LLM inference systems story**", text)
+
+    def test_hacker_news_ai_related_extra_matches_hyphenated_phrases(self):
+        article = {"title": "Machine-learning inference systems"}
+
+        self.assertTrue(render_mod.is_ai_related_hacker_news_article(article))
 
     def test_hacker_news_ai_related_extra_uses_title_only_keywords(self):
         articles = [
@@ -2578,7 +2997,31 @@ class TestAcceptanceRenderer(unittest.TestCase):
         )
         self.assertEqual(metadata["score"], 234)
         self.assertEqual(metadata["num_comments"], 56)
-        self.assertNotIn("hn_rank", metadata)
+
+    def test_hnrss_regex_parser_preserves_feed_rank_for_ai_exceptions(self):
+        content = """
+        <rss><channel>
+          <item>
+            <title>Machine-learning systems</title>
+            <link>https://example.com/story</link>
+            <pubDate>Fri, 22 May 2026 12:00:00 +0000</pubDate>
+            <description><![CDATA[
+              <p>Article URL: <a href="https://example.com/story">https://example.com/story</a></p>
+              <p>Comments URL: <a href="https://news.ycombinator.com/item?id=789">https://news.ycombinator.com/item?id=789</a></p>
+              <p>Points: 345</p>
+              <p># Comments: 67</p>
+            ]]></description>
+          </item>
+        </channel></rss>
+        """
+
+        articles = fetch_rss_mod.parse_feed_regex(
+            content,
+            cutoff=datetime(2026, 5, 22, tzinfo=timezone.utc),
+            feed_url="https://hnrss.org/frontpage",
+        )
+
+        self.assertEqual(articles[0]["hn_rank"], 1)
 
     def test_hnrss_atom_fallback_parses_metadata_from_summary(self):
         content = """
@@ -2611,6 +3054,43 @@ class TestAcceptanceRenderer(unittest.TestCase):
         )
         self.assertEqual(articles[0]["score"], 345)
         self.assertEqual(articles[0]["num_comments"], 67)
+        self.assertEqual(articles[0]["hn_rank"], 1)
+
+    def test_hnrss_feedparser_path_parses_atom_summary_metadata(self):
+        if not fetch_rss_mod.HAS_FEEDPARSER:
+            self.skipTest("feedparser is not installed")
+
+        content = """
+        <feed>
+          <entry>
+            <title>Atom HN story</title>
+            <link href="https://example.com/atom-story" />
+            <updated>2026-05-22T12:00:00Z</updated>
+            <summary><![CDATA[
+              <p>Article URL: <a href="https://example.com/atom-article">https://example.com/atom-article</a></p>
+              <p>Comments URL: <a href="https://news.ycombinator.com/item?id=790">https://news.ycombinator.com/item?id=790</a></p>
+              <p>Points: 456</p>
+              <p># Comments: 78</p>
+            ]]></summary>
+          </entry>
+        </feed>
+        """
+
+        articles = fetch_rss_mod.parse_feed_feedparser(
+            content,
+            cutoff=datetime(2026, 5, 22, tzinfo=timezone.utc),
+            feed_url="https://hnrss.org/frontpage.atom",
+        )
+
+        self.assertEqual(len(articles), 1)
+        self.assertEqual(articles[0]["external_url"], "https://example.com/atom-article")
+        self.assertEqual(
+            articles[0]["hn_url"],
+            "https://news.ycombinator.com/item?id=790",
+        )
+        self.assertEqual(articles[0]["score"], 456)
+        self.assertEqual(articles[0]["num_comments"], 78)
+        self.assertEqual(articles[0]["hn_rank"], 1)
 
     def test_github_trending_fixed_sections_limit_to_top_five_repos(self):
         data = {
@@ -2655,6 +3135,40 @@ class TestAcceptanceRenderer(unittest.TestCase):
             self.assertIn("example/trending-4", text)
             self.assertNotIn("example/trending-5", text)
             self.assertNotIn("example/trending-6", text)
+
+    def test_discord_github_trending_does_not_render_daily_star_estimate(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 1},
+            "topics": {
+                "supplemental": {
+                    "articles": [
+                        {
+                            "title": "example/trending-tool",
+                            "link": "https://github.com/example/trending-tool",
+                            "source_type": "github_trending",
+                            "repo": "example/trending-tool",
+                            "stars": 1234,
+                            "daily_stars_est": 56,
+                            "language": "Python",
+                            "description": "A trending tool.",
+                            "quality_score": 10,
+                        }
+                    ]
+                }
+            },
+        }
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=[],
+            report_date="2026-05-22",
+            version="3.17.0",
+        )
+
+        self.assertIn("• **example/trending-tool** ⭐ 1.2K | Python — A trending tool.", text)
+        self.assertNotIn("(+56/day)", text)
+        self.assertNotIn("/day", text)
 
     def test_footer_uses_current_github_trending_count_key(self):
         data = {

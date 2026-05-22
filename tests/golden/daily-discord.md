@@ -17,7 +17,7 @@
 • SWE-agent benchmark report
   🔗 https://x.com/swebench/status/1234567890
 
-## 🏗️ Builder / 构建者
+## 🎤 KOL / 观点
 
 • Simon Willison explains practical prompt injection defenses
   🔗 https://simonwillison.net/2026/Feb/27/prompt-injection-defenses/

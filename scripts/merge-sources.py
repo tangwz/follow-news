@@ -35,6 +35,9 @@ SCORE_PODCAST_TRANSCRIPT_READY = 2
 MIN_TRANSCRIPT_READY_CHARS = 200
 PENALTY_DUPLICATE = -10     # Duplicate/very similar title
 PENALTY_OLD_REPORT = -5     # Already in previous digest
+STABLE_TOPIC_ALIASES = {
+    "ai_agent": "ai-agent",
+}
 
 # Deduplication thresholds
 TITLE_SIMILARITY_THRESHOLD = 0.75  # Lowered from 0.85 to catch more duplicates
@@ -452,41 +455,55 @@ def group_by_topics(
             "uncategorized": 5,
         }
 
-    if "ai-agent" in topic_priority:
-        topic_priority.setdefault("ai_agent", topic_priority["ai-agent"])
-    if "ai_agent" in topic_priority:
-        topic_priority.setdefault("ai-agent", topic_priority["ai_agent"])
+    configured_topic_ids = set(topic_priority)
+    if allowed_topics is not None:
+        configured_topic_ids.update(allowed_topics)
 
-    def _add_ai_agent_aliases_to_topics(topics: Set[str]) -> None:
-        if "ai-agent" in topics:
-            topics.add("ai_agent")
-        if "ai_agent" in topics:
-            topics.add("ai-agent")
+    topic_aliases = dict(STABLE_TOPIC_ALIASES)
+    if "kol" in configured_topic_ids and "builder" not in configured_topic_ids:
+        topic_aliases["builder"] = "kol"
+
+    for alias, canonical in topic_aliases.items():
+        if canonical in topic_priority:
+            topic_priority.setdefault(alias, topic_priority[canonical])
+        if alias in topic_priority:
+            topic_priority.setdefault(canonical, topic_priority[alias])
+
+    def canonical_topic(topic: str) -> str:
+        return topic_aliases.get(topic, topic)
+
+    def _add_topic_aliases(topics: Set[str]) -> None:
+        for alias, canonical in topic_aliases.items():
+            if canonical in topics:
+                topics.add(alias)
+            if alias in topics:
+                topics.add(canonical)
 
     if allowed_topics is None:
         # No topic filter configuration available: preserve article topic labels.
         allowed_topics = None
     else:
         normalized_allowed = set(allowed_topics)
-        _add_ai_agent_aliases_to_topics(normalized_allowed)
+        _add_topic_aliases(normalized_allowed)
         allowed_topics = normalized_allowed
     
     # Sort topics by priority for deterministic assignment
     def get_topic_priority(topic: str) -> int:
         return topic_priority.get(topic, 99)
 
-    def canonical_keyword_topic(topic: str) -> str:
-        if topic == "ai_agent":
-            return "ai-agent"
-        return topic
-
     def topic_keyword_score(article: Dict[str, Any], topic: str) -> int:
         if not topic_keywords:
             return 0
 
-        keywords = topic_keywords.get(topic, [])
-        if not keywords:
-            keywords = topic_keywords.get(canonical_keyword_topic(topic), [])
+        keyword_candidates = [topic, canonical_topic(topic)]
+        keyword_candidates.extend(
+            alias
+            for alias, canonical in topic_aliases.items()
+            if canonical == canonical_topic(topic)
+        )
+        keywords = []
+        for candidate in dict.fromkeys(keyword_candidates):
+            keywords.extend(topic_keywords.get(candidate, []))
         if not keywords:
             return 0
 
@@ -495,7 +512,7 @@ def group_by_topics(
             for field in ("title", "snippet", "summary", "description", "full_text")
         ).lower()
         score = sum(1 for keyword in keywords if str(keyword).lower() in haystack)
-        if canonical_keyword_topic(topic) == "llm" and has_llm_model_signal(haystack):
+        if canonical_topic(topic) == "llm" and has_llm_model_signal(haystack):
             score += 2
         return score
 
@@ -507,12 +524,17 @@ def group_by_topics(
         matched_topics = [item for item in scored_topics if item[0] > 0]
         if matched_topics:
             selected = sorted(matched_topics, key=lambda item: (-item[0], item[1]))[0][2]
-            return canonical_keyword_topic(selected)
-        return canonical_keyword_topic(sorted(topics, key=get_topic_priority)[0])
+            return canonical_topic(selected)
+        return canonical_topic(sorted(topics, key=get_topic_priority)[0])
     
     for article in articles:
-        topics = article.get("topics", [])
-        topics = [topic for topic in topics if allowed_topics is None or topic in allowed_topics]
+        raw_topics = article.get("topics", [])
+        topics = [
+            canonical_topic(topic)
+            for topic in raw_topics
+            if allowed_topics is None or topic in allowed_topics
+        ]
+        topics = list(dict.fromkeys(topics))
         if not topics:
             topics = ["uncategorized"]
         
