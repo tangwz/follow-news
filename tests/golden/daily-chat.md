@@ -33,7 +33,7 @@ SWE-bench 分享了一份关于仓库级 coding agent 的 benchmark report，重
 
 🔗 https://x.com/swebench/status/1234567890
 
-## 🏗️ Builder / 构建者
+## 🎤 KOL / 观点
 
 1. 𝐒𝐢𝐦𝐨𝐧 𝐖𝐢𝐥𝐥𝐢𝐬𝐨𝐧 𝐞𝐱𝐩𝐥𝐚𝐢𝐧𝐬 𝐩𝐫𝐚𝐜𝐭𝐢𝐜𝐚𝐥 𝐩𝐫𝐨𝐦𝐩𝐭 𝐢𝐧𝐣𝐞𝐜𝐭𝐢𝐨𝐧 𝐝𝐞𝐟𝐞𝐧𝐬𝐞𝐬
 

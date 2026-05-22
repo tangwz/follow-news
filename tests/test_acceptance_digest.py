@@ -1209,6 +1209,31 @@ class TestAcceptanceRenderer(unittest.TestCase):
         self.assertIn("ai-agent", groups)
         self.assertNotIn("ai_agent", groups)
 
+    def test_group_by_topics_maps_legacy_builder_topic_to_kol(self):
+        articles = [
+            {
+                "title": "Founder explains product launch lessons",
+                "snippet": "A founder shared practical execution notes for an AI startup.",
+                "topics": ["builder"],
+            }
+        ]
+        topic_priority = {"kol": 0, "uncategorized": 1}
+        topic_keywords = {
+            "kol": ["founder", "startup", "execution"],
+        }
+
+        groups = merge_mod.group_by_topics(
+            articles,
+            topic_priority=topic_priority,
+            allowed_topics={"kol"},
+            topic_keywords=topic_keywords,
+        )
+
+        self.assertIn("kol", groups)
+        self.assertNotIn("builder", groups)
+        self.assertEqual(groups["kol"][0]["primary_topic"], "kol")
+        self.assertEqual(groups["kol"][0]["all_topics"], ["kol"])
+
     def test_default_topics_keep_agent_benchmark_out_of_llm(self):
         topics = render_mod.load_topic_definitions(TOPICS_FILE)
         topic_priority = {topic["id"]: index for index, topic in enumerate(topics)}
