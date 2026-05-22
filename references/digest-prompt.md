@@ -135,10 +135,10 @@ For chat, filter out nightly builds, alpha/prerelease tags, and dependency-only 
 
 **🐙 GitHub Trending** — Top trending repos from the past 24-48h. Format:
 ```
-• **repo/name** ⭐ 1,234 (+56/day) | Language — description
+• **repo/name** ⭐ 1,234 | Language — description
   <https://github.com/repo/name>
 ```
-Do not show visible score values in this section. Filter for `source_type == "github_trending"` from merged JSON. Show total stars, estimated daily star growth (+N/day), primary language, and description. Sort by daily_stars_est descending. **Show only the top 5 repositories.**
+Do not show visible score values or daily star estimates in this section. Filter for `source_type == "github_trending"` from merged JSON. Show total stars, primary language, and description. Sort by `daily_stars_est` descending internally, but do not render `(+N/day)`. **Show only the top 5 repositories.**
 
 **📝 Blog Picks** — <BLOG_PICKS_COUNT> articles from RSS indie blogs(e.g. antirez, Simon Willison, Paul Graham, Overreacted, Eli Bendersky — personal blogs, not news sites）。Prefer articles with `full_text`; fallback to snippet-based picks. **This section is MANDATORY — never omit.** Format:
 ```
