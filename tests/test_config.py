@@ -20,7 +20,7 @@ SKILL_FILE = Path(__file__).parent.parent / "SKILL.md"
 TEST_PIPELINE = Path(__file__).parent.parent / "scripts" / "test-pipeline.sh"
 VALIDATE_CONFIG = Path(__file__).parent.parent / "scripts" / "validate-config.py"
 
-REQUIRED_TOPICS = {"llm", "ai-agent", "builder", "kol", "frontier-tech", "podcast"}
+REQUIRED_TOPICS = {"llm", "ai-agent", "kol", "frontier-tech", "podcast"}
 
 validate_config_spec = importlib.util.spec_from_file_location(
     "validate_config", VALIDATE_CONFIG
@@ -209,38 +209,25 @@ class TestLoadTopics(unittest.TestCase):
         for expected in REQUIRED_TOPICS:
             self.assertIn(expected, ids)
 
-    def test_builder_and_kol_topics_have_representative_sources(self):
+    def test_kol_topic_has_representative_sources(self):
         topics = load_merged_topics(DEFAULTS_DIR)
         topic_ids = {t["id"] for t in topics}
-        self.assertIn("builder", topic_ids)
         self.assertIn("kol", topic_ids)
+        self.assertNotIn("builder", topic_ids)
 
         sources = load_merged_sources(DEFAULTS_DIR)
         topic_sources = group_sources_by_topic(sources)
 
-        for topic in ("builder", "kol"):
-            sources_for_topic = topic_sources.get(topic, [])
-            self.assertGreater(
-                len(sources_for_topic),
-                0,
-                f"No default sources found for topic '{topic}'",
-            )
+        sources_for_topic = topic_sources.get("kol", [])
+        self.assertGreater(len(sources_for_topic), 0)
 
-            enabled_source_ids = {
-                source["id"]
-                for source in sources_for_topic
-                if source.get("enabled", True)
-            }
-            self.assertGreater(
-                len(enabled_source_ids),
-                0,
-                f"No enabled default source for topic '{topic}'",
-            )
-            self.assertIn(
-                "twitter",
-                {source["type"] for source in sources_for_topic},
-                f"Topic '{topic}' should include twitter source coverage",
-            )
+        enabled_source_ids = {
+            source["id"]
+            for source in sources_for_topic
+            if source.get("enabled", True)
+        }
+        self.assertGreater(len(enabled_source_ids), 0)
+        self.assertIn("twitter", {source["type"] for source in sources_for_topic})
 
     def test_crypto_default_set_is_not_reintroduced(self):
         topics = load_merged_topics(DEFAULTS_DIR)
@@ -253,32 +240,26 @@ class TestLoadTopics(unittest.TestCase):
         }
         self.assertNotIn("crypto", source_topics)
 
-    def test_builder_kol_topics_have_stable_representative_sources(self):
+    def test_kol_topic_has_stable_representative_sources(self):
         sources = load_merged_sources(DEFAULTS_DIR)
         topic_sources = group_sources_by_topic(sources)
 
-        for topic in ("builder", "kol"):
-            sources_for_topic = topic_sources.get(topic, [])
-            enabled_for_topic = [
-                source for source in sources_for_topic if source.get("enabled", True)
-            ]
-            self.assertGreater(
-                len(enabled_for_topic),
-                0,
-                f"Expected at least one enabled source for '{topic}'",
-            )
+        sources_for_topic = topic_sources.get("kol", [])
+        enabled_for_topic = [
+            source for source in sources_for_topic if source.get("enabled", True)
+        ]
+        self.assertGreater(len(enabled_for_topic), 0)
 
-            self.assertGreater(
-                len(
-                    [
-                        source
-                        for source in enabled_for_topic
-                        if source.get("type") == "twitter"
-                    ]
-                ),
-                0,
-                f"Expected enabled twitter representative for '{topic}'",
-            )
+        self.assertGreater(
+            len(
+                [
+                    source
+                    for source in enabled_for_topic
+                    if source.get("type") == "twitter"
+                ]
+            ),
+            0,
+        )
 
 
 class TestPodcastConfigValidation(unittest.TestCase):

@@ -36,30 +36,14 @@
       }
     },
     {
-      "id": "builder",
-      "emoji": "🏗️",
-      "label": "Builder / 构建者",
-      "description": "Founders, operators, and practical execution leaders in AI and software engineering",
-      "search": {
-        "queries": ["AI startup founding", "product launch", "builder mindset", "创业者观点", "AI公司动态"],
-        "twitter_queries": ["AI startup", "产品发布", "创业", "founder"],
-        "must_include": ["founder", "startup", "build", "execution", "company"],
-        "exclude": ["romance", "sports", "entertainment"]
-      },
-      "display": {
-        "max_items": 6,
-        "style": "detailed"
-      }
-    },
-    {
       "id": "kol",
       "emoji": "🎤",
       "label": "KOL / 观点",
-      "description": "Opinion leaders, keynote speakers, and influential commentators in technology",
+      "description": "Builders, founders, operators, keynote speakers, and influential commentators in technology",
       "search": {
-        "queries": ["AI opinion leader", "tech keynote", "industry voice", "KOL", "行业观点"],
-        "twitter_queries": ["技术观点", "tech commentator", "AI opinion", "industry leader"],
-        "must_include": ["opinion", "comment", "speaker", "观点", "leader"],
+        "queries": ["AI opinion leader", "tech keynote", "industry voice", "KOL", "AI startup founding", "product launch", "行业观点"],
+        "twitter_queries": ["技术观点", "tech commentator", "AI opinion", "industry leader", "AI startup", "产品发布", "创业", "founder"],
+        "must_include": ["opinion", "comment", "speaker", "观点", "leader", "founder", "startup", "build", "execution", "company"],
         "exclude": ["marketing", "promotional", "sponsored"]
       },
       "display": {

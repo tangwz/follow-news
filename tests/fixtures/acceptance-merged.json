@@ -22,7 +22,7 @@
     "topic_distribution": {
       "llm": 3,
       "ai-agent": 2,
-      "builder": 1,
+      "kol": 1,
       "podcast": 1,
       "frontier-tech": 2
     }
@@ -117,20 +117,20 @@
         }
       ]
     },
-    "builder": {
+    "kol": {
       "count": 1,
       "articles": [
         {
           "title": "Simon Willison explains practical prompt injection defenses",
           "link": "https://simonwillison.net/2026/Feb/27/prompt-injection-defenses/",
           "date": "2026-02-27T04:00:00+00:00",
-          "topics": ["builder"],
+          "topics": ["kol"],
           "source_type": "rss",
           "source_name": "Simon Willison",
           "source_id": "simonwillison-rss",
           "quality_score": 13,
           "multi_source": false,
-          "primary_topic": "builder",
+          "primary_topic": "kol",
           "author": "Simon Willison",
           "is_blog_pick": true,
           "full_text": "Prompt injection defenses work best when systems minimize authority in retrieved content, isolate tool execution, and expose clear audit trails for users.",

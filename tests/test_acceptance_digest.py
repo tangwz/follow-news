@@ -1209,6 +1209,80 @@ class TestAcceptanceRenderer(unittest.TestCase):
         self.assertIn("ai-agent", groups)
         self.assertNotIn("ai_agent", groups)
 
+    def test_group_by_topics_maps_legacy_builder_topic_to_kol(self):
+        articles = [
+            {
+                "title": "Founder explains product launch lessons",
+                "snippet": "A founder shared practical execution notes for an AI startup.",
+                "topics": ["builder"],
+            }
+        ]
+        topic_priority = {"kol": 0, "uncategorized": 1}
+        topic_keywords = {
+            "kol": ["founder", "startup", "execution"],
+        }
+
+        groups = merge_mod.group_by_topics(
+            articles,
+            topic_priority=topic_priority,
+            allowed_topics={"kol"},
+            topic_keywords=topic_keywords,
+        )
+
+        self.assertIn("kol", groups)
+        self.assertNotIn("builder", groups)
+        self.assertEqual(groups["kol"][0]["primary_topic"], "kol")
+        self.assertEqual(groups["kol"][0]["all_topics"], ["kol"])
+
+    def test_group_by_topics_preserves_builder_when_configured(self):
+        articles = [
+            {
+                "title": "Founder explains product launch lessons",
+                "snippet": "A founder shared practical execution notes for an AI startup.",
+                "topics": ["builder"],
+            }
+        ]
+        topic_priority = {"builder": 0, "uncategorized": 1}
+        topic_keywords = {
+            "builder": ["founder", "startup", "execution"],
+        }
+
+        groups = merge_mod.group_by_topics(
+            articles,
+            topic_priority=topic_priority,
+            allowed_topics={"builder"},
+            topic_keywords=topic_keywords,
+        )
+
+        self.assertIn("builder", groups)
+        self.assertNotIn("kol", groups)
+        self.assertEqual(groups["builder"][0]["primary_topic"], "builder")
+        self.assertEqual(groups["builder"][0]["all_topics"], ["builder"])
+
+    def test_group_by_topics_uses_builder_keywords_when_routing_to_kol(self):
+        articles = [
+            {
+                "title": "Founder explains product launch lessons",
+                "snippet": "A founder shared practical execution notes for an AI startup.",
+                "topics": ["builder", "llm"],
+            }
+        ]
+        topic_priority = {"llm": 0, "kol": 1, "uncategorized": 2}
+        topic_keywords = {
+            "builder": ["founder", "startup", "execution"],
+            "llm": ["large language model"],
+        }
+
+        groups = merge_mod.group_by_topics(
+            articles,
+            topic_priority=topic_priority,
+            allowed_topics={"kol", "llm"},
+            topic_keywords=topic_keywords,
+        )
+
+        self.assertIn("kol", groups)
+        self.assertNotIn("llm", groups)
+
     def test_default_topics_keep_agent_benchmark_out_of_llm(self):
         topics = render_mod.load_topic_definitions(TOPICS_FILE)
         topic_priority = {topic["id"]: index for index, topic in enumerate(topics)}
