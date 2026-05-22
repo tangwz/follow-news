@@ -76,7 +76,7 @@ Avoid unsupported significance words such as "major", "landmark", "strategic", "
 - RSS and Web: prefer concrete product, model, version, company, person, metric, and publication-time details when present.
 - Reddit: distinguish the linked item from subreddit discussion. Treat subreddit activity and controversy as discussion context, not factual proof.
 - Podcast: follow `references/summarize-podcast.md` when transcript text is available. Without transcript, summarize only title, show name, snippet, duration, and source metadata.
-- GitHub Releases and GitHub Trending: keep summaries short. Prefer repo, version or trending status, language, stars, and core changes. Do not add industry judgment unless release notes or repo metadata support it. Filter out nightly builds, alpha/prerelease tags, and dependency-only updates from fixed GitHub Releases unless the item already appeared as a prioritized topic article.
+- GitHub Releases and GitHub Trending: keep summaries short. Prefer repo, version or trending status, language, total stars, and core changes. Do not render daily star estimates such as `(+N/day)`. Do not add industry judgment unless release notes or repo metadata support it. Filter out nightly builds, alpha/prerelease tags, and dependency-only updates from fixed GitHub Releases unless the item already appeared as a prioritized topic article.
 
 ## Dedup and Section Rules
 

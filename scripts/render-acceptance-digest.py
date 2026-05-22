@@ -652,12 +652,10 @@ def render_github_trending(
     for article in repos:
         repo = article.get("repo") or article.get("title", "?")
         stars = format_count(article.get("stars"))
-        daily_stars = format_count(article.get("daily_stars_est"))
         language = article.get("language") or "Unknown"
         description = article.get("description") or article.get("snippet") or ""
         lines.append(
-            f"• **{repo}** ⭐ {stars} (+{daily_stars}/day) | "
-            f"{language} — {description}"
+            f"• **{repo}** ⭐ {stars} | {language} — {description}"
         )
         lines.append(render_link(article_link(article)))
         lines.append("")

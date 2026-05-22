@@ -2135,6 +2135,40 @@ class TestAcceptanceRenderer(unittest.TestCase):
             self.assertNotIn("example/trending-5", text)
             self.assertNotIn("example/trending-6", text)
 
+    def test_discord_github_trending_does_not_render_daily_star_estimate(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 1},
+            "topics": {
+                "supplemental": {
+                    "articles": [
+                        {
+                            "title": "example/trending-tool",
+                            "link": "https://github.com/example/trending-tool",
+                            "source_type": "github_trending",
+                            "repo": "example/trending-tool",
+                            "stars": 1234,
+                            "daily_stars_est": 56,
+                            "language": "Python",
+                            "description": "A trending tool.",
+                            "quality_score": 10,
+                        }
+                    ]
+                }
+            },
+        }
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=[],
+            report_date="2026-05-22",
+            version="3.17.0",
+        )
+
+        self.assertIn("• **example/trending-tool** ⭐ 1.2K | Python — A trending tool.", text)
+        self.assertNotIn("(+56/day)", text)
+        self.assertNotIn("/day", text)
+
     def test_footer_uses_current_github_trending_count_key(self):
         data = {
             "input_sources": {
