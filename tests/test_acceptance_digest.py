@@ -393,6 +393,23 @@ class TestVisibleArticleDedupe(unittest.TestCase):
 
         self.assertEqual(visible, [])
 
+    def test_visible_registry_limited_filter_pre_registers_late_bridge_aliases(self):
+        registry = render_mod.VisibleArticleRegistry()
+
+        visible = registry.filter_unseen_limited(
+            [
+                {"title": "Canonical", "link": "https://example.com/a"},
+                {"title": "Bridge", "link": "https://example.com/b"},
+                {"title": "Bridge", "link": "https://example.com/a"},
+            ],
+            limit=2,
+        )
+
+        self.assertEqual(
+            [article["link"] for article in visible],
+            ["https://example.com/a"],
+        )
+
     def test_visible_registry_passes_no_key_articles_without_dedupe(self):
         registry = render_mod.VisibleArticleRegistry()
         articles = [{"source_type": "rss"}, {"source_type": "web"}]
@@ -2363,7 +2380,7 @@ class TestAcceptanceRenderer(unittest.TestCase):
         self.assertIn("**Podcast 3**", text)
         self.assertNotIn("**Podcast 0**", text)
 
-    def test_podcast_alias_candidates_do_not_include_items_beyond_remix_limit(self):
+    def test_podcast_alias_candidates_include_full_remix_candidate_graph(self):
         data = {
             "input_sources": {},
             "output_stats": {"total_articles": 4},
@@ -2402,6 +2419,7 @@ class TestAcceptanceRenderer(unittest.TestCase):
                 "https://example.com/podcast-0",
                 "https://example.com/podcast-1",
                 "https://example.com/podcast-2",
+                "https://example.com/podcast-3",
             ],
         )
 

@@ -179,13 +179,13 @@ class VisibleArticleRegistry:
         articles: Iterable[Dict[str, Any]],
         limit: int,
     ) -> List[Dict[str, Any]]:
+        candidates = [(article, article_dedupe_keys(article)) for article in articles]
+        self.register_aliases(article for article, _ in candidates)
         visible = []
-        for article in articles:
-            keys = article_dedupe_keys(article)
+        for article, keys in candidates:
             if not keys:
                 visible.append(article)
             else:
-                self.register_aliases([article])
                 component_keys = self._component_keys(keys)
                 if component_keys & self.seen_keys:
                     self.seen_keys.update(component_keys)
@@ -461,7 +461,7 @@ def visible_alias_candidates(
     )
     candidates.extend(fixed_github_trending_articles(data))
     candidates.extend(fixed_blog_pick_articles(data))
-    candidates.extend(podcast_remix_articles(data))
+    candidates.extend(podcast_remix_candidates(data))
     return candidates
 
 
