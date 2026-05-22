@@ -393,6 +393,23 @@ class TestVisibleArticleDedupe(unittest.TestCase):
 
         self.assertEqual(visible, [])
 
+    def test_visible_registry_limited_filter_pre_registers_late_bridge_aliases(self):
+        registry = render_mod.VisibleArticleRegistry()
+
+        visible = registry.filter_unseen_limited(
+            [
+                {"title": "Canonical", "link": "https://example.com/a"},
+                {"title": "Bridge", "link": "https://example.com/b"},
+                {"title": "Bridge", "link": "https://example.com/a"},
+            ],
+            limit=2,
+        )
+
+        self.assertEqual(
+            [article["link"] for article in visible],
+            ["https://example.com/a"],
+        )
+
     def test_visible_registry_passes_no_key_articles_without_dedupe(self):
         registry = render_mod.VisibleArticleRegistry()
         articles = [{"source_type": "rss"}, {"source_type": "web"}]
@@ -2171,6 +2188,321 @@ class TestAcceptanceRenderer(unittest.TestCase):
         self.assertEqual(
             text.count("https://www.youtube.com/watch?v=unseenpodcast"),
             1,
+        )
+
+    def test_discord_podcast_remix_renders_metadata_only_episode(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 1},
+            "topics": {
+                "supplemental": {
+                    "articles": [
+                        {
+                            "title": "Agent taste preview",
+                            "link": "https://example.com/podcast",
+                            "source_type": "podcast",
+                            "show_name": "Training Data",
+                            "transcript_status": "missing",
+                            "snippet": "A short preview for an upcoming episode about agent product taste.",
+                            "quality_score": 12,
+                        }
+                    ]
+                }
+            },
+        }
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=[],
+            report_date="2026-05-22",
+            version="3.17.0",
+        )
+
+        self.assertIn("## 🎙️ Podcast Remix", text)
+        self.assertIn("• **Agent taste preview** — Training Data", text)
+        self.assertIn(
+            "A short preview for an upcoming episode about agent product taste.",
+            text,
+        )
+        self.assertNotIn("Quote:", text)
+
+    def test_discord_podcast_remix_renders_clean_transcript_quote(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 1},
+            "topics": {
+                "supplemental": {
+                    "articles": [
+                        {
+                            "title": "Why agents need product taste",
+                            "link": "https://example.com/podcast-transcript",
+                            "source_type": "podcast",
+                            "show_name": "Training Data",
+                            "transcript_status": "ok",
+                            "transcript": "Host | 00:00 - 00:05 Taste is the difference between a demo and a daily tool.",
+                            "summary": "The episode explains why product taste, evaluation loops, and reliability decide whether agent tools become daily workflow infrastructure.",
+                            "quality_score": 12,
+                        }
+                    ]
+                }
+            },
+        }
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=[],
+            report_date="2026-05-22",
+            version="3.17.0",
+        )
+
+        self.assertIn("• **Why agents need product taste** — Training Data", text)
+        self.assertIn(
+            "The episode explains why product taste, evaluation loops, and reliability decide whether agent tools become daily workflow infrastructure.",
+            text,
+        )
+        self.assertIn(
+            'Quote: "Taste is the difference between a demo and a daily tool."',
+            text,
+        )
+        self.assertNotIn("Host | 00:00", text)
+
+    def test_podcast_remix_uses_description_metadata_fallback(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 1},
+            "topics": {
+                "supplemental": {
+                    "articles": [
+                        {
+                            "title": "Metadata-only episode",
+                            "link": "https://example.com/podcast-description",
+                            "source_type": "podcast",
+                            "show_name": "Example Show",
+                            "transcript_status": "missing",
+                            "description": "Description-only context should remain visible.",
+                            "quality_score": 12,
+                        }
+                    ]
+                }
+            },
+        }
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=[],
+            report_date="2026-05-22",
+            version="3.17.0",
+        )
+
+        self.assertIn("Description-only context should remain visible.", text)
+        self.assertNotIn("has no available transcript", text)
+
+    def test_discord_podcast_remix_prefers_standard_summary_over_chat_summary(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 1},
+            "topics": {
+                "supplemental": {
+                    "articles": [
+                        {
+                            "title": "Localized summary episode",
+                            "link": "https://example.com/podcast-localized",
+                            "source_type": "podcast",
+                            "show_name": "Example Show",
+                            "transcript_status": "missing",
+                            "chat_summary": "这是一段只适合 chat 的摘要。",
+                            "summary": "This summary is intended for default digest output.",
+                            "quality_score": 12,
+                        }
+                    ]
+                }
+            },
+        }
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=[],
+            report_date="2026-05-22",
+            version="3.17.0",
+        )
+
+        self.assertIn("This summary is intended for default digest output.", text)
+        self.assertNotIn("这是一段只适合 chat 的摘要", text)
+
+    def test_podcast_quote_skips_empty_cleaned_transcript_lines(self):
+        article = {
+            "transcript_status": "ok",
+            "transcript": (
+                "Host | 00:00 - 00:05\n"
+                "Guest | 00:05 - 00:10 Evaluation loops create product taste."
+            ),
+        }
+
+        self.assertEqual(
+            render_mod.podcast_quote(article),
+            "Evaluation loops create product taste.",
+        )
+
+    def test_chat_podcast_remix_renders_transcript_quote(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 1},
+            "topics": {
+                "supplemental": {
+                    "articles": [
+                        {
+                            "title": "Transcript-only episode",
+                            "link": "https://example.com/podcast-chat-quote",
+                            "source_type": "podcast",
+                            "show_name": "Example Show",
+                            "transcript_status": "ok",
+                            "transcript": "Host | 00:00 - 00:05 Concrete evidence matters.",
+                            "quality_score": 12,
+                        }
+                    ]
+                }
+            },
+        }
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=[],
+            report_date="2026-05-22",
+            version="3.17.0",
+            template="chat",
+        )
+
+        self.assertIn('Quote: "Concrete evidence matters."', text)
+
+    def test_podcast_remix_prioritizes_transcript_backed_episodes(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 4},
+            "topics": {
+                "supplemental": {
+                    "articles": [
+                        {
+                            "title": f"Metadata episode {index}",
+                            "link": f"https://example.com/metadata-podcast-{index}",
+                            "source_type": "podcast",
+                            "show_name": "Example Show",
+                            "transcript_status": "missing",
+                            "summary": f"Metadata summary {index}.",
+                            "quality_score": 100 - index,
+                        }
+                        for index in range(3)
+                    ]
+                    + [
+                        {
+                            "title": "Transcript episode",
+                            "link": "https://example.com/transcript-podcast",
+                            "source_type": "podcast",
+                            "show_name": "Example Show",
+                            "transcript_status": "ok",
+                            "transcript": "Guest | 00:00 - 00:05 Transcript evidence.",
+                            "quality_score": 1,
+                        }
+                    ]
+                }
+            },
+        }
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=[],
+            report_date="2026-05-22",
+            version="3.17.0",
+        )
+
+        self.assertIn("**Transcript episode**", text)
+        self.assertIn('Quote: "Transcript evidence."', text)
+        self.assertNotIn("**Metadata episode 2**", text)
+
+    def test_podcast_remix_backfills_after_dedupe(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 5},
+            "topics": {
+                "ai-agent": {
+                    "articles": [
+                        {
+                            "title": "Topic already used this podcast URL",
+                            "link": "https://example.com/podcast-0",
+                            "summary": "Topic summary.",
+                            "quality_score": 20,
+                        }
+                    ]
+                },
+                "supplemental": {
+                    "articles": [
+                        {
+                            "title": f"Podcast {index}",
+                            "link": f"https://example.com/podcast-{index}",
+                            "source_type": "podcast",
+                            "show_name": "Example Show",
+                            "transcript_status": "missing",
+                            "summary": f"Podcast summary {index}.",
+                            "quality_score": 10 - index,
+                        }
+                        for index in range(4)
+                    ]
+                },
+            },
+        }
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=[{"id": "ai-agent", "label": "AI Agent", "emoji": "🤖"}],
+            report_date="2026-05-22",
+            version="3.17.0",
+        )
+
+        self.assertIn("**Podcast 1**", text)
+        self.assertIn("**Podcast 2**", text)
+        self.assertIn("**Podcast 3**", text)
+        self.assertNotIn("**Podcast 0**", text)
+
+    def test_podcast_alias_candidates_include_full_remix_candidate_graph(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 4},
+            "topics": {
+                "supplemental": {
+                    "articles": [
+                        {
+                            "title": f"Podcast {index}",
+                            "link": f"https://example.com/podcast-{index}",
+                            "source_type": "podcast",
+                            "show_name": "Example Show",
+                            "transcript_status": "missing",
+                            "summary": f"Podcast summary {index}.",
+                            "quality_score": 10 - index,
+                        }
+                        for index in range(4)
+                    ]
+                }
+            },
+        }
+
+        candidates = render_mod.visible_alias_candidates(
+            data,
+            topic_defs=[],
+            template="chat",
+        )
+
+        podcast_links = [
+            article["link"]
+            for article in candidates
+            if article.get("source_type") == "podcast"
+        ]
+        self.assertEqual(
+            podcast_links,
+            [
+                "https://example.com/podcast-0",
+                "https://example.com/podcast-1",
+                "https://example.com/podcast-2",
+                "https://example.com/podcast-3",
+            ],
         )
 
     def test_github_trending_fixed_sections_limit_to_top_five_repos(self):

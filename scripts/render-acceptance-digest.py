@@ -13,6 +13,7 @@ from urllib.parse import parse_qsl, parse_qs, urlencode, urlparse
 
 MIN_QUALITY_SCORE = 5
 MAX_GITHUB_TRENDING_ITEMS = 5
+MAX_PODCAST_REMIX_ITEMS = 3
 TRACKING_QUERY_PARAMS = {
     "fbclid",
     "gclid",
@@ -171,6 +172,30 @@ class VisibleArticleRegistry:
 
             self.seen_keys.update(component_keys)
             visible.append(article)
+        return visible
+
+    def filter_unseen_limited(
+        self,
+        articles: Iterable[Dict[str, Any]],
+        limit: int,
+    ) -> List[Dict[str, Any]]:
+        candidates = [(article, article_dedupe_keys(article)) for article in articles]
+        self.register_aliases(article for article, _ in candidates)
+        visible = []
+        for article, keys in candidates:
+            if not keys:
+                visible.append(article)
+            else:
+                component_keys = self._component_keys(keys)
+                if component_keys & self.seen_keys:
+                    self.seen_keys.update(component_keys)
+                    continue
+
+                self.seen_keys.update(component_keys)
+                visible.append(article)
+
+            if len(visible) >= limit:
+                break
         return visible
 
     def register_aliases(self, articles: Iterable[Dict[str, Any]]) -> None:
@@ -370,11 +395,33 @@ def fixed_podcast_articles(data: Dict[str, Any]) -> List[Dict[str, Any]]:
     return [
         article
         for article in iter_articles(data)
-        if article.get("transcript_status") == "ok"
-        and article.get("transcript")
-        and article.get("source_type") == "podcast"
+        if article.get("source_type") == "podcast"
         and article_link(article)
     ]
+
+
+def podcast_has_transcript(article: Dict[str, Any]) -> bool:
+    return bool(
+        article.get("transcript_status") == "ok"
+        and compact_text(article.get("transcript"))
+    )
+
+
+def podcast_remix_sort_key(article: Dict[str, Any]) -> tuple:
+    return (
+        not podcast_has_transcript(article),
+        -quality_score(article),
+        compact_text(article.get("title")),
+    )
+
+
+def podcast_remix_candidates(data: Dict[str, Any]) -> List[Dict[str, Any]]:
+    episodes = fixed_podcast_articles(data)
+    return sorted(episodes, key=podcast_remix_sort_key)
+
+
+def podcast_remix_articles(data: Dict[str, Any]) -> List[Dict[str, Any]]:
+    return podcast_remix_candidates(data)[:MAX_PODCAST_REMIX_ITEMS]
 
 
 def chat_topic_articles(topic_data: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -414,7 +461,7 @@ def visible_alias_candidates(
     )
     candidates.extend(fixed_github_trending_articles(data))
     candidates.extend(fixed_blog_pick_articles(data))
-    candidates.extend(fixed_podcast_articles(data))
+    candidates.extend(podcast_remix_candidates(data))
     return candidates
 
 
@@ -683,28 +730,87 @@ def render_podcast_remix(
     data: Dict[str, Any],
     visible_registry: VisibleArticleRegistry,
 ) -> Optional[str]:
-    episodes = fixed_podcast_articles(data)
+    episodes = podcast_remix_candidates(data)
     if not episodes:
         return None
 
-    episodes = sorted(episodes, key=quality_score, reverse=True)
-    episodes = visible_registry.filter_unseen(episodes)
+    episodes = visible_registry.filter_unseen_limited(episodes, MAX_PODCAST_REMIX_ITEMS)
     if not episodes:
         return None
 
     lines = ["## 🎙️ Podcast Remix", ""]
     for article in episodes:
         show_name = article.get("show_name") or article.get("source_name") or "Unknown"
-        summary = article.get("snippet") or article.get("summary") or ""
-        quote = str(article.get("transcript", "")).strip().splitlines()[0]
-        lines.append(
-            f"• **{article.get('title', '?')}** — {show_name} | "
-            f'{summary} Quote: "{quote}"'
-        )
+        lines.append(f"• **{article.get('title', '?')}** — {show_name}")
+        lines.append(f"  {podcast_digest_summary(article)}")
+        quote = podcast_quote(article)
+        if quote:
+            lines.append(f'  Quote: "{quote}"')
         lines.append(render_link(article_link(article)))
         lines.append("")
 
     return "\n".join(lines).rstrip()
+
+
+def podcast_digest_summary(
+    article: Dict[str, Any],
+    prefer_chat_summary: bool = False,
+) -> str:
+    summary_fields = (
+        ("chat_summary", "summary", "snippet", "description")
+        if prefer_chat_summary
+        else ("summary", "snippet", "description")
+    )
+    explicit_summary = next(
+        (
+            text
+            for text in (
+                compact_text(article.get(field))
+                for field in summary_fields
+            )
+            if text
+        ),
+        "",
+    )
+    if explicit_summary:
+        return explicit_summary
+
+    title = compact_text(article.get("title")) or "This episode"
+    show_name = compact_text(article.get("show_name") or article.get("source_name"))
+    show_context = f" from {show_name}" if show_name else ""
+    if podcast_has_transcript(article):
+        return (
+            f"{title}{show_context} has a usable transcript, but no prepared "
+            "summary field was provided. Use the transcript quote below as the "
+            "only specific evidence in this deterministic preview."
+        )
+
+    return (
+        f"{title}{show_context} has no available transcript, so this metadata-only "
+        "preview does not infer claims beyond the title and source metadata."
+    )
+
+
+def podcast_quote(article: Dict[str, Any]) -> str:
+    if not podcast_has_transcript(article):
+        return ""
+
+    transcript = str(article.get("transcript", ""))
+    for raw_line in transcript.splitlines():
+        line = compact_text(raw_line)
+        if not line:
+            continue
+        line = re.sub(
+            r"^[^|]{1,40}\|\s*"
+            r"\d{1,2}:\d{2}(?::\d{2})?\s*-\s*"
+            r"\d{1,2}:\d{2}(?::\d{2})?\s*",
+            "",
+            line,
+        )
+        if not line:
+            continue
+        return line[:220]
+    return ""
 
 
 def render_chat_article_section(
@@ -786,10 +892,23 @@ def render_chat_podcast_remix(
     data: Dict[str, Any],
     visible_registry: VisibleArticleRegistry,
 ) -> Optional[str]:
-    episodes = fixed_podcast_articles(data)
-    episodes = sorted(episodes, key=quality_score, reverse=True)
-    episodes = visible_registry.filter_unseen(episodes)
-    return render_chat_article_section("## 🎙️ Podcast Remix / 播客精选", "🎙️", episodes)
+    episodes = podcast_remix_candidates(data)
+    episodes = visible_registry.filter_unseen_limited(episodes, MAX_PODCAST_REMIX_ITEMS)
+    if not episodes:
+        return None
+
+    lines = ["## 🎙️ Podcast Remix / 播客精选", ""]
+    for index, article in enumerate(episodes, 1):
+        lines.append(chat_title_line(article, index, "🎙️"))
+        lines.append("")
+        lines.append(podcast_digest_summary(article, prefer_chat_summary=True))
+        quote = podcast_quote(article)
+        if quote:
+            lines.append(f'Quote: "{quote}"')
+        lines.append("")
+        lines.append(f"🔗 {article_link(article)}")
+        lines.append("")
+    return "\n".join(lines).rstrip()
 
 
 def first_sentence(text: str) -> str:
