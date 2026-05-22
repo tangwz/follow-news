@@ -32,7 +32,7 @@ clawhub install follow-news
 
 ## 📊 What You Get
 
-A quality-scored, deduplicated tech digest built from **163 built-in sources** plus **6 web search topics**:
+A deduplicated tech digest built from **163 built-in sources** plus **6 web search topics**:
 
 | Layer | Sources | What |
 |-------|---------|------|
@@ -55,12 +55,12 @@ A quality-scored, deduplicated tech digest built from **163 built-in sources** p
   GitHub Tr. ─┤              enrich-articles.py (opt-in)
   Reddit ─────┤                          ↓
   Podcast ────┘
-              Quality Scoring → Dedup → Topic Grouping
+              Ranking Signals → Dedup → Topic Grouping
                              ↓
                Discord / Email / PDF output
 ```
 
-**Quality scoring**: priority source (+3), multi-source cross-ref (+5), recency (+2), engagement (+1), Reddit score bonus (+1/+3/+5), already reported (-5).
+**Ranking signals**: priority sources, multi-source cross-reference, recency, engagement, Reddit discussion activity, and already-reported penalties.
 
 ## ⚙️ Configuration
 

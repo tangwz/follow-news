@@ -31,7 +31,7 @@ The agent should generate an HTML email body. Use inline styles (email clients s
   <h2 style="font-size:17px;margin-top:24px;color:#333">{{emoji}} {{label}}</h2>
   <ul style="padding-left:20px">
     <li style="margin-bottom:10px">
-      <strong>🔥{{quality_score}}</strong> {{title}} — {{description}}
+      <strong>{{title}}</strong> — {{description}}
       <br><a href="{{link}}" style="color:#0969da;font-size:13px">{{link}}</a>
     </li>
   </ul>
@@ -83,7 +83,13 @@ The agent should generate an HTML email body. Use inline styles (email clients s
 
 ## Non-GitHub Summary Quality
 
-This applies to KOL, non-GitHub topic, Blog Picks, Reddit, and Podcast items. GitHub Releases and GitHub Trending keep their existing concise style.
+This applies to non-GitHub topic, Blog Picks, and Reddit items. GitHub Releases and GitHub Trending keep their existing concise style.
+
+For Twitter/X and KOL summaries, follow `references/summarize-tweets.md`.
+
+For Podcast Remix summaries, follow `references/summarize-podcast.md`.
+
+For Chinese output or bilingual output, follow `references/translate.md`.
 
 Use a tendency-based structure: what happened, what object changed, and why it matters when the evidence supports it. Do not force all three points into every item.
 

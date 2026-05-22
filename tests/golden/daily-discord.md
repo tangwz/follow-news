@@ -2,37 +2,37 @@
 
 ## 🧠 LLM / 大模型
 
-• 🔥18 | OpenAI ships structured agent evaluation suite
+• OpenAI ships structured agent evaluation suite
   🔗 https://openai.com/research/agent-evals
   *[3 sources]*
 
-• 🔥12 | Claude Code adds repository-wide planning mode
+• Claude Code adds repository-wide planning mode
   🔗 https://www.anthropic.com/news/claude-code-planning
 
 ## 🤖 AI Agent / 智能体
 
-• 🔥14 | LangGraph releases durable multi-agent workflows
+• LangGraph releases durable multi-agent workflows
   🔗 https://blog.langchain.dev/durable-multi-agent-workflows
 
-• 🔥11 | SWE-agent benchmark report
+• SWE-agent benchmark report
   🔗 https://x.com/swebench/status/1234567890
 
 ## 🏗️ Builder / 构建者
 
-• 🔥13 | Simon Willison explains practical prompt injection defenses
+• Simon Willison explains practical prompt injection defenses
   🔗 https://simonwillison.net/2026/Feb/27/prompt-injection-defenses/
 
 ## 🔬 Tech Industry / 产业动态
 
-• 🔥10 | vLLM ships v1.0 scheduler improvements
+• vLLM ships v1.0 scheduler improvements
   🔗 https://github.com/vllm-project/vllm/releases/tag/v1.0.0
 
-• 🔥9 | browser-use/web-ui
+• browser-use/web-ui
   🔗 https://github.com/browser-use/web-ui
 
 ## 🎧 Podcast / 播客
 
-• 🔥15 | Why agents need product taste
+• Why agents need product taste
   🔗 https://www.youtube.com/watch?v=agenttaste
 
 ---

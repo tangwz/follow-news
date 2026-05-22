@@ -12,7 +12,7 @@ from urllib.parse import parse_qsl, parse_qs, urlencode, urlparse
 
 
 MIN_QUALITY_SCORE = 5
-CHAT_SCORE_NOTE = "评分说明：相关性 + 新鲜度 + 影响面。"
+MAX_GITHUB_TRENDING_ITEMS = 5
 TRACKING_QUERY_PARAMS = {
     "fbclid",
     "gclid",
@@ -243,12 +243,6 @@ def should_render_chat_topic_article(article: Dict[str, Any]) -> bool:
     return has_quality_score_value(article)
 
 
-def format_score(value: float) -> str:
-    if value.is_integer():
-        return str(int(value))
-    return f"{value:.1f}".rstrip("0").rstrip(".")
-
-
 def format_count(value: Any) -> str:
     try:
         number = int(value)
@@ -260,11 +254,6 @@ def format_count(value: Any) -> str:
     if number >= 1_000:
         return f"{number / 1_000:.1f}K".replace(".0K", "K")
     return str(number)
-
-
-def format_chat_score(article: Dict[str, Any]) -> str:
-    score = max(0.0, min(quality_score(article), 20.0)) / 2
-    return format_score(score)
 
 
 def compact_text(value: Any) -> str:
@@ -287,13 +276,29 @@ def chat_summary(article: Dict[str, Any]) -> str:
     return "No summary material is available."
 
 
+def bold_chat_title_text(value: Any) -> str:
+    text = str(value)
+    chars = []
+    for char in text:
+        code = ord(char)
+        if ord("A") <= code <= ord("Z"):
+            chars.append(chr(0x1D400 + code - ord("A")))
+        elif ord("a") <= code <= ord("z"):
+            chars.append(chr(0x1D41A + code - ord("a")))
+        elif ord("0") <= code <= ord("9"):
+            chars.append(chr(0x1D7CE + code - ord("0")))
+        else:
+            chars.append(char)
+    return "".join(chars)
+
+
 def chat_title_line(
     article: Dict[str, Any],
     index: int,
     emoji: str,
 ) -> str:
     title = article.get("title") or article.get("repo") or "Untitled"
-    return f"{index}. [{format_chat_score(article)}/10] {title}"
+    return f"{index}. {bold_chat_title_text(title)}"
 
 
 def render_chat_item(
@@ -448,8 +453,7 @@ def render_topic_sections(
             "",
         ]
         for article in articles:
-            score = format_score(quality_score(article))
-            lines.append(f"• 🔥{score} | {article.get('title', '?')}")
+            lines.append(f"• {article.get('title', '?')}")
             lines.append(render_link(article_link(article)))
             if article.get("multi_source"):
                 lines.append(f"  *[{article.get('source_count', 2)} sources]*")
@@ -640,6 +644,7 @@ def render_github_trending(
         reverse=True,
     )
     repos = visible_registry.filter_unseen(repos)
+    repos = repos[:MAX_GITHUB_TRENDING_ITEMS]
     if not repos:
         return None
 
@@ -779,6 +784,7 @@ def render_chat_github_trending(
         reverse=True,
     )
     repos = visible_registry.filter_unseen(repos)
+    repos = repos[:MAX_GITHUB_TRENDING_ITEMS]
     return render_chat_article_section("## 🐙 GitHub Trending / 趋势", "🐙", repos)
 
 
@@ -875,15 +881,15 @@ def render_chat_intro(
             continue
         candidates.extend(registry.filter_unseen(chat_topic_articles(topic_data)))
 
-    lines = [CHAT_SCORE_NOTE]
     highlights = sorted(candidates, key=quality_score, reverse=True)[:3]
+    lines = []
     if highlights:
-        lines.extend(["", "今日看点"])
+        lines.append("今日看点")
         for article in highlights:
             summary = first_sentence(chat_summary(article))
             lines.append(f"• {summary}")
 
-    return "\n".join(lines)
+    return "\n".join(lines) if lines else None
 
 
 def source_count(data: Dict[str, Any], key: str) -> int:
@@ -1023,7 +1029,6 @@ def summarize_fixture(data: Dict[str, Any]) -> str:
         for article in sorted(articles, key=lambda item: item.get("title", "")):
             title = article.get("title", "?")
             source_type = article.get("source_type", "unknown")
-            score = format_score(quality_score(article))
             summary = (
                 article.get("summary")
                 or article.get("snippet")
@@ -1031,7 +1036,7 @@ def summarize_fixture(data: Dict[str, Any]) -> str:
                 or article.get("full_text")
                 or ""
             )
-            lines.append(f"- [{source_type} score={score}] {title}")
+            lines.append(f"- [{source_type}] {title}")
             if summary:
                 lines.append(f"  Summary: {summary}")
         lines.append("")

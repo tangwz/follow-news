@@ -11,7 +11,7 @@ Discord-optimized format with bullet points and visible links.
 ## {{emoji}} {{label}}
 
 {{#articles}}
-• 🔥{{quality_score}} | {{title}}
+• {{title}}
   🔗 {{link}}
   {{#multi_source}}*[{{source_count}} sources]*{{/multi_source}}
 
@@ -40,7 +40,13 @@ Discord-optimized format with bullet points and visible links.
 
 ## Non-GitHub Summary Quality
 
-This applies to KOL, non-GitHub topic, Blog Picks, Reddit, and Podcast items. GitHub Releases and GitHub Trending keep their existing concise style.
+This applies to non-GitHub topic, Blog Picks, and Reddit items. GitHub Releases and GitHub Trending keep their existing concise style.
+
+For Twitter/X and KOL summaries, follow `references/summarize-tweets.md`.
+
+For Podcast Remix summaries, follow `references/summarize-podcast.md`.
+
+For Chinese output or bilingual output, follow `references/translate.md`.
 
 Use a tendency-based structure: what happened, what object changed, and why it matters when the evidence supports it. Do not force all three points into every item.
 
@@ -55,16 +61,16 @@ Discord length limits take precedence over sentence-count targets. When space is
 
 ## 🧠 LLM / Large Models
 
-• 🔥15 | OpenAI releases GPT-5 with breakthrough reasoning capabilities
+• OpenAI releases GPT-5 with breakthrough reasoning capabilities
   🔗 https://openai.com/blog/gpt5-announcement
   *[3 sources]*
 
-• 🔥12 | Meta's Llama 3.1 achieves new MMLU benchmarks
+• Meta's Llama 3.1 achieves new MMLU benchmarks
   🔗 https://ai.meta.com/blog/llama-31-release
 
 ## 🤖 AI Agent
 
-• 🔥14 | LangChain launches production-ready agent framework
+• LangChain launches production-ready agent framework
   🔗 https://blog.langchain.dev/production-agents
 
 
@@ -86,7 +92,6 @@ Discord length limits take precedence over sentence-count targets. When space is
 - `{{articles}}` - Array of article objects per topic
 - `{{title}}` - Article title (truncated if needed)
 - `{{link}}` - Article URL
-- `{{quality_score}}` - Article quality score (higher = more important)
 - `{{multi_source}}` - Boolean, true if article from multiple sources
 - `{{source_count}}` - Number of sources for this article
 - `{{total_sources}}` - Total number of sources used
