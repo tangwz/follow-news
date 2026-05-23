@@ -725,7 +725,7 @@ def is_non_hackernews_topic_hn_article(
     topic_id: Any,
     article: Dict[str, Any],
 ) -> bool:
-    return not is_hackernews_topic(topic_id) and is_hacker_news_article(article)
+    return not is_hackernews_topic(topic_id) and is_hacker_news_section_article(article)
 
 
 def is_direct_hacker_news_article(article: Dict[str, Any]) -> bool:
@@ -739,6 +739,18 @@ def has_hacker_news_metadata(article: Dict[str, Any]) -> bool:
     return (
         hacker_news_score_value(article) is not None
         and hacker_news_comments_value(article) is not None
+    )
+
+
+def is_hacker_news_section_article(article: Dict[str, Any]) -> bool:
+    return has_hacker_news_metadata(article) and (
+        bool(hacker_news_url(article)) or is_direct_hacker_news_article(article)
+    )
+
+
+def is_renderable_hackernews_topic_article(article: Dict[str, Any]) -> bool:
+    return is_hacker_news_article(article) and has_hacker_news_metadata(article) and bool(
+        hacker_news_url(article)
     )
 
 
@@ -862,9 +874,7 @@ def select_hackernews_topic_articles(
     eligible = [
         article
         for article in articles
-        if is_hacker_news_article(article)
-        and has_hacker_news_metadata(article)
-        and (hacker_news_url(article) or hacker_news_article_url(article))
+        if is_renderable_hackernews_topic_article(article)
     ]
     return sorted(eligible, key=hackernews_topic_sort_key)
 

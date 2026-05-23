@@ -3133,6 +3133,96 @@ class TestAcceptanceRenderer(unittest.TestCase):
         self.assertIn("↗ https://example.com/tool", text)
         self.assertNotIn("## 📰 Hacker News Top / 热榜", text)
 
+    def test_chat_hackernews_topic_requires_hn_discussion_url(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 1},
+            "topics": {
+                "hackernews": {
+                    "articles": [
+                        {
+                            "title": "HN metadata without discussion URL",
+                            "link": "https://example.com/story",
+                            "source_type": "rss",
+                            "source_name": "Hacker News Frontpage",
+                            "source_id": "hn-rss",
+                            "hn_rank": 1,
+                            "score": 234,
+                            "num_comments": 56,
+                            "summary": "HN discussion URL is missing.",
+                            "quality_score": 10,
+                        }
+                    ]
+                }
+            },
+        }
+        topic_defs = [
+            {"id": "hackernews", "emoji": "📰", "label": "Hacker News / 热榜"}
+        ]
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=topic_defs,
+            report_date="2026-05-22",
+            version="3.17.5",
+            template="chat",
+        )
+
+        self.assertNotIn("## 📰 Hacker News / 热榜", text)
+        self.assertIn("## 📰 Hacker News Top / 热榜", text)
+        self.assertIn("🔗 https://example.com/story", text)
+
+    def test_chat_keeps_non_hn_primary_article_with_hn_all_source(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 1},
+            "topics": {
+                "frontier-tech": {
+                    "articles": [
+                        {
+                            "title": "Primary source story also discussed on HN",
+                            "link": "https://example.com/primary",
+                            "source_type": "rss",
+                            "source_name": "Example Primary Source",
+                            "all_sources": [
+                                "Example Primary Source",
+                                "Hacker News Frontpage",
+                            ],
+                            "summary": "The primary source should remain visible.",
+                            "quality_score": 10,
+                        }
+                    ]
+                }
+            },
+        }
+        topic_defs = [
+            {
+                "id": "frontier-tech",
+                "emoji": "🔬",
+                "label": "Tech Industry / 产业动态",
+            },
+            {"id": "hackernews", "emoji": "📰", "label": "Hacker News / 热榜"},
+        ]
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=topic_defs,
+            report_date="2026-05-22",
+            version="3.17.5",
+            template="chat",
+        )
+
+        self.assertIn("## 🔬 Tech Industry / 产业动态", text)
+        self.assertIn(
+            render_mod.bold_chat_title_text(
+                "Primary source story also discussed on HN"
+            ),
+            text,
+        )
+        self.assertIn("🔗 https://example.com/primary", text)
+        self.assertNotIn("## 📰 Hacker News / 热榜", text)
+        self.assertNotIn("## 📰 Hacker News Top / 热榜", text)
+
     def test_chat_hackernews_topic_renders_ranked_top_ten_without_duplicates(self):
         ranked_articles = {
             index: {
@@ -3143,7 +3233,7 @@ class TestAcceptanceRenderer(unittest.TestCase):
                 "source_name": "Hacker News Frontpage",
                 "source_id": "hn-rss",
                 "hn_rank": index,
-                "score": 100 - index,
+                "score": index,
                 "num_comments": index,
                 "summary": f"Summary {index}.",
                 "quality_score": 10,
@@ -3158,7 +3248,7 @@ class TestAcceptanceRenderer(unittest.TestCase):
             "source_name": "Hacker News Frontpage",
             "source_id": "hn-rss",
             "hn_rank": 3,
-            "score": 97,
+            "score": 3,
             "num_comments": 3,
             "summary": "Duplicate story.",
             "quality_score": 10,
@@ -3199,6 +3289,77 @@ class TestAcceptanceRenderer(unittest.TestCase):
         self.assertEqual(text.count(story_3_line), 1)
         self.assertEqual(text.count("https://news.ycombinator.com/item?id=3"), 1)
         self.assertNotIn("https://mirror.example.com/story-3", text)
+
+    def test_chat_hackernews_topic_sorts_unranked_after_ranked_by_score_title(self):
+        articles = [
+            {
+                "title": "Unranked lower score",
+                "link": "https://example.com/unranked-lower",
+                "hn_url": "https://news.ycombinator.com/item?id=101",
+                "source_type": "rss",
+                "source_name": "Hacker News Frontpage",
+                "source_id": "hn-rss",
+                "score": 20,
+                "num_comments": 2,
+                "summary": "Lower score unranked story.",
+                "quality_score": 10,
+            },
+            {
+                "title": "Ranked lower score",
+                "link": "https://example.com/ranked",
+                "hn_url": "https://news.ycombinator.com/item?id=102",
+                "source_type": "rss",
+                "source_name": "Hacker News Frontpage",
+                "source_id": "hn-rss",
+                "hn_rank": 1,
+                "score": 1,
+                "num_comments": 1,
+                "summary": "Ranked story.",
+                "quality_score": 10,
+            },
+            {
+                "title": "Unranked higher score",
+                "link": "https://example.com/unranked-higher",
+                "hn_url": "https://news.ycombinator.com/item?id=103",
+                "source_type": "rss",
+                "source_name": "Hacker News Frontpage",
+                "source_id": "hn-rss",
+                "score": 99,
+                "num_comments": 3,
+                "summary": "Higher score unranked story.",
+                "quality_score": 10,
+            },
+        ]
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": len(articles)},
+            "topics": {"hackernews": {"articles": articles}},
+        }
+        topic_defs = [
+            {"id": "hackernews", "emoji": "📰", "label": "Hacker News / 热榜"}
+        ]
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=topic_defs,
+            report_date="2026-05-22",
+            version="3.17.5",
+            template="chat",
+        )
+
+        ranked_line = f"1. {render_mod.bold_chat_title_text('Ranked lower score')}"
+        unranked_high_line = (
+            f"2. {render_mod.bold_chat_title_text('Unranked higher score')}"
+        )
+        unranked_low_line = (
+            f"3. {render_mod.bold_chat_title_text('Unranked lower score')}"
+        )
+
+        self.assertIn(ranked_line, text)
+        self.assertIn(unranked_high_line, text)
+        self.assertIn(unranked_low_line, text)
+        self.assertLess(text.find(ranked_line), text.find(unranked_high_line))
+        self.assertLess(text.find(unranked_high_line), text.find(unranked_low_line))
 
     def test_chat_hackernews_topic_dedupes_by_hn_url_before_limiting(self):
         ranked_articles = {
