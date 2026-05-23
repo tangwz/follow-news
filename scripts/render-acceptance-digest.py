@@ -524,11 +524,18 @@ def render_topic_sections(
         if not isinstance(topic_data, dict):
             continue
 
+        topic_articles = topic_data.get("articles", []) or []
         if is_hackernews_topic(topic_id):
-            articles = select_hackernews_topic_articles(topic_data.get("articles", []))
+            articles = select_hackernews_topic_articles(topic_articles)
         else:
             articles = sorted_topic_articles(topic_data)
         articles = visible_registry.filter_unseen(articles)
+        if is_hackernews_topic(topic_id):
+            mark_hackernews_topic_visible_aliases(
+                visible_registry,
+                articles,
+                topic_articles,
+            )
         if not articles:
             continue
 
@@ -564,11 +571,18 @@ def render_chat_topic_sections(
         if not isinstance(topic_data, dict):
             continue
 
+        topic_articles = topic_data.get("articles", []) or []
         if is_hackernews_topic(topic_id):
-            articles = select_hackernews_topic_articles(topic_data.get("articles", []))
+            articles = select_hackernews_topic_articles(topic_articles)
         else:
             articles = chat_topic_articles(topic_data)
         articles = visible_registry.filter_unseen(articles)
+        if is_hackernews_topic(topic_id):
+            mark_hackernews_topic_visible_aliases(
+                visible_registry,
+                articles,
+                topic_articles,
+            )
         if not articles:
             continue
 
@@ -824,6 +838,51 @@ def hackernews_topic_sort_key(article: Dict[str, Any]) -> tuple:
     )
 
 
+def hackernews_topic_dedupe_keys(article: Dict[str, Any]) -> List[str]:
+    keys = article_dedupe_keys(article)
+    discussion_url = normalize_visible_url(hacker_news_url(article))
+    if discussion_url:
+        keys.append(f"hn:{discussion_url}")
+    return keys
+
+
+def filter_hackernews_topic_unseen_limited(
+    articles: Iterable[Dict[str, Any]],
+    limit: int,
+) -> List[Dict[str, Any]]:
+    visible = []
+    seen_keys = set()
+    for article in articles:
+        keys = hackernews_topic_dedupe_keys(article)
+        if keys and seen_keys.intersection(keys):
+            continue
+
+        seen_keys.update(keys)
+        visible.append(article)
+        if len(visible) >= limit:
+            break
+    return visible
+
+
+def mark_hackernews_topic_visible_aliases(
+    visible_registry: VisibleArticleRegistry,
+    visible_articles: Sequence[Dict[str, Any]],
+    candidates: Iterable[Dict[str, Any]],
+) -> None:
+    discussion_urls = {
+        normalize_visible_url(hacker_news_url(article))
+        for article in visible_articles
+        if hacker_news_url(article)
+    }
+    if not discussion_urls:
+        return
+
+    for candidate in candidates:
+        discussion_url = normalize_visible_url(hacker_news_url(candidate))
+        if discussion_url in discussion_urls:
+            visible_registry.mark(candidate)
+
+
 def select_hackernews_topic_articles(
     articles: Sequence[Dict[str, Any]],
 ) -> List[Dict[str, Any]]:
@@ -834,8 +893,7 @@ def select_hackernews_topic_articles(
         and has_hacker_news_metadata(article)
         and (hacker_news_url(article) or hacker_news_article_url(article))
     ]
-    topic_registry = VisibleArticleRegistry()
-    return topic_registry.filter_unseen_limited(
+    return filter_hackernews_topic_unseen_limited(
         sorted(eligible, key=hackernews_topic_sort_key),
         HN_DEFAULT_LIMIT,
     )

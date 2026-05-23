@@ -3121,6 +3121,65 @@ class TestAcceptanceRenderer(unittest.TestCase):
         self.assertEqual(text.count("https://news.ycombinator.com/item?id=3"), 1)
         self.assertNotIn("https://mirror.example.com/story-3", text)
 
+    def test_chat_hackernews_topic_dedupes_by_hn_url_before_limiting(self):
+        ranked_articles = {
+            index: {
+                "title": f"HN ranked story {index}",
+                "link": f"https://example.com/story-{index}",
+                "hn_url": f"https://news.ycombinator.com/item?id={index}",
+                "source_type": "rss",
+                "source_name": "Hacker News Frontpage",
+                "source_id": "hn-rss",
+                "hn_rank": index,
+                "score": 100 - index,
+                "num_comments": index,
+                "summary": f"Summary {index}.",
+                "quality_score": 10,
+            }
+            for index in list(range(1, 10)) + [11]
+        }
+        duplicate_story = {
+            "title": "Different coverage of story 3",
+            "link": "https://mirror.example.com/different-story-3",
+            "hn_url": "https://news.ycombinator.com/item?id=3",
+            "source_type": "rss",
+            "source_name": "Hacker News Frontpage",
+            "source_id": "hn-rss",
+            "hn_rank": 3,
+            "score": 96,
+            "num_comments": 3,
+            "summary": "Duplicate story with a different title.",
+            "quality_score": 10,
+        }
+        articles = [
+            ranked_articles[index]
+            for index in [5, 1, 3, 2, 4, 6, 7, 8, 9]
+        ]
+        articles.extend([duplicate_story, ranked_articles[11]])
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": len(articles)},
+            "topics": {"hackernews": {"articles": articles}},
+        }
+        topic_defs = [
+            {"id": "hackernews", "emoji": "📰", "label": "Hacker News / 热榜"}
+        ]
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=topic_defs,
+            report_date="2026-05-22",
+            version="3.17.5",
+            template="chat",
+        )
+
+        story_11_line = f"10. {render_mod.bold_chat_title_text('HN ranked story 11')}"
+
+        self.assertIn(story_11_line, text)
+        self.assertEqual(text.count("https://news.ycombinator.com/item?id=3"), 1)
+        self.assertNotIn("Different coverage of story 3", text)
+        self.assertNotIn("https://mirror.example.com/different-story-3", text)
+
     def test_discord_hackernews_topic_renders_hn_metadata_and_links(self):
         data = {
             "input_sources": {},
@@ -3227,6 +3286,64 @@ class TestAcceptanceRenderer(unittest.TestCase):
         self.assertEqual(text.count(story_3_line), 1)
         self.assertEqual(text.count("https://news.ycombinator.com/item?id=3"), 1)
         self.assertNotIn("https://mirror.example.com/story-3", text)
+
+    def test_discord_hackernews_topic_dedupes_by_hn_url_before_limiting(self):
+        ranked_articles = {
+            index: {
+                "title": f"HN ranked story {index}",
+                "link": f"https://example.com/story-{index}",
+                "hn_url": f"https://news.ycombinator.com/item?id={index}",
+                "source_type": "rss",
+                "source_name": "Hacker News Frontpage",
+                "source_id": "hn-rss",
+                "hn_rank": index,
+                "score": 100 - index,
+                "num_comments": index,
+                "summary": f"Summary {index}.",
+                "quality_score": 10,
+            }
+            for index in list(range(1, 10)) + [11]
+        }
+        duplicate_story = {
+            "title": "Different coverage of story 3",
+            "link": "https://mirror.example.com/different-story-3",
+            "hn_url": "https://news.ycombinator.com/item?id=3",
+            "source_type": "rss",
+            "source_name": "Hacker News Frontpage",
+            "source_id": "hn-rss",
+            "hn_rank": 3,
+            "score": 96,
+            "num_comments": 3,
+            "summary": "Duplicate story with a different title.",
+            "quality_score": 10,
+        }
+        articles = [
+            ranked_articles[index]
+            for index in [5, 1, 3, 2, 4, 6, 7, 8, 9]
+        ]
+        articles.extend([duplicate_story, ranked_articles[11]])
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": len(articles)},
+            "topics": {"hackernews": {"articles": articles}},
+        }
+        topic_defs = [
+            {"id": "hackernews", "emoji": "📰", "label": "Hacker News / 热榜"}
+        ]
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=topic_defs,
+            report_date="2026-05-22",
+            version="3.17.5",
+        )
+
+        story_11_line = "• HN ranked story 11 — 89↑ · 11 comments"
+
+        self.assertIn(story_11_line, text)
+        self.assertEqual(text.count("https://news.ycombinator.com/item?id=3"), 1)
+        self.assertNotIn("Different coverage of story 3", text)
+        self.assertNotIn("https://mirror.example.com/different-story-3", text)
 
     def test_hnrss_metadata_is_parsed_from_description(self):
         description = """
