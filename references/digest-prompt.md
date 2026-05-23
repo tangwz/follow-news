@@ -72,9 +72,9 @@ python3 <SKILL_DIR>/scripts/summarize-merged.py --input /tmp/td-merged.json --to
 
 Use this output to select articles — **do NOT write ad-hoc Python to parse the JSON**. Apply the template from `<SKILL_DIR>/references/templates/<TEMPLATE>.md`.
 
-When `<TEMPLATE>` is `chat`, follow `references/templates/chat.md` exactly: each visible item uses title line, one compact summary paragraph in `<LANGUAGE>`, and `🔗 URL`. Keep the source title text and URL content unchanged, but render title letters and digits with the chat template's Unicode bold transform. Do not use `<URL>`, Markdown inline links, or HTML links. Skip linkless items; skip sections that have no visible items after filtering. Do not repeat the section emoji inside item title lines. For chat, this template overrides the global article line, bullet-list, fixed-section example, and link-format rules below.
+When `<TEMPLATE>` is `chat`, follow `references/templates/chat.md` exactly: each visible item uses title line, one compact summary paragraph in `<LANGUAGE>`, and `🔗 URL`. Keep the source title text and URL content unchanged, but render title letters and digits with the chat template's Unicode bold transform. Do not use `<URL>`, Markdown inline links, or HTML links. Skip linkless items; skip sections that have no visible items after filtering. Do not repeat the section emoji inside item title lines. For chat, this template overrides the global article line, bullet-list, fixed-section example, and link-format rules below, except `topics.hackernews` must also render the original article URL as a secondary `↗ URL` line when it differs from the HN discussion URL.
 
-Select articles **purely by quality_score regardless of source type**. When an article has a `full_text` field, use it to write a richer 2-3 sentence summary instead of relying solely on the title/snippet. Articles in merged JSON are already sorted by quality_score descending within each topic — respect this order. For Reddit posts, identify the subreddit when present, but do not append visible score values.
+Select articles **purely by quality_score regardless of source type**, except `topics.hackernews`, which follows the Hacker News topic contract below instead of quality-score ordering. When an article has a `full_text` field, use it to write a richer 2-3 sentence summary instead of relying solely on the title/snippet. Articles in merged JSON are already sorted by quality_score descending within each topic — respect this order for non-`hackernews` topics. For Reddit posts, identify the subreddit when present, but do not append visible score values.
 
 Visible deduplication applies across the whole digest. If a URL or equivalent title is already visible in a topic section, do not repeat it in KOL Updates, GitHub Releases, GitHub Trending, Blog Picks, Podcast Remix, or the legacy Hacker News Top fallback. Topic sections take precedence over fixed sections.
 
@@ -108,9 +108,9 @@ Article title lines must not show visible score values. Keep the existing articl
 ### Topic Sections
 From `topics.json`: `emoji` + `label` headers, `<ITEMS_PER_SECTION>` items each.
 
-**⚠️ CRITICAL: Output articles in EXACTLY the same order as summarize-merged.py output. Do NOT reorder, group by subtopic, or rearrange.**
+**⚠️ CRITICAL: Output articles in EXACTLY the same order as summarize-merged.py output. Do NOT reorder, group by subtopic, or rearrange. Exception: `topics.hackernews` must be re-sorted by the Hacker News topic contract below.**
 
-**⚠️ Minimum internal ranking threshold: For every topic section generated from `topics.json`, skip valid numeric `quality_score` values below 5. For non-chat templates, only include articles with finite numeric `quality_score >= 5`. For chat, skip finite numeric scores below 5, but keep linked items with explicit invalid, non-finite, or non-numeric scores. Missing, null, or empty scores are skipped for chat topic sections unless future renderer behavior explicitly changes this rule.**
+**⚠️ Minimum internal ranking threshold: For every non-`hackernews` topic section generated from `topics.json`, skip valid numeric `quality_score` values below 5. For non-chat templates, only include articles with finite numeric `quality_score >= 5`. For chat, skip finite numeric scores below 5, but keep linked items with explicit invalid, non-finite, or non-numeric scores. Missing, null, or empty scores are skipped for chat topic sections unless future renderer behavior explicitly changes this rule. `topics.hackernews` follows the Hacker News topic contract below and should not be filtered by `quality_score`.**
 
 ### Fixed Sections (after topics)
 
