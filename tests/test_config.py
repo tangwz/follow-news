@@ -20,7 +20,14 @@ SKILL_FILE = Path(__file__).parent.parent / "SKILL.md"
 TEST_PIPELINE = Path(__file__).parent.parent / "scripts" / "test-pipeline.sh"
 VALIDATE_CONFIG = Path(__file__).parent.parent / "scripts" / "validate-config.py"
 
-REQUIRED_TOPICS = {"llm", "ai-agent", "kol", "frontier-tech", "podcast"}
+REQUIRED_TOPICS = {
+    "llm",
+    "ai-agent",
+    "kol",
+    "hackernews",
+    "frontier-tech",
+    "podcast",
+}
 
 validate_config_spec = importlib.util.spec_from_file_location(
     "validate_config", VALIDATE_CONFIG
@@ -260,6 +267,13 @@ class TestLoadTopics(unittest.TestCase):
             ),
             0,
         )
+
+    def test_hacker_news_source_uses_hackernews_topic_only(self):
+        sources = load_merged_sources(DEFAULTS_DIR)
+        hn_sources = [source for source in sources if source.get("id") == "hn-rss"]
+
+        self.assertEqual(len(hn_sources), 1)
+        self.assertEqual(hn_sources[0].get("topics"), ["hackernews"])
 
 
 class TestPodcastConfigValidation(unittest.TestCase):

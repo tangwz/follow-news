@@ -1410,6 +1410,34 @@ class TestAcceptanceRenderer(unittest.TestCase):
         self.assertIn("llm", groups)
         self.assertNotIn("frontier-tech", groups)
 
+    def test_default_topics_route_hacker_news_to_hackernews_only(self):
+        topics = render_mod.load_topic_definitions(TOPICS_FILE)
+        topic_priority = {topic["id"]: index for index, topic in enumerate(topics)}
+        topic_keywords = merge_mod.topic_keyword_map(topics)
+        article = {
+            "title": "Show HN: Useful Tool",
+            "link": "https://example.com/tool",
+            "hn_url": "https://news.ycombinator.com/item?id=42",
+            "source_type": "rss",
+            "source_name": "Hacker News Frontpage",
+            "source_id": "hn-rss",
+            "topics": ["hackernews"],
+            "score": 234,
+            "num_comments": 56,
+            "quality_score": 10,
+        }
+
+        groups = merge_mod.group_by_topics(
+            [article],
+            allowed_topics={topic["id"] for topic in topics},
+            topic_priority=topic_priority,
+            topic_keywords=topic_keywords,
+        )
+
+        self.assertIn("hackernews", groups)
+        self.assertNotIn("frontier-tech", groups)
+        self.assertEqual(groups["hackernews"][0]["primary_topic"], "hackernews")
+
     def test_chat_intro_keeps_decimal_version_in_highlight(self):
         data = {
             "input_sources": {},
