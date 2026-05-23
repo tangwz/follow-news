@@ -1,6 +1,6 @@
 {
   "_description": "Enhanced topic definitions for tech digest. Each topic defines a report section with search queries, filters, and display preferences.",
-  "_updated": "2026-02-15",
+  "_updated": "2026-05-23",
   "_version": "2.5.0",
   "topics": [
     {
@@ -48,6 +48,22 @@
       },
       "display": {
         "max_items": 6,
+        "style": "compact"
+      }
+    },
+    {
+      "id": "hackernews",
+      "emoji": "📰",
+      "label": "Hacker News / 热榜",
+      "description": "Top stories from Hacker News frontpage with HN score, comments, and discussion links",
+      "search": {
+        "queries": [],
+        "twitter_queries": [],
+        "must_include": [],
+        "exclude": []
+      },
+      "display": {
+        "max_items": 10,
         "style": "compact"
       }
     },

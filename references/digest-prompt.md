@@ -72,11 +72,11 @@ python3 <SKILL_DIR>/scripts/summarize-merged.py --input /tmp/td-merged.json --to
 
 Use this output to select articles — **do NOT write ad-hoc Python to parse the JSON**. Apply the template from `<SKILL_DIR>/references/templates/<TEMPLATE>.md`.
 
-When `<TEMPLATE>` is `chat`, follow `references/templates/chat.md` exactly: each visible item uses title line, one compact summary paragraph in `<LANGUAGE>`, and `🔗 URL`. Keep the source title text and URL content unchanged, but render title letters and digits with the chat template's Unicode bold transform. Do not use `<URL>`, Markdown inline links, or HTML links. Skip linkless items; skip sections that have no visible items after filtering. Do not repeat the section emoji inside item title lines. For chat, this template overrides the global article line, bullet-list, fixed-section example, and link-format rules below.
+When `<TEMPLATE>` is `chat`, follow `references/templates/chat.md` exactly: each visible item uses title line, one compact summary paragraph in `<LANGUAGE>`, and `🔗 URL`. Keep the source title text and URL content unchanged, but render title letters and digits with the chat template's Unicode bold transform. Do not use `<URL>`, Markdown inline links, or HTML links. Skip linkless items; skip sections that have no visible items after filtering. Do not repeat the section emoji inside item title lines. For chat, this template overrides the global article line, bullet-list, fixed-section example, and link-format rules below, except `topics.hackernews` must also render the original article URL as a secondary `↗ URL` line when it differs from the HN discussion URL.
 
-Select articles **purely by quality_score regardless of source type**. When an article has a `full_text` field, use it to write a richer 2-3 sentence summary instead of relying solely on the title/snippet. Articles in merged JSON are already sorted by quality_score descending within each topic — respect this order. For Reddit posts, identify the subreddit when present, but do not append visible score values.
+Select articles **purely by quality_score regardless of source type**, except `topics.hackernews`, which follows the Hacker News topic contract below instead of quality-score ordering. When an article has a `full_text` field, use it to write a richer 2-3 sentence summary instead of relying solely on the title/snippet. Articles in merged JSON are already sorted by quality_score descending within each topic — respect this order for non-`hackernews` topics. For Reddit posts, identify the subreddit when present, but do not append visible score values.
 
-Visible deduplication applies across the whole digest. If a URL or equivalent title is already visible in a topic section, do not repeat it in KOL Updates, Hacker News Top, GitHub Releases, GitHub Trending, Blog Picks, or Podcast Remix. Topic sections take precedence over fixed sections.
+Visible deduplication applies across the whole digest. If a URL or equivalent title is already visible in a topic section, do not repeat it in KOL Updates, GitHub Releases, GitHub Trending, Blog Picks, Podcast Remix, or the legacy Hacker News Top fallback. Topic sections take precedence over fixed sections.
 
 When an item has multiple candidate topics, prefer the topic supported by the item title, snippet, summary, or full text over the source's broad default topic list. Policy, public-sector technology, open-source governance, security-operations, or industry-adoption stories should not be placed under LLM unless the item itself is about language models, model capabilities, model releases, inference, or benchmarks.
 
@@ -108,9 +108,9 @@ Article title lines must not show visible score values. Keep the existing articl
 ### Topic Sections
 From `topics.json`: `emoji` + `label` headers, `<ITEMS_PER_SECTION>` items each.
 
-**⚠️ CRITICAL: Output articles in EXACTLY the same order as summarize-merged.py output. Do NOT reorder, group by subtopic, or rearrange.**
+**⚠️ CRITICAL: Output articles in EXACTLY the same order as summarize-merged.py output. Do NOT reorder, group by subtopic, or rearrange. Exception: `topics.hackernews` must be re-sorted by the Hacker News topic contract below.**
 
-**⚠️ Minimum internal ranking threshold: For every topic section generated from `topics.json`, skip valid numeric `quality_score` values below 5. For non-chat templates, only include articles with finite numeric `quality_score >= 5`. For chat, skip finite numeric scores below 5, but keep linked items with explicit invalid, non-finite, or non-numeric scores. Missing, null, or empty scores are skipped for chat topic sections unless future renderer behavior explicitly changes this rule.**
+**⚠️ Minimum internal ranking threshold: For every non-`hackernews` topic section generated from `topics.json`, skip valid numeric `quality_score` values below 5. For non-chat templates, only include articles with finite numeric `quality_score >= 5`. For chat, skip finite numeric scores below 5, but keep linked items with explicit invalid, non-finite, or non-numeric scores. Missing, null, or empty scores are skipped for chat topic sections unless future renderer behavior explicitly changes this rule. `topics.hackernews` follows the Hacker News topic contract below and should not be filtered by `quality_score`.**
 
 ### Fixed Sections (after topics)
 
@@ -125,14 +125,16 @@ Read `display_name` and `handle` from merged JSON. Keep `metrics` fields availab
 
 **<EXTRA_SECTIONS>**
 
-**📰 Hacker News Top** — Top Hacker News frontpage stories. Format:
+**📰 Hacker News topic** — When `topics.json` includes the `hackernews` topic and merged JSON contains a renderable `topics.hackernews` section, render Hacker News only as the normal `## 📰 Hacker News / 热榜` topic section. Do not also render the legacy `Hacker News Top` fixed section. Format:
 ```
 1. **Article Title** — 234↑ · 56 comments
    1-2 sentence summary of the article or discussion context
    <https://news.ycombinator.com/item?id=xxx>
    <https://original-article.example.com>
 ```
-Filter for Hacker News Frontpage items from merged JSON (`source_id == "hn-rss"`, `source_name == "Hacker News Frontpage"`, or `hn_url` present). Default to the top 10 frontpage items by HN score. If an item ranked 11-20 is AI/LLM/ML-related by title keywords, include it as an exception so AI stories are not buried. Each item should include title, HN score, comment count, HN discussion URL, original article URL when present, and a concise 1-2 sentence summary. Place this section after topic sections and before GitHub Releases.
+Filter for Hacker News Frontpage items from merged JSON (`source_id == "hn-rss"`, `source_name == "Hacker News Frontpage"`, or `hn_url` present). Show exactly the first 10 unique Hacker News stories by `hn_rank` ascending. If `hn_rank` is missing, sort those unranked items after ranked items by HN score descending, then title. Each item should include title, HN score, comment count, HN discussion URL as the primary link, original article URL when present as a secondary link, and a concise 1-2 sentence summary.
+
+**📰 Hacker News Top legacy fallback** — Only render this fixed section when the merged JSON has Hacker News Frontpage items but no renderable `topics.hackernews` section. This preserves older merged inputs. In that fallback mode, still filter Hacker News items out of non-`hackernews` generic topic sections so Hacker News content appears only in the fallback section. Place the fallback after topic sections and before GitHub Releases.
 
 **📦 GitHub Releases** — Notable new releases from watched repos. Format:
 ```

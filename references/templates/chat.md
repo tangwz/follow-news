@@ -81,5 +81,5 @@ Avoid unsupported significance words such as "major", "landmark", "strategic", "
 ## Dedup and Section Rules
 
 - A visible URL or equivalent title should appear at most once in the whole chat digest.
-- Topic sections win over fixed sections. If an item is already visible under a topic, skip it from Hacker News Top, GitHub Releases, GitHub Trending, Blog Picks, KOL Updates, and Podcast Remix.
+- Topic sections win over fixed sections. If `hackernews` is present as a renderable topic, render Hacker News only as `## 📰 Hacker News / 热榜` with the Top 10 unique HN stories by `hn_rank` ascending; do not also render the legacy Hacker News Top fallback. For all fixed sections, if an item is already visible under a topic, skip it from GitHub Releases, GitHub Trending, Blog Picks, KOL Updates, Podcast Remix, and the legacy Hacker News Top fallback.
 - Use content keyword matches to pick the best topic when a source is configured for multiple topics. Do not place a policy, open-source governance, or public-sector technology story under LLM unless the item itself is about language models or model capabilities.

@@ -152,6 +152,13 @@ def article_dedupe_keys(article: Dict[str, Any]) -> List[str]:
         if normalized_url:
             keys.append(normalized_url)
 
+    hn_url = compact_text(article.get("hn_url") or article.get("comments_url"))
+    if hn_url:
+        normalized_hn_url = normalize_visible_url(hn_url)
+        if normalized_hn_url:
+            keys.append(normalized_hn_url)
+            keys.append(f"hn:{normalized_hn_url}")
+
     title = strip_matching_source_suffix(article.get("title"), article)
     normalized_title = normalize_visible_title(title)
     if normalized_title:
@@ -480,10 +487,7 @@ def visible_alias_candidates(
         if not isinstance(topic_data, dict):
             continue
 
-        if template == "chat":
-            candidates.extend(chat_topic_articles(topic_data))
-        else:
-            candidates.extend(sorted_topic_articles(topic_data))
+        candidates.extend(topic_render_candidate_articles(topic_id, topic_data, template))
 
     candidates.extend(fixed_kol_articles(data))
     candidates.extend(
@@ -492,11 +496,32 @@ def visible_alias_candidates(
             filter_low_signal=(template == "chat"),
         )
     )
-    candidates.extend(fixed_hacker_news_articles(data))
+    if not has_renderable_hackernews_topic(data, topic_defs):
+        candidates.extend(fixed_hacker_news_articles(data))
     candidates.extend(fixed_github_trending_articles(data))
     candidates.extend(fixed_blog_pick_articles(data))
     candidates.extend(podcast_remix_candidates(data))
     return candidates
+
+
+def topic_render_candidate_articles(
+    topic_id: Any,
+    topic_data: Dict[str, Any],
+    template: str,
+) -> List[Dict[str, Any]]:
+    if is_hackernews_topic(topic_id):
+        return select_hackernews_topic_articles(topic_data.get("articles", []) or [])
+
+    if template == "chat":
+        articles = chat_topic_articles(topic_data)
+    else:
+        articles = sorted_topic_articles(topic_data)
+
+    return [
+        article
+        for article in articles
+        if not is_non_hackernews_topic_hn_article(topic_id, article)
+    ]
 
 
 def sorted_topic_articles(topic_data: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -524,8 +549,14 @@ def render_topic_sections(
         if not isinstance(topic_data, dict):
             continue
 
-        articles = sorted_topic_articles(topic_data)
-        articles = visible_registry.filter_unseen(articles)
+        articles = topic_render_candidate_articles(topic_id, topic_data, "discord")
+        if is_hackernews_topic(topic_id):
+            articles = visible_registry.filter_unseen_limited(
+                articles,
+                HN_DEFAULT_LIMIT,
+            )
+        else:
+            articles = visible_registry.filter_unseen(articles)
         if not articles:
             continue
 
@@ -534,10 +565,13 @@ def render_topic_sections(
             "",
         ]
         for article in articles:
-            lines.append(f"• {article.get('title', '?')}")
-            lines.append(render_link(article_link(article)))
-            if article.get("multi_source"):
-                lines.append(f"  *[{article.get('source_count', 2)} sources]*")
+            if is_hackernews_topic(topic_id) and is_hacker_news_article(article):
+                lines.extend(render_hackernews_topic_item(article))
+            else:
+                lines.append(f"• {article.get('title', '?')}")
+                lines.append(render_link(article_link(article)))
+                if article.get("multi_source"):
+                    lines.append(f"  *[{article.get('source_count', 2)} sources]*")
             lines.append("")
         sections.append("\n".join(lines).rstrip())
 
@@ -558,8 +592,14 @@ def render_chat_topic_sections(
         if not isinstance(topic_data, dict):
             continue
 
-        articles = chat_topic_articles(topic_data)
-        articles = visible_registry.filter_unseen(articles)
+        articles = topic_render_candidate_articles(topic_id, topic_data, "chat")
+        if is_hackernews_topic(topic_id):
+            articles = visible_registry.filter_unseen_limited(
+                articles,
+                HN_DEFAULT_LIMIT,
+            )
+        else:
+            articles = visible_registry.filter_unseen(articles)
         if not articles:
             continue
 
@@ -569,7 +609,10 @@ def render_chat_topic_sections(
             "",
         ]
         for index, article in enumerate(articles, 1):
-            lines.append(render_chat_item(article, index, emoji))
+            if is_hackernews_topic(topic_id) and is_hacker_news_article(article):
+                lines.extend(render_chat_hackernews_topic_item(article, index, emoji))
+            else:
+                lines.append(render_chat_item(article, index, emoji))
             lines.append("")
         sections.append("\n".join(lines).rstrip())
 
@@ -680,6 +723,17 @@ def is_hacker_news_article(article: Dict[str, Any]) -> bool:
     return isinstance(all_sources, list) and "Hacker News Frontpage" in all_sources
 
 
+def is_hackernews_topic(topic_id: Any) -> bool:
+    return compact_text(topic_id).lower() == "hackernews"
+
+
+def is_non_hackernews_topic_hn_article(
+    topic_id: Any,
+    article: Dict[str, Any],
+) -> bool:
+    return not is_hackernews_topic(topic_id) and is_hacker_news_section_article(article)
+
+
 def is_direct_hacker_news_article(article: Dict[str, Any]) -> bool:
     return (
         article.get("source_id") == "hn-rss"
@@ -691,6 +745,18 @@ def has_hacker_news_metadata(article: Dict[str, Any]) -> bool:
     return (
         hacker_news_score_value(article) is not None
         and hacker_news_comments_value(article) is not None
+    )
+
+
+def is_hacker_news_section_article(article: Dict[str, Any]) -> bool:
+    return has_hacker_news_metadata(article) and (
+        bool(hacker_news_url(article)) or is_direct_hacker_news_article(article)
+    )
+
+
+def is_renderable_hackernews_topic_article(article: Dict[str, Any]) -> bool:
+    return is_hacker_news_article(article) and has_hacker_news_metadata(article) and bool(
+        hacker_news_url(article)
     )
 
 
@@ -797,6 +863,59 @@ def select_hacker_news_top_articles(
     return default_articles + ai_related_extras
 
 
+def hackernews_topic_sort_key(article: Dict[str, Any]) -> tuple:
+    rank = hacker_news_rank(article)
+    has_rank = rank < 9999
+    return (
+        not has_rank,
+        rank,
+        -hacker_news_score(article),
+        compact_text(article.get("title")),
+    )
+
+
+def select_hackernews_topic_articles(
+    articles: Sequence[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    eligible = [
+        article
+        for article in articles
+        if isinstance(article, dict) and is_renderable_hackernews_topic_article(article)
+    ]
+    return sorted(eligible, key=hackernews_topic_sort_key)
+
+
+def find_hackernews_topic_data(
+    data: Dict[str, Any],
+    topic_defs: Sequence[Dict[str, Any]],
+) -> Optional[Dict[str, Any]]:
+    topics = data.get("topics", {})
+    if not isinstance(topics, dict):
+        return None
+
+    for topic_def in topic_defs:
+        topic_id = topic_def.get("id")
+        if not is_hackernews_topic(topic_id):
+            continue
+
+        topic_data = topics.get(topic_id)
+        if isinstance(topic_data, dict):
+            return topic_data
+
+    return None
+
+
+def has_renderable_hackernews_topic(
+    data: Dict[str, Any],
+    topic_defs: Sequence[Dict[str, Any]],
+) -> bool:
+    topic_data = find_hackernews_topic_data(data, topic_defs)
+    if topic_data is None:
+        return False
+
+    return bool(select_hackernews_topic_articles(topic_data.get("articles", []) or []))
+
+
 def hacker_news_summary(article: Dict[str, Any]) -> str:
     return (
         compact_text(article.get("chat_summary"))
@@ -837,6 +956,21 @@ def render_hacker_news_top(
         lines.append("")
 
     return "\n".join(lines).rstrip()
+
+
+def render_hackernews_topic_item(article: Dict[str, Any]) -> List[str]:
+    title = article.get("title", "?")
+    lines = [
+        f"• {title} — {hacker_news_score(article)}↑ · {hacker_news_comments(article)} comments",
+        render_link(hacker_news_primary_url(article)),
+    ]
+    primary_url = hacker_news_primary_url(article)
+    article_url = hacker_news_article_url(article)
+    if article_url and article_url != primary_url:
+        lines.append(f"  ↗ {article_url}")
+    if article.get("multi_source"):
+        lines.append(f"  *[{article.get('source_count', 2)} sources]*")
+    return lines
 
 
 def render_github_releases(
@@ -1096,6 +1230,29 @@ def render_chat_hacker_news_top(
     return "\n".join(lines).rstrip()
 
 
+def render_chat_hackernews_topic_item(
+    article: Dict[str, Any],
+    index: int,
+    emoji: str,
+) -> List[str]:
+    lines = [
+        chat_title_line(article, index, emoji),
+        "",
+        (
+            f"{hacker_news_score(article)}↑ · "
+            f"{hacker_news_comments(article)} comments · "
+            f"{hacker_news_summary(article)}"
+        ),
+        "",
+        f"🔗 {hacker_news_primary_url(article)}",
+    ]
+    primary_url = hacker_news_primary_url(article)
+    article_url = hacker_news_article_url(article)
+    if article_url and article_url != primary_url:
+        lines.append(f"↗ {article_url}")
+    return lines
+
+
 def render_chat_github_trending(
     data: Dict[str, Any],
     visible_registry: VisibleArticleRegistry,
@@ -1212,10 +1369,17 @@ def render_chat_intro(
 
     topics = data.get("topics", {})
     for topic_def in topic_defs:
-        topic_data = topics.get(topic_def.get("id"))
+        topic_id = topic_def.get("id")
+        topic_data = topics.get(topic_id)
         if not isinstance(topic_data, dict):
             continue
-        candidates.extend(registry.filter_unseen(chat_topic_articles(topic_data)))
+        topic_articles = topic_render_candidate_articles(topic_id, topic_data, "chat")
+        if is_hackernews_topic(topic_id):
+            candidates.extend(
+                registry.filter_unseen_limited(topic_articles, HN_DEFAULT_LIMIT)
+            )
+        else:
+            candidates.extend(registry.filter_unseen(topic_articles))
 
     highlights = sorted(candidates, key=quality_score, reverse=True)[:3]
     lines = []
@@ -1292,6 +1456,7 @@ def render_digest(
         visible_alias_candidates(data, topic_defs, template="discord")
     )
     sections.extend(render_topic_sections(data, topic_defs, visible_registry))
+    skip_hacker_news_top = has_renderable_hackernews_topic(data, topic_defs)
 
     for renderer in (
         render_kol_updates,
@@ -1301,6 +1466,8 @@ def render_digest(
         render_blog_picks,
         render_podcast_remix,
     ):
+        if skip_hacker_news_top and renderer is render_hacker_news_top:
+            continue
         section = renderer(data, visible_registry)
         if section:
             sections.append(section)
@@ -1324,6 +1491,7 @@ def render_chat_digest(
     if intro:
         sections.append(intro)
     sections.extend(render_chat_topic_sections(data, topic_defs, visible_registry))
+    skip_hacker_news_top = has_renderable_hackernews_topic(data, topic_defs)
 
     for renderer in (
         render_chat_kol_updates,
@@ -1333,6 +1501,8 @@ def render_chat_digest(
         render_chat_blog_picks,
         render_chat_podcast_remix,
     ):
+        if skip_hacker_news_top and renderer is render_chat_hacker_news_top:
+            continue
         section = renderer(data, visible_registry)
         if section:
             sections.append(section)

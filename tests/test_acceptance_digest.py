@@ -324,6 +324,25 @@ class TestVisibleArticleDedupe(unittest.TestCase):
             render_mod.article_dedupe_key(second),
         )
 
+    def test_visible_registry_matches_hackernews_link_with_hn_url(self):
+        registry = render_mod.VisibleArticleRegistry()
+        registry.mark(
+            {
+                "title": "Prior discussion link",
+                "link": "https://news.ycombinator.com/item?id=3",
+            }
+        )
+
+        self.assertTrue(
+            registry.is_seen(
+                {
+                    "title": "Different article title",
+                    "link": "https://example.com/story-3",
+                    "hn_url": "https://news.ycombinator.com/item?id=3",
+                }
+            )
+        )
+
     def test_article_dedupe_key_preserves_ref_query_parameters(self):
         first = {"link": "https://example.com/post?ref=a"}
         second = {"link": "https://example.com/post?ref=b"}
@@ -1409,6 +1428,34 @@ class TestAcceptanceRenderer(unittest.TestCase):
 
         self.assertIn("llm", groups)
         self.assertNotIn("frontier-tech", groups)
+
+    def test_default_topics_route_hacker_news_to_hackernews_only(self):
+        topics = render_mod.load_topic_definitions(TOPICS_FILE)
+        topic_priority = {topic["id"]: index for index, topic in enumerate(topics)}
+        topic_keywords = merge_mod.topic_keyword_map(topics)
+        article = {
+            "title": "Show HN: Useful Tool",
+            "link": "https://example.com/tool",
+            "hn_url": "https://news.ycombinator.com/item?id=42",
+            "source_type": "rss",
+            "source_name": "Hacker News Frontpage",
+            "source_id": "hn-rss",
+            "topics": ["hackernews"],
+            "score": 234,
+            "num_comments": 56,
+            "quality_score": 10,
+        }
+
+        groups = merge_mod.group_by_topics(
+            [article],
+            allowed_topics={topic["id"] for topic in topics},
+            topic_priority=topic_priority,
+            topic_keywords=topic_keywords,
+        )
+
+        self.assertIn("hackernews", groups)
+        self.assertNotIn("frontier-tech", groups)
+        self.assertEqual(groups["hackernews"][0]["primary_topic"], "hackernews")
 
     def test_chat_intro_keeps_decimal_version_in_highlight(self):
         data = {
@@ -2979,6 +3026,1109 @@ class TestAcceptanceRenderer(unittest.TestCase):
         self.assertIn("234↑ · 56 comments · A tool builders are discussing.", text)
         self.assertIn("🔗 https://news.ycombinator.com/item?id=42", text)
         self.assertIn("↗ https://example.com/tool", text)
+
+    def test_chat_legacy_hacker_news_fallback_skips_generic_topic(self):
+        hn_title = "Legacy HN Infrastructure Story"
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 2},
+            "topics": {
+                "frontier-tech": {
+                    "articles": [
+                        {
+                            "title": "Regular Frontier Tech Story",
+                            "link": "https://example.com/frontier-tech",
+                            "summary": "A regular topic story.",
+                            "quality_score": 10,
+                        },
+                        {
+                            "title": hn_title,
+                            "link": "https://example.com/legacy-hn",
+                            "hn_url": "https://news.ycombinator.com/item?id=4242",
+                            "source_type": "rss",
+                            "source_name": "Hacker News Frontpage",
+                            "source_id": "hn-rss",
+                            "hn_rank": 1,
+                            "score": 321,
+                            "num_comments": 45,
+                            "summary": "Legacy HN story from an old merged topic.",
+                            "quality_score": 10,
+                        },
+                    ]
+                }
+            },
+        }
+        topic_defs = [
+            {"id": "frontier-tech", "emoji": "🏭", "label": "Tech Industry / 产业动态"}
+        ]
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=topic_defs,
+            report_date="2026-05-22",
+            version="3.17.0",
+            template="chat",
+        )
+
+        topic_section = text.split("## 🏭 Tech Industry / 产业动态", 1)[1].split(
+            "## 📰 Hacker News Top / 热榜",
+            1,
+        )[0]
+
+        self.assertIn("## 🏭 Tech Industry / 产业动态", text)
+        self.assertIn("https://example.com/frontier-tech", topic_section)
+        self.assertNotIn(render_mod.bold_chat_title_text(hn_title), topic_section)
+        self.assertIn("## 📰 Hacker News Top / 热榜", text)
+        self.assertIn(f"1. {render_mod.bold_chat_title_text(hn_title)}", text)
+        self.assertIn(
+            "321↑ · 45 comments · Legacy HN story from an old merged topic.",
+            text,
+        )
+        self.assertIn("🔗 https://news.ycombinator.com/item?id=4242", text)
+        self.assertIn("↗ https://example.com/legacy-hn", text)
+
+    def test_chat_hackernews_topic_renders_hn_metadata_and_links(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 1},
+            "topics": {
+                "hackernews": {
+                    "articles": [
+                        {
+                            "title": "Show HN: Useful Tool",
+                            "link": "https://example.com/tool",
+                            "hn_url": "https://news.ycombinator.com/item?id=42",
+                            "source_type": "rss",
+                            "source_name": "Hacker News Frontpage",
+                            "source_id": "hn-rss",
+                            "hn_rank": 1,
+                            "score": 234,
+                            "num_comments": 56,
+                            "summary": "A tool builders are discussing.",
+                            "quality_score": 10,
+                        }
+                    ]
+                }
+            },
+        }
+        topic_defs = [
+            {"id": "hackernews", "emoji": "📰", "label": "Hacker News / 热榜"}
+        ]
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=topic_defs,
+            report_date="2026-05-22",
+            version="3.17.5",
+            template="chat",
+        )
+
+        self.assertIn("## 📰 Hacker News / 热榜", text)
+        self.assertIn(
+            f"1. {render_mod.bold_chat_title_text('Show HN: Useful Tool')}",
+            text,
+        )
+        self.assertIn("234↑ · 56 comments · A tool builders are discussing.", text)
+        self.assertIn("🔗 https://news.ycombinator.com/item?id=42", text)
+        self.assertIn("↗ https://example.com/tool", text)
+        self.assertNotIn("## 📰 Hacker News Top / 热榜", text)
+
+    def test_chat_hackernews_topic_requires_hn_discussion_url(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 1},
+            "topics": {
+                "hackernews": {
+                    "articles": [
+                        {
+                            "title": "HN metadata without discussion URL",
+                            "link": "https://example.com/story",
+                            "source_type": "rss",
+                            "source_name": "Hacker News Frontpage",
+                            "source_id": "hn-rss",
+                            "hn_rank": 1,
+                            "score": 234,
+                            "num_comments": 56,
+                            "summary": "HN discussion URL is missing.",
+                            "quality_score": 10,
+                        }
+                    ]
+                }
+            },
+        }
+        topic_defs = [
+            {"id": "hackernews", "emoji": "📰", "label": "Hacker News / 热榜"}
+        ]
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=topic_defs,
+            report_date="2026-05-22",
+            version="3.17.5",
+            template="chat",
+        )
+
+        self.assertNotIn("## 📰 Hacker News / 热榜", text)
+        self.assertIn("## 📰 Hacker News Top / 热榜", text)
+        self.assertIn("🔗 https://example.com/story", text)
+
+    def test_chat_hackernews_topic_skips_malformed_articles(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 4},
+            "topics": {
+                "hackernews": {
+                    "articles": [
+                        None,
+                        "malformed",
+                        ["malformed"],
+                        {
+                            "title": "Show HN: Useful Tool",
+                            "link": "https://example.com/tool",
+                            "hn_url": "https://news.ycombinator.com/item?id=42",
+                            "source_type": "rss",
+                            "source_name": "Hacker News Frontpage",
+                            "source_id": "hn-rss",
+                            "hn_rank": 1,
+                            "score": 234,
+                            "num_comments": 56,
+                            "summary": "A tool builders are discussing.",
+                            "quality_score": 10,
+                        },
+                    ]
+                }
+            },
+        }
+        topic_defs = [
+            {"id": "hackernews", "emoji": "📰", "label": "Hacker News / 热榜"}
+        ]
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=topic_defs,
+            report_date="2026-05-22",
+            version="3.17.5",
+            template="chat",
+        )
+
+        self.assertIn("## 📰 Hacker News / 热榜", text)
+        self.assertIn("🔗 https://news.ycombinator.com/item?id=42", text)
+        self.assertNotIn("malformed", text)
+
+    def test_chat_hackernews_topic_suppresses_fixed_section_with_matching_id(self):
+        articles = [
+            {
+                "title": f"HN ranked story {index}",
+                "link": f"https://example.com/story-{index}",
+                "hn_url": f"https://news.ycombinator.com/item?id={index}",
+                "source_type": "rss",
+                "source_name": "Hacker News Frontpage",
+                "source_id": "hn-rss",
+                "hn_rank": index,
+                "score": 100 - index,
+                "num_comments": index,
+                "summary": f"Summary {index}.",
+                "quality_score": 10,
+            }
+            for index in range(1, 12)
+        ]
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": len(articles)},
+            "topics": {"HackerNews": {"articles": articles}},
+        }
+        topic_defs = [
+            {"id": "HackerNews", "emoji": "📰", "label": "Hacker News / 热榜"}
+        ]
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=topic_defs,
+            report_date="2026-05-22",
+            version="3.17.5",
+            template="chat",
+        )
+
+        self.assertIn("## 📰 Hacker News / 热榜", text)
+        self.assertIn(
+            f"10. {render_mod.bold_chat_title_text('HN ranked story 10')}",
+            text,
+        )
+        self.assertNotIn("## 📰 Hacker News Top / 热榜", text)
+        self.assertNotIn("HN ranked story 11", text)
+
+    def test_chat_intro_uses_hackernews_topic_filtering(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 2},
+            "topics": {
+                "hackernews": {
+                    "articles": [
+                        {
+                            "title": "Ghost HN highlight",
+                            "link": "https://example.com/ghost",
+                            "source_type": "rss",
+                            "source_name": "Hacker News Frontpage",
+                            "source_id": "hn-rss",
+                            "hn_rank": 1,
+                            "score": 999,
+                            "num_comments": 100,
+                            "summary": "Ghost story should not appear.",
+                            "quality_score": 100,
+                        },
+                        {
+                            "title": "Renderable HN story",
+                            "link": "https://example.com/renderable",
+                            "hn_url": "https://news.ycombinator.com/item?id=42",
+                            "source_type": "rss",
+                            "source_name": "Hacker News Frontpage",
+                            "source_id": "hn-rss",
+                            "hn_rank": 2,
+                            "score": 10,
+                            "num_comments": 5,
+                            "summary": "Renderable discussion appears.",
+                            "quality_score": 10,
+                        },
+                    ]
+                }
+            },
+        }
+        topic_defs = [
+            {"id": "hackernews", "emoji": "📰", "label": "Hacker News / 热榜"}
+        ]
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=topic_defs,
+            report_date="2026-05-22",
+            version="3.17.5",
+            template="chat",
+        )
+
+        self.assertIn("今日看点", text)
+        self.assertIn("Renderable discussion appears.", text)
+        self.assertNotIn("Ghost story should not appear.", text)
+        self.assertNotIn("Ghost HN highlight", text)
+
+    def test_chat_keeps_non_hn_primary_article_with_hn_all_source(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 1},
+            "topics": {
+                "frontier-tech": {
+                    "articles": [
+                        {
+                            "title": "Primary source story also discussed on HN",
+                            "link": "https://example.com/primary",
+                            "source_type": "rss",
+                            "source_name": "Example Primary Source",
+                            "all_sources": [
+                                "Example Primary Source",
+                                "Hacker News Frontpage",
+                            ],
+                            "summary": "The primary source should remain visible.",
+                            "quality_score": 10,
+                        }
+                    ]
+                }
+            },
+        }
+        topic_defs = [
+            {
+                "id": "frontier-tech",
+                "emoji": "🔬",
+                "label": "Tech Industry / 产业动态",
+            },
+            {"id": "hackernews", "emoji": "📰", "label": "Hacker News / 热榜"},
+        ]
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=topic_defs,
+            report_date="2026-05-22",
+            version="3.17.5",
+            template="chat",
+        )
+
+        self.assertIn("## 🔬 Tech Industry / 产业动态", text)
+        self.assertIn(
+            render_mod.bold_chat_title_text(
+                "Primary source story also discussed on HN"
+            ),
+            text,
+        )
+        self.assertIn("🔗 https://example.com/primary", text)
+        self.assertNotIn("## 📰 Hacker News / 热榜", text)
+        self.assertNotIn("## 📰 Hacker News Top / 热榜", text)
+
+    def test_chat_hackernews_topic_renders_ranked_top_ten_without_duplicates(self):
+        ranked_articles = {
+            index: {
+                "title": f"HN ranked story {index}",
+                "link": f"https://example.com/story-{index}",
+                "hn_url": f"https://news.ycombinator.com/item?id={index}",
+                "source_type": "rss",
+                "source_name": "Hacker News Frontpage",
+                "source_id": "hn-rss",
+                "hn_rank": index,
+                "score": index,
+                "num_comments": index,
+                "summary": f"Summary {index}.",
+                "quality_score": 10,
+            }
+            for index in range(1, 12)
+        }
+        duplicate_story = {
+            "title": "HN ranked story 3",
+            "link": "https://mirror.example.com/story-3",
+            "hn_url": "https://news.ycombinator.com/item?id=3",
+            "source_type": "rss",
+            "source_name": "Hacker News Frontpage",
+            "source_id": "hn-rss",
+            "hn_rank": 3,
+            "score": 3,
+            "num_comments": 3,
+            "summary": "Duplicate story.",
+            "quality_score": 10,
+        }
+        articles = [
+            ranked_articles[index]
+            for index in [5, 1, 3, 2, 4, 6, 7, 8, 9]
+        ]
+        articles.extend([duplicate_story, ranked_articles[10], ranked_articles[11]])
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": len(articles)},
+            "topics": {"hackernews": {"articles": articles}},
+        }
+        topic_defs = [
+            {"id": "hackernews", "emoji": "📰", "label": "Hacker News / 热榜"}
+        ]
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=topic_defs,
+            report_date="2026-05-22",
+            version="3.17.5",
+            template="chat",
+        )
+
+        story_1_line = f"1. {render_mod.bold_chat_title_text('HN ranked story 1')}"
+        story_2_line = f"2. {render_mod.bold_chat_title_text('HN ranked story 2')}"
+        story_3_line = f"3. {render_mod.bold_chat_title_text('HN ranked story 3')}"
+        story_10_line = f"10. {render_mod.bold_chat_title_text('HN ranked story 10')}"
+        story_11_line = f"11. {render_mod.bold_chat_title_text('HN ranked story 11')}"
+
+        self.assertIn(story_1_line, text)
+        self.assertIn(story_10_line, text)
+        self.assertNotIn(story_11_line, text)
+        self.assertLess(text.find(story_1_line), text.find(story_2_line))
+        self.assertLess(text.find(story_2_line), text.find(story_3_line))
+        self.assertEqual(text.count(story_3_line), 1)
+        self.assertEqual(text.count("https://news.ycombinator.com/item?id=3"), 1)
+        self.assertNotIn("https://mirror.example.com/story-3", text)
+
+    def test_chat_hackernews_topic_sorts_unranked_after_ranked_by_score_title(self):
+        articles = [
+            {
+                "title": "Unranked lower score",
+                "link": "https://example.com/unranked-lower",
+                "hn_url": "https://news.ycombinator.com/item?id=101",
+                "source_type": "rss",
+                "source_name": "Hacker News Frontpage",
+                "source_id": "hn-rss",
+                "score": 20,
+                "num_comments": 2,
+                "summary": "Lower score unranked story.",
+                "quality_score": 10,
+            },
+            {
+                "title": "Ranked lower score",
+                "link": "https://example.com/ranked",
+                "hn_url": "https://news.ycombinator.com/item?id=102",
+                "source_type": "rss",
+                "source_name": "Hacker News Frontpage",
+                "source_id": "hn-rss",
+                "hn_rank": 1,
+                "score": 1,
+                "num_comments": 1,
+                "summary": "Ranked story.",
+                "quality_score": 10,
+            },
+            {
+                "title": "Unranked higher score",
+                "link": "https://example.com/unranked-higher",
+                "hn_url": "https://news.ycombinator.com/item?id=103",
+                "source_type": "rss",
+                "source_name": "Hacker News Frontpage",
+                "source_id": "hn-rss",
+                "score": 99,
+                "num_comments": 3,
+                "summary": "Higher score unranked story.",
+                "quality_score": 10,
+            },
+        ]
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": len(articles)},
+            "topics": {"hackernews": {"articles": articles}},
+        }
+        topic_defs = [
+            {"id": "hackernews", "emoji": "📰", "label": "Hacker News / 热榜"}
+        ]
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=topic_defs,
+            report_date="2026-05-22",
+            version="3.17.5",
+            template="chat",
+        )
+
+        ranked_line = f"1. {render_mod.bold_chat_title_text('Ranked lower score')}"
+        unranked_high_line = (
+            f"2. {render_mod.bold_chat_title_text('Unranked higher score')}"
+        )
+        unranked_low_line = (
+            f"3. {render_mod.bold_chat_title_text('Unranked lower score')}"
+        )
+
+        self.assertIn(ranked_line, text)
+        self.assertIn(unranked_high_line, text)
+        self.assertIn(unranked_low_line, text)
+        self.assertLess(text.find(ranked_line), text.find(unranked_high_line))
+        self.assertLess(text.find(unranked_high_line), text.find(unranked_low_line))
+
+    def test_chat_hackernews_topic_dedupes_by_hn_url_before_limiting(self):
+        ranked_articles = {
+            index: {
+                "title": f"HN ranked story {index}",
+                "link": f"https://example.com/story-{index}",
+                "hn_url": f"https://news.ycombinator.com/item?id={index}",
+                "source_type": "rss",
+                "source_name": "Hacker News Frontpage",
+                "source_id": "hn-rss",
+                "hn_rank": index,
+                "score": 100 - index,
+                "num_comments": index,
+                "summary": f"Summary {index}.",
+                "quality_score": 10,
+            }
+            for index in list(range(1, 10)) + [11]
+        }
+        duplicate_story = {
+            "title": "Different coverage of story 3",
+            "link": "https://mirror.example.com/different-story-3",
+            "hn_url": "https://news.ycombinator.com/item?id=3",
+            "source_type": "rss",
+            "source_name": "Hacker News Frontpage",
+            "source_id": "hn-rss",
+            "hn_rank": 3,
+            "score": 96,
+            "num_comments": 3,
+            "summary": "Duplicate story with a different title.",
+            "quality_score": 10,
+        }
+        articles = [
+            ranked_articles[index]
+            for index in [5, 1, 3, 2, 4, 6, 7, 8, 9]
+        ]
+        articles.extend([duplicate_story, ranked_articles[11]])
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": len(articles)},
+            "topics": {"hackernews": {"articles": articles}},
+        }
+        topic_defs = [
+            {"id": "hackernews", "emoji": "📰", "label": "Hacker News / 热榜"}
+        ]
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=topic_defs,
+            report_date="2026-05-22",
+            version="3.17.5",
+            template="chat",
+        )
+
+        story_11_line = f"10. {render_mod.bold_chat_title_text('HN ranked story 11')}"
+
+        self.assertIn(story_11_line, text)
+        self.assertEqual(text.count("https://news.ycombinator.com/item?id=3"), 1)
+        self.assertNotIn("Different coverage of story 3", text)
+        self.assertNotIn("https://mirror.example.com/different-story-3", text)
+
+    def test_chat_hackernews_topic_suppresses_fixed_hn_section(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 2},
+            "topics": {
+                "hackernews": {
+                    "articles": [
+                        {
+                            "title": "HN ranked story 1",
+                            "link": "https://example.com/story-1",
+                            "hn_url": "https://news.ycombinator.com/item?id=1",
+                            "source_type": "rss",
+                            "source_name": "Hacker News Frontpage",
+                            "source_id": "hn-rss",
+                            "hn_rank": 1,
+                            "score": 100,
+                            "num_comments": 10,
+                            "summary": "Top story.",
+                            "quality_score": 10,
+                        },
+                        {
+                            "title": "HN ranked story 11",
+                            "link": "https://example.com/story-11",
+                            "hn_url": "https://news.ycombinator.com/item?id=11",
+                            "source_type": "rss",
+                            "source_name": "Hacker News Frontpage",
+                            "source_id": "hn-rss",
+                            "hn_rank": 11,
+                            "score": 90,
+                            "num_comments": 5,
+                            "summary": "Fixed fallback candidate.",
+                            "quality_score": 10,
+                        },
+                    ]
+                }
+            },
+        }
+        topic_defs = [
+            {"id": "hackernews", "emoji": "📰", "label": "Hacker News / 热榜"}
+        ]
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=topic_defs,
+            report_date="2026-05-22",
+            version="3.17.5",
+            template="chat",
+        )
+
+        self.assertIn("## 📰 Hacker News / 热榜", text)
+        self.assertNotIn("## 📰 Hacker News Top / 热榜", text)
+
+    def test_discord_hackernews_topic_suppresses_fixed_hn_duplicate_by_hn_url(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 2},
+            "topics": {
+                "hackernews": {
+                    "articles": [
+                        {
+                            "title": "Show HN: Useful Tool",
+                            "link": "https://example.com/tool",
+                            "hn_url": "https://news.ycombinator.com/item?id=42",
+                            "source_type": "rss",
+                            "source_name": "Hacker News Frontpage",
+                            "source_id": "hn-rss",
+                            "hn_rank": 1,
+                            "score": 234,
+                            "num_comments": 56,
+                            "summary": "A tool builders are discussing.",
+                            "quality_score": 10,
+                        }
+                    ]
+                },
+                "supplemental": {
+                    "articles": [
+                        {
+                            "title": "Different mirror coverage",
+                            "link": "https://mirror.example.com/tool",
+                            "hn_url": "https://news.ycombinator.com/item?id=42",
+                            "source_type": "rss",
+                            "source_name": "Hacker News Frontpage",
+                            "source_id": "hn-rss",
+                            "hn_rank": 1,
+                            "score": 233,
+                            "num_comments": 56,
+                            "summary": "Same discussion via another link.",
+                            "quality_score": 10,
+                        }
+                    ]
+                },
+            },
+        }
+        topic_defs = [
+            {"id": "hackernews", "emoji": "📰", "label": "Hacker News / 热榜"}
+        ]
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=topic_defs,
+            report_date="2026-05-22",
+            version="3.17.5",
+        )
+
+        self.assertIn("• Show HN: Useful Tool — 234↑ · 56 comments", text)
+        self.assertEqual(text.count("https://news.ycombinator.com/item?id=42"), 1)
+        self.assertNotIn("Different mirror coverage", text)
+        self.assertNotIn("https://mirror.example.com/tool", text)
+        self.assertNotIn("## 📰 Hacker News Top", text)
+
+    def test_discord_hackernews_topic_suppresses_fixed_hn_section(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 2},
+            "topics": {
+                "hackernews": {
+                    "articles": [
+                        {
+                            "title": "HN ranked story 1",
+                            "link": "https://example.com/story-1",
+                            "hn_url": "https://news.ycombinator.com/item?id=1",
+                            "source_type": "rss",
+                            "source_name": "Hacker News Frontpage",
+                            "source_id": "hn-rss",
+                            "hn_rank": 1,
+                            "score": 100,
+                            "num_comments": 10,
+                            "summary": "Top story.",
+                            "quality_score": 10,
+                        },
+                        {
+                            "title": "HN ranked story 11",
+                            "link": "https://example.com/story-11",
+                            "hn_url": "https://news.ycombinator.com/item?id=11",
+                            "source_type": "rss",
+                            "source_name": "Hacker News Frontpage",
+                            "source_id": "hn-rss",
+                            "hn_rank": 11,
+                            "score": 90,
+                            "num_comments": 5,
+                            "summary": "Fixed fallback candidate.",
+                            "quality_score": 10,
+                        },
+                    ]
+                }
+            },
+        }
+        topic_defs = [
+            {"id": "hackernews", "emoji": "📰", "label": "Hacker News / 热榜"}
+        ]
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=topic_defs,
+            report_date="2026-05-22",
+            version="3.17.5",
+        )
+
+        self.assertIn("## 📰 Hacker News / 热榜", text)
+        self.assertNotIn("## 📰 Hacker News Top", text)
+
+    def test_discord_hackernews_topic_ignores_generic_hn_duplicate_by_hn_url(self):
+        ranked_articles = {
+            index: {
+                "title": f"HN ranked story {index}",
+                "link": f"https://example.com/story-{index}",
+                "hn_url": f"https://news.ycombinator.com/item?id={index}",
+                "source_type": "rss",
+                "source_name": "Hacker News Frontpage",
+                "source_id": "hn-rss",
+                "hn_rank": index,
+                "score": 100 - index,
+                "num_comments": index,
+                "summary": f"Summary {index}.",
+                "quality_score": 10,
+            }
+            for index in range(1, 12)
+        }
+        prior_visible_duplicate = {
+            "title": "Prior coverage of story 3",
+            "link": "https://supplemental.example.com/story-3",
+            "hn_url": "https://news.ycombinator.com/item?id=3",
+            "source_type": "rss",
+            "source_name": "Hacker News Frontpage",
+            "source_id": "hn-rss",
+            "hn_rank": 3,
+            "score": 97,
+            "num_comments": 3,
+            "summary": "Already visible elsewhere.",
+            "quality_score": 100,
+        }
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 12},
+            "topics": {
+                "supplemental": {"articles": [prior_visible_duplicate]},
+                "hackernews": {
+                    "articles": [
+                        ranked_articles[index]
+                        for index in [5, 1, 3, 2, 4, 6, 7, 8, 9, 10, 11]
+                    ]
+                },
+            },
+        }
+        topic_defs = [
+            {"id": "supplemental", "emoji": "🧩", "label": "Supplemental"},
+            {"id": "hackernews", "emoji": "📰", "label": "Hacker News / 热榜"},
+        ]
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=topic_defs,
+            report_date="2026-05-22",
+            version="3.17.5",
+        )
+
+        story_10_line = "• HN ranked story 10 — 90↑ · 10 comments"
+        story_3_line = "• HN ranked story 3 — 97↑ · 3 comments"
+        story_11_line = "• HN ranked story 11 — 89↑ · 11 comments"
+
+        self.assertNotIn("• Prior coverage of story 3", text)
+        self.assertNotIn("https://supplemental.example.com/story-3", text)
+        self.assertIn(story_3_line, text)
+        self.assertIn(story_10_line, text)
+        self.assertNotIn(story_11_line, text)
+        self.assertIn("https://example.com/story-3", text)
+
+    def test_discord_hackernews_topic_survives_filtered_alias_chain(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 3},
+            "topics": {
+                "frontier-tech": {
+                    "articles": [
+                        {
+                            "title": "Shared launch coverage",
+                            "link": "https://example.com/non-hn",
+                            "summary": "Ordinary coverage should remain visible.",
+                            "quality_score": 100,
+                        },
+                        {
+                            "title": "Shared launch coverage",
+                            "link": "https://example.com/legacy-hn",
+                            "hn_url": "https://news.ycombinator.com/item?id=42",
+                            "source_type": "rss",
+                            "source_name": "Hacker News Frontpage",
+                            "source_id": "hn-rss",
+                            "hn_rank": 1,
+                            "score": 234,
+                            "num_comments": 56,
+                            "summary": "Filtered legacy HN coverage.",
+                            "quality_score": 99,
+                        },
+                    ]
+                },
+                "hackernews": {
+                    "articles": [
+                        {
+                            "title": "Show HN: Shared Launch",
+                            "link": "https://example.com/hn-topic",
+                            "hn_url": "https://news.ycombinator.com/item?id=42",
+                            "source_type": "rss",
+                            "source_name": "Hacker News Frontpage",
+                            "source_id": "hn-rss",
+                            "hn_rank": 1,
+                            "score": 234,
+                            "num_comments": 56,
+                            "summary": "The real HN topic story should render.",
+                            "quality_score": 10,
+                        }
+                    ]
+                },
+            },
+        }
+        topic_defs = [
+            {"id": "frontier-tech", "emoji": "🏭", "label": "Tech Industry"},
+            {"id": "hackernews", "emoji": "📰", "label": "Hacker News / 热榜"},
+        ]
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=topic_defs,
+            report_date="2026-05-22",
+            version="3.17.5",
+        )
+
+        self.assertIn("• Shared launch coverage", text)
+        self.assertNotIn("Filtered legacy HN coverage.", text)
+        self.assertIn("• Show HN: Shared Launch — 234↑ · 56 comments", text)
+        self.assertIn("🔗 https://news.ycombinator.com/item?id=42", text)
+        self.assertIn("↗ https://example.com/hn-topic", text)
+
+    def test_discord_hackernews_topic_backfills_when_prior_link_is_hn_url(self):
+        ranked_articles = {
+            index: {
+                "title": f"HN ranked story {index}",
+                "link": f"https://example.com/story-{index}",
+                "hn_url": f"https://news.ycombinator.com/item?id={index}",
+                "source_type": "rss",
+                "source_name": "Hacker News Frontpage",
+                "source_id": "hn-rss",
+                "hn_rank": index,
+                "score": 100 - index,
+                "num_comments": index,
+                "summary": f"Summary {index}.",
+                "quality_score": 10,
+            }
+            for index in range(1, 12)
+        }
+        prior_visible_discussion = {
+            "title": "Prior discussion link for story 3",
+            "link": "https://news.ycombinator.com/item?id=3",
+            "source_type": "web",
+            "summary": "Already visible as an ordinary link.",
+            "quality_score": 100,
+        }
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 12},
+            "topics": {
+                "supplemental": {"articles": [prior_visible_discussion]},
+                "hackernews": {
+                    "articles": [
+                        ranked_articles[index]
+                        for index in [5, 1, 3, 2, 4, 6, 7, 8, 9, 10, 11]
+                    ]
+                },
+            },
+        }
+        topic_defs = [
+            {"id": "supplemental", "emoji": "🧩", "label": "Supplemental"},
+            {"id": "hackernews", "emoji": "📰", "label": "Hacker News / 热榜"},
+        ]
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=topic_defs,
+            report_date="2026-05-22",
+            version="3.17.5",
+        )
+
+        story_10_line = "• HN ranked story 10 — 90↑ · 10 comments"
+        story_11_line = "• HN ranked story 11 — 89↑ · 11 comments"
+
+        self.assertIn("• Prior discussion link for story 3", text)
+        self.assertEqual(text.count("https://news.ycombinator.com/item?id=3"), 1)
+        self.assertNotIn("• HN ranked story 3 — 97↑ · 3 comments", text)
+        self.assertIn(story_10_line, text)
+        self.assertIn(story_11_line, text)
+        self.assertNotIn("https://example.com/story-3", text)
+
+    def test_discord_hackernews_topic_renders_hn_metadata_and_links(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 1},
+            "topics": {
+                "hackernews": {
+                    "articles": [
+                        {
+                            "title": "Show HN: Useful Tool",
+                            "link": "https://example.com/tool",
+                            "hn_url": "https://news.ycombinator.com/item?id=42",
+                            "source_type": "rss",
+                            "source_name": "Hacker News Frontpage",
+                            "source_id": "hn-rss",
+                            "hn_rank": 1,
+                            "score": 234,
+                            "num_comments": 56,
+                            "summary": "A tool builders are discussing.",
+                            "quality_score": 10,
+                        }
+                    ]
+                }
+            },
+        }
+        topic_defs = [
+            {"id": "hackernews", "emoji": "📰", "label": "Hacker News / 热榜"}
+        ]
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=topic_defs,
+            report_date="2026-05-22",
+            version="3.17.5",
+        )
+
+        self.assertIn("## 📰 Hacker News / 热榜", text)
+        self.assertIn("• Show HN: Useful Tool — 234↑ · 56 comments", text)
+        self.assertIn("🔗 https://news.ycombinator.com/item?id=42", text)
+        self.assertIn("↗ https://example.com/tool", text)
+        self.assertNotIn("## 📰 Hacker News Top", text)
+
+    def test_discord_legacy_hacker_news_fallback_skips_generic_topic(self):
+        hn_title = "Legacy HN Infrastructure Story"
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 2},
+            "topics": {
+                "frontier-tech": {
+                    "articles": [
+                        {
+                            "title": "Regular Frontier Tech Story",
+                            "link": "https://example.com/frontier-tech",
+                            "summary": "A regular topic story.",
+                            "quality_score": 10,
+                        },
+                        {
+                            "title": hn_title,
+                            "link": "https://example.com/legacy-hn",
+                            "hn_url": "https://news.ycombinator.com/item?id=4242",
+                            "source_type": "rss",
+                            "source_name": "Hacker News Frontpage",
+                            "source_id": "hn-rss",
+                            "hn_rank": 1,
+                            "score": 321,
+                            "num_comments": 45,
+                            "summary": "Legacy HN story from an old merged topic.",
+                            "quality_score": 10,
+                        },
+                    ]
+                }
+            },
+        }
+        topic_defs = [
+            {"id": "frontier-tech", "emoji": "🏭", "label": "Tech Industry / 产业动态"}
+        ]
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=topic_defs,
+            report_date="2026-05-22",
+            version="3.17.0",
+        )
+
+        topic_section = text.split("## 🏭 Tech Industry / 产业动态", 1)[1].split(
+            "## 📰 Hacker News Top",
+            1,
+        )[0]
+
+        self.assertIn("## 🏭 Tech Industry / 产业动态", text)
+        self.assertIn("Regular Frontier Tech Story", topic_section)
+        self.assertNotIn(hn_title, topic_section)
+        self.assertIn("## 📰 Hacker News Top", text)
+        self.assertIn(f"1. **{hn_title}** — 321↑ · 45 comments", text)
+        self.assertIn("Legacy HN story from an old merged topic.", text)
+        self.assertIn("🔗 https://news.ycombinator.com/item?id=4242", text)
+        self.assertIn("↗ https://example.com/legacy-hn", text)
+
+    def test_discord_hackernews_topic_renders_ranked_top_ten_without_duplicates(self):
+        ranked_articles = {
+            index: {
+                "title": f"HN ranked story {index}",
+                "link": f"https://example.com/story-{index}",
+                "hn_url": f"https://news.ycombinator.com/item?id={index}",
+                "source_type": "rss",
+                "source_name": "Hacker News Frontpage",
+                "source_id": "hn-rss",
+                "hn_rank": index,
+                "score": 100 - index,
+                "num_comments": index,
+                "summary": f"Summary {index}.",
+                "quality_score": 10,
+            }
+            for index in range(1, 12)
+        }
+        duplicate_story = {
+            "title": "HN ranked story 3",
+            "link": "https://mirror.example.com/story-3",
+            "hn_url": "https://news.ycombinator.com/item?id=3",
+            "source_type": "rss",
+            "source_name": "Hacker News Frontpage",
+            "source_id": "hn-rss",
+            "hn_rank": 3,
+            "score": 97,
+            "num_comments": 3,
+            "summary": "Duplicate story.",
+            "quality_score": 10,
+        }
+        articles = [
+            ranked_articles[index]
+            for index in [5, 1, 3, 2, 4, 6, 7, 8, 9]
+        ]
+        articles.extend([duplicate_story, ranked_articles[10], ranked_articles[11]])
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": len(articles)},
+            "topics": {"hackernews": {"articles": articles}},
+        }
+        topic_defs = [
+            {"id": "hackernews", "emoji": "📰", "label": "Hacker News / 热榜"}
+        ]
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=topic_defs,
+            report_date="2026-05-22",
+            version="3.17.5",
+        )
+
+        story_1_line = "• HN ranked story 1 — 99↑ · 1 comments"
+        story_2_line = "• HN ranked story 2 — 98↑ · 2 comments"
+        story_3_line = "• HN ranked story 3 — 97↑ · 3 comments"
+        story_10_line = "• HN ranked story 10 — 90↑ · 10 comments"
+        story_11_line = "• HN ranked story 11 — 89↑ · 11 comments"
+
+        self.assertIn(story_1_line, text)
+        self.assertIn(story_10_line, text)
+        self.assertNotIn(story_11_line, text)
+        self.assertLess(text.find(story_1_line), text.find(story_2_line))
+        self.assertLess(text.find(story_2_line), text.find(story_3_line))
+        self.assertEqual(text.count(story_3_line), 1)
+        self.assertEqual(text.count("https://news.ycombinator.com/item?id=3"), 1)
+        self.assertNotIn("https://mirror.example.com/story-3", text)
+
+    def test_discord_hackernews_topic_dedupes_by_hn_url_before_limiting(self):
+        ranked_articles = {
+            index: {
+                "title": f"HN ranked story {index}",
+                "link": f"https://example.com/story-{index}",
+                "hn_url": f"https://news.ycombinator.com/item?id={index}",
+                "source_type": "rss",
+                "source_name": "Hacker News Frontpage",
+                "source_id": "hn-rss",
+                "hn_rank": index,
+                "score": 100 - index,
+                "num_comments": index,
+                "summary": f"Summary {index}.",
+                "quality_score": 10,
+            }
+            for index in list(range(1, 10)) + [11]
+        }
+        duplicate_story = {
+            "title": "Different coverage of story 3",
+            "link": "https://mirror.example.com/different-story-3",
+            "hn_url": "https://news.ycombinator.com/item?id=3",
+            "source_type": "rss",
+            "source_name": "Hacker News Frontpage",
+            "source_id": "hn-rss",
+            "hn_rank": 3,
+            "score": 96,
+            "num_comments": 3,
+            "summary": "Duplicate story with a different title.",
+            "quality_score": 10,
+        }
+        articles = [
+            ranked_articles[index]
+            for index in [5, 1, 3, 2, 4, 6, 7, 8, 9]
+        ]
+        articles.extend([duplicate_story, ranked_articles[11]])
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": len(articles)},
+            "topics": {"hackernews": {"articles": articles}},
+        }
+        topic_defs = [
+            {"id": "hackernews", "emoji": "📰", "label": "Hacker News / 热榜"}
+        ]
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=topic_defs,
+            report_date="2026-05-22",
+            version="3.17.5",
+        )
+
+        story_11_line = "• HN ranked story 11 — 89↑ · 11 comments"
+
+        self.assertIn(story_11_line, text)
+        self.assertEqual(text.count("https://news.ycombinator.com/item?id=3"), 1)
+        self.assertNotIn("Different coverage of story 3", text)
+        self.assertNotIn("https://mirror.example.com/different-story-3", text)
 
     def test_hnrss_metadata_is_parsed_from_description(self):
         description = """

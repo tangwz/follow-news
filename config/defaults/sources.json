@@ -144,7 +144,7 @@
       "enabled": true,
       "priority": true,
       "topics": [
-        "frontier-tech"
+        "hackernews"
       ],
       "note": "HN top stories"
     },
