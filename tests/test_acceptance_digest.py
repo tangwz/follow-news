@@ -3172,6 +3172,49 @@ class TestAcceptanceRenderer(unittest.TestCase):
         self.assertIn("## 📰 Hacker News Top / 热榜", text)
         self.assertIn("🔗 https://example.com/story", text)
 
+    def test_chat_hackernews_topic_skips_malformed_articles(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 4},
+            "topics": {
+                "hackernews": {
+                    "articles": [
+                        None,
+                        "malformed",
+                        ["malformed"],
+                        {
+                            "title": "Show HN: Useful Tool",
+                            "link": "https://example.com/tool",
+                            "hn_url": "https://news.ycombinator.com/item?id=42",
+                            "source_type": "rss",
+                            "source_name": "Hacker News Frontpage",
+                            "source_id": "hn-rss",
+                            "hn_rank": 1,
+                            "score": 234,
+                            "num_comments": 56,
+                            "summary": "A tool builders are discussing.",
+                            "quality_score": 10,
+                        },
+                    ]
+                }
+            },
+        }
+        topic_defs = [
+            {"id": "hackernews", "emoji": "📰", "label": "Hacker News / 热榜"}
+        ]
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=topic_defs,
+            report_date="2026-05-22",
+            version="3.17.5",
+            template="chat",
+        )
+
+        self.assertIn("## 📰 Hacker News / 热榜", text)
+        self.assertIn("🔗 https://news.ycombinator.com/item?id=42", text)
+        self.assertNotIn("malformed", text)
+
     def test_chat_keeps_non_hn_primary_article_with_hn_all_source(self):
         data = {
             "input_sources": {},

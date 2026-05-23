@@ -874,7 +874,7 @@ def select_hackernews_topic_articles(
     eligible = [
         article
         for article in articles
-        if is_renderable_hackernews_topic_article(article)
+        if isinstance(article, dict) and is_renderable_hackernews_topic_article(article)
     ]
     return sorted(eligible, key=hackernews_topic_sort_key)
 
