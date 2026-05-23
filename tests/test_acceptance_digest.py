@@ -3055,53 +3055,40 @@ class TestAcceptanceRenderer(unittest.TestCase):
         self.assertNotIn("## 📰 Hacker News Top / 热榜", text)
 
     def test_chat_hackernews_topic_renders_ranked_top_ten_without_duplicates(self):
+        ranked_articles = {
+            index: {
+                "title": f"HN ranked story {index}",
+                "link": f"https://example.com/story-{index}",
+                "hn_url": f"https://news.ycombinator.com/item?id={index}",
+                "source_type": "rss",
+                "source_name": "Hacker News Frontpage",
+                "source_id": "hn-rss",
+                "hn_rank": index,
+                "score": 100 - index,
+                "num_comments": index,
+                "summary": f"Summary {index}.",
+                "quality_score": 10,
+            }
+            for index in range(1, 12)
+        }
+        duplicate_story = {
+            "title": "HN ranked story 3",
+            "link": "https://mirror.example.com/story-3",
+            "hn_url": "https://news.ycombinator.com/item?id=3",
+            "source_type": "rss",
+            "source_name": "Hacker News Frontpage",
+            "source_id": "hn-rss",
+            "hn_rank": 3,
+            "score": 97,
+            "num_comments": 3,
+            "summary": "Duplicate story.",
+            "quality_score": 10,
+        }
         articles = [
-            {
-                "title": f"HN ranked story {index}",
-                "link": f"https://example.com/story-{index}",
-                "hn_url": f"https://news.ycombinator.com/item?id={index}",
-                "source_type": "rss",
-                "source_name": "Hacker News Frontpage",
-                "source_id": "hn-rss",
-                "hn_rank": index,
-                "score": 100 - index,
-                "num_comments": index,
-                "summary": f"Summary {index}.",
-                "quality_score": 10,
-            }
-            for index in range(1, 10)
+            ranked_articles[index]
+            for index in [5, 1, 3, 2, 4, 6, 7, 8, 9]
         ]
-        articles.append(
-            {
-                "title": "HN ranked story 3",
-                "link": "https://mirror.example.com/story-3",
-                "hn_url": "https://news.ycombinator.com/item?id=3",
-                "source_type": "rss",
-                "source_name": "Hacker News Frontpage",
-                "source_id": "hn-rss",
-                "hn_rank": 3,
-                "score": 97,
-                "num_comments": 3,
-                "summary": "Duplicate story.",
-                "quality_score": 10,
-            }
-        )
-        articles.extend(
-            {
-                "title": f"HN ranked story {index}",
-                "link": f"https://example.com/story-{index}",
-                "hn_url": f"https://news.ycombinator.com/item?id={index}",
-                "source_type": "rss",
-                "source_name": "Hacker News Frontpage",
-                "source_id": "hn-rss",
-                "hn_rank": index,
-                "score": 100 - index,
-                "num_comments": index,
-                "summary": f"Summary {index}.",
-                "quality_score": 10,
-            }
-            for index in range(10, 12)
-        )
+        articles.extend([duplicate_story, ranked_articles[10], ranked_articles[11]])
         data = {
             "input_sources": {},
             "output_stats": {"total_articles": len(articles)},
@@ -3119,21 +3106,18 @@ class TestAcceptanceRenderer(unittest.TestCase):
             template="chat",
         )
 
-        story_1 = render_mod.bold_chat_title_text("HN ranked story 1")
-        story_2 = render_mod.bold_chat_title_text("HN ranked story 2")
-        story_3 = render_mod.bold_chat_title_text("HN ranked story 3")
-        story_10 = render_mod.bold_chat_title_text("HN ranked story 10")
-        story_11 = render_mod.bold_chat_title_text("HN ranked story 11")
+        story_1_line = f"1. {render_mod.bold_chat_title_text('HN ranked story 1')}"
+        story_2_line = f"2. {render_mod.bold_chat_title_text('HN ranked story 2')}"
+        story_3_line = f"3. {render_mod.bold_chat_title_text('HN ranked story 3')}"
+        story_10_line = f"10. {render_mod.bold_chat_title_text('HN ranked story 10')}"
+        story_11_line = f"11. {render_mod.bold_chat_title_text('HN ranked story 11')}"
 
-        self.assertIn(story_1, text)
-        self.assertIn(story_10, text)
-        self.assertNotIn(story_11, text)
-        self.assertLess(text.find(story_1), text.find(story_2))
-        self.assertLess(text.find(story_2), text.find(story_3))
-        self.assertEqual(
-            text.count(story_3),
-            1,
-        )
+        self.assertIn(story_1_line, text)
+        self.assertIn(story_10_line, text)
+        self.assertNotIn(story_11_line, text)
+        self.assertLess(text.find(story_1_line), text.find(story_2_line))
+        self.assertLess(text.find(story_2_line), text.find(story_3_line))
+        self.assertEqual(text.count(story_3_line), 1)
         self.assertEqual(text.count("https://news.ycombinator.com/item?id=3"), 1)
         self.assertNotIn("https://mirror.example.com/story-3", text)
 
@@ -3179,53 +3163,40 @@ class TestAcceptanceRenderer(unittest.TestCase):
         self.assertNotIn("## 📰 Hacker News Top", text)
 
     def test_discord_hackernews_topic_renders_ranked_top_ten_without_duplicates(self):
+        ranked_articles = {
+            index: {
+                "title": f"HN ranked story {index}",
+                "link": f"https://example.com/story-{index}",
+                "hn_url": f"https://news.ycombinator.com/item?id={index}",
+                "source_type": "rss",
+                "source_name": "Hacker News Frontpage",
+                "source_id": "hn-rss",
+                "hn_rank": index,
+                "score": 100 - index,
+                "num_comments": index,
+                "summary": f"Summary {index}.",
+                "quality_score": 10,
+            }
+            for index in range(1, 12)
+        }
+        duplicate_story = {
+            "title": "HN ranked story 3",
+            "link": "https://mirror.example.com/story-3",
+            "hn_url": "https://news.ycombinator.com/item?id=3",
+            "source_type": "rss",
+            "source_name": "Hacker News Frontpage",
+            "source_id": "hn-rss",
+            "hn_rank": 3,
+            "score": 97,
+            "num_comments": 3,
+            "summary": "Duplicate story.",
+            "quality_score": 10,
+        }
         articles = [
-            {
-                "title": f"HN ranked story {index}",
-                "link": f"https://example.com/story-{index}",
-                "hn_url": f"https://news.ycombinator.com/item?id={index}",
-                "source_type": "rss",
-                "source_name": "Hacker News Frontpage",
-                "source_id": "hn-rss",
-                "hn_rank": index,
-                "score": 100 - index,
-                "num_comments": index,
-                "summary": f"Summary {index}.",
-                "quality_score": 10,
-            }
-            for index in range(1, 10)
+            ranked_articles[index]
+            for index in [5, 1, 3, 2, 4, 6, 7, 8, 9]
         ]
-        articles.append(
-            {
-                "title": "HN ranked story 3",
-                "link": "https://mirror.example.com/story-3",
-                "hn_url": "https://news.ycombinator.com/item?id=3",
-                "source_type": "rss",
-                "source_name": "Hacker News Frontpage",
-                "source_id": "hn-rss",
-                "hn_rank": 3,
-                "score": 97,
-                "num_comments": 3,
-                "summary": "Duplicate story.",
-                "quality_score": 10,
-            }
-        )
-        articles.extend(
-            {
-                "title": f"HN ranked story {index}",
-                "link": f"https://example.com/story-{index}",
-                "hn_url": f"https://news.ycombinator.com/item?id={index}",
-                "source_type": "rss",
-                "source_name": "Hacker News Frontpage",
-                "source_id": "hn-rss",
-                "hn_rank": index,
-                "score": 100 - index,
-                "num_comments": index,
-                "summary": f"Summary {index}.",
-                "quality_score": 10,
-            }
-            for index in range(10, 12)
-        )
+        articles.extend([duplicate_story, ranked_articles[10], ranked_articles[11]])
         data = {
             "input_sources": {},
             "output_stats": {"total_articles": len(articles)},
@@ -3242,18 +3213,18 @@ class TestAcceptanceRenderer(unittest.TestCase):
             version="3.17.5",
         )
 
-        self.assertIn("HN ranked story 1", text)
-        self.assertIn("HN ranked story 10", text)
-        self.assertNotIn("HN ranked story 11", text)
-        self.assertLess(
-            text.find("• HN ranked story 1"),
-            text.find("• HN ranked story 2"),
-        )
-        self.assertLess(
-            text.find("• HN ranked story 2"),
-            text.find("• HN ranked story 3"),
-        )
-        self.assertEqual(text.count("HN ranked story 3"), 1)
+        story_1_line = "• HN ranked story 1 — 99↑ · 1 comments"
+        story_2_line = "• HN ranked story 2 — 98↑ · 2 comments"
+        story_3_line = "• HN ranked story 3 — 97↑ · 3 comments"
+        story_10_line = "• HN ranked story 10 — 90↑ · 10 comments"
+        story_11_line = "• HN ranked story 11 — 89↑ · 11 comments"
+
+        self.assertIn(story_1_line, text)
+        self.assertIn(story_10_line, text)
+        self.assertNotIn(story_11_line, text)
+        self.assertLess(text.find(story_1_line), text.find(story_2_line))
+        self.assertLess(text.find(story_2_line), text.find(story_3_line))
+        self.assertEqual(text.count(story_3_line), 1)
         self.assertEqual(text.count("https://news.ycombinator.com/item?id=3"), 1)
         self.assertNotIn("https://mirror.example.com/story-3", text)
 
