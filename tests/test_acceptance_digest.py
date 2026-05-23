@@ -3259,6 +3259,58 @@ class TestAcceptanceRenderer(unittest.TestCase):
         self.assertNotIn("Different coverage of story 3", text)
         self.assertNotIn("https://mirror.example.com/different-story-3", text)
 
+    def test_chat_hackernews_topic_suppresses_fixed_hn_section(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 2},
+            "topics": {
+                "hackernews": {
+                    "articles": [
+                        {
+                            "title": "HN ranked story 1",
+                            "link": "https://example.com/story-1",
+                            "hn_url": "https://news.ycombinator.com/item?id=1",
+                            "source_type": "rss",
+                            "source_name": "Hacker News Frontpage",
+                            "source_id": "hn-rss",
+                            "hn_rank": 1,
+                            "score": 100,
+                            "num_comments": 10,
+                            "summary": "Top story.",
+                            "quality_score": 10,
+                        },
+                        {
+                            "title": "HN ranked story 11",
+                            "link": "https://example.com/story-11",
+                            "hn_url": "https://news.ycombinator.com/item?id=11",
+                            "source_type": "rss",
+                            "source_name": "Hacker News Frontpage",
+                            "source_id": "hn-rss",
+                            "hn_rank": 11,
+                            "score": 90,
+                            "num_comments": 5,
+                            "summary": "Fixed fallback candidate.",
+                            "quality_score": 10,
+                        },
+                    ]
+                }
+            },
+        }
+        topic_defs = [
+            {"id": "hackernews", "emoji": "📰", "label": "Hacker News / 热榜"}
+        ]
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=topic_defs,
+            report_date="2026-05-22",
+            version="3.17.5",
+            template="chat",
+        )
+
+        self.assertIn("## 📰 Hacker News / 热榜", text)
+        self.assertNotIn("## 📰 Hacker News Top / 热榜", text)
+
     def test_discord_hackernews_topic_suppresses_fixed_hn_duplicate_by_hn_url(self):
         data = {
             "input_sources": {},
@@ -3315,6 +3367,57 @@ class TestAcceptanceRenderer(unittest.TestCase):
         self.assertEqual(text.count("https://news.ycombinator.com/item?id=42"), 1)
         self.assertNotIn("Different mirror coverage", text)
         self.assertNotIn("https://mirror.example.com/tool", text)
+        self.assertNotIn("## 📰 Hacker News Top", text)
+
+    def test_discord_hackernews_topic_suppresses_fixed_hn_section(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 2},
+            "topics": {
+                "hackernews": {
+                    "articles": [
+                        {
+                            "title": "HN ranked story 1",
+                            "link": "https://example.com/story-1",
+                            "hn_url": "https://news.ycombinator.com/item?id=1",
+                            "source_type": "rss",
+                            "source_name": "Hacker News Frontpage",
+                            "source_id": "hn-rss",
+                            "hn_rank": 1,
+                            "score": 100,
+                            "num_comments": 10,
+                            "summary": "Top story.",
+                            "quality_score": 10,
+                        },
+                        {
+                            "title": "HN ranked story 11",
+                            "link": "https://example.com/story-11",
+                            "hn_url": "https://news.ycombinator.com/item?id=11",
+                            "source_type": "rss",
+                            "source_name": "Hacker News Frontpage",
+                            "source_id": "hn-rss",
+                            "hn_rank": 11,
+                            "score": 90,
+                            "num_comments": 5,
+                            "summary": "Fixed fallback candidate.",
+                            "quality_score": 10,
+                        },
+                    ]
+                }
+            },
+        }
+        topic_defs = [
+            {"id": "hackernews", "emoji": "📰", "label": "Hacker News / 热榜"}
+        ]
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=topic_defs,
+            report_date="2026-05-22",
+            version="3.17.5",
+        )
+
+        self.assertIn("## 📰 Hacker News / 热榜", text)
         self.assertNotIn("## 📰 Hacker News Top", text)
 
     def test_discord_hackernews_topic_ignores_generic_hn_duplicate_by_hn_url(self):

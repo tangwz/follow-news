@@ -869,6 +869,20 @@ def select_hackernews_topic_articles(
     return sorted(eligible, key=hackernews_topic_sort_key)
 
 
+def has_renderable_hackernews_topic(
+    data: Dict[str, Any],
+    topic_defs: Sequence[Dict[str, Any]],
+) -> bool:
+    if not any(is_hackernews_topic(topic_def.get("id")) for topic_def in topic_defs):
+        return False
+
+    topic_data = data.get("topics", {}).get("hackernews")
+    if not isinstance(topic_data, dict):
+        return False
+
+    return bool(select_hackernews_topic_articles(topic_data.get("articles", []) or []))
+
+
 def hacker_news_summary(article: Dict[str, Any]) -> str:
     return (
         compact_text(article.get("chat_summary"))
@@ -1402,6 +1416,7 @@ def render_digest(
         visible_alias_candidates(data, topic_defs, template="discord")
     )
     sections.extend(render_topic_sections(data, topic_defs, visible_registry))
+    skip_hacker_news_top = has_renderable_hackernews_topic(data, topic_defs)
 
     for renderer in (
         render_kol_updates,
@@ -1411,6 +1426,8 @@ def render_digest(
         render_blog_picks,
         render_podcast_remix,
     ):
+        if skip_hacker_news_top and renderer is render_hacker_news_top:
+            continue
         section = renderer(data, visible_registry)
         if section:
             sections.append(section)
@@ -1434,6 +1451,7 @@ def render_chat_digest(
     if intro:
         sections.append(intro)
     sections.extend(render_chat_topic_sections(data, topic_defs, visible_registry))
+    skip_hacker_news_top = has_renderable_hackernews_topic(data, topic_defs)
 
     for renderer in (
         render_chat_kol_updates,
@@ -1443,6 +1461,8 @@ def render_chat_digest(
         render_chat_blog_picks,
         render_chat_podcast_remix,
     ):
+        if skip_hacker_news_top and renderer is render_chat_hacker_news_top:
+            continue
         section = renderer(data, visible_registry)
         if section:
             sections.append(section)
