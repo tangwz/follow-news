@@ -56,7 +56,7 @@ OPTIONS:
                     Example: --skip web,reddit
 
   --topics TOPICS   Only include sources matching these topics (comma-separated)
-                    Values: llm, ai-agent, kol, frontier-tech, podcast
+                    Values: llm, ai-agent, kol, hackernews, frontier-tech, podcast
                     Example: --topics kol,llm
 
   --ids IDS         Only include specific source IDs (comma-separated)

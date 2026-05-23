@@ -52,6 +52,22 @@
       }
     },
     {
+      "id": "hackernews",
+      "emoji": "📰",
+      "label": "Hacker News / 热榜",
+      "description": "Top stories from Hacker News frontpage with HN score, comments, and discussion links",
+      "search": {
+        "queries": [],
+        "twitter_queries": [],
+        "must_include": [],
+        "exclude": []
+      },
+      "display": {
+        "max_items": 10,
+        "style": "compact"
+      }
+    },
+    {
       "id": "frontier-tech",
       "emoji": "🔬",
       "label": "Tech Industry / 产业动态",
