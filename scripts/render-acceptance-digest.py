@@ -156,6 +156,7 @@ def article_dedupe_keys(article: Dict[str, Any]) -> List[str]:
     if hn_url:
         normalized_hn_url = normalize_visible_url(hn_url)
         if normalized_hn_url:
+            keys.append(normalized_hn_url)
             keys.append(f"hn:{normalized_hn_url}")
 
     title = strip_matching_source_suffix(article.get("title"), article)

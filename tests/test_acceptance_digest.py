@@ -324,6 +324,25 @@ class TestVisibleArticleDedupe(unittest.TestCase):
             render_mod.article_dedupe_key(second),
         )
 
+    def test_visible_registry_matches_hackernews_link_with_hn_url(self):
+        registry = render_mod.VisibleArticleRegistry()
+        registry.mark(
+            {
+                "title": "Prior discussion link",
+                "link": "https://news.ycombinator.com/item?id=3",
+            }
+        )
+
+        self.assertTrue(
+            registry.is_seen(
+                {
+                    "title": "Different article title",
+                    "link": "https://example.com/story-3",
+                    "hn_url": "https://news.ycombinator.com/item?id=3",
+                }
+            )
+        )
+
     def test_article_dedupe_key_preserves_ref_query_parameters(self):
         first = {"link": "https://example.com/post?ref=a"}
         second = {"link": "https://example.com/post?ref=b"}
@@ -3298,6 +3317,65 @@ class TestAcceptanceRenderer(unittest.TestCase):
 
         self.assertIn("• Prior coverage of story 3", text)
         self.assertIn("https://supplemental.example.com/story-3", text)
+        self.assertNotIn("• HN ranked story 3 — 97↑ · 3 comments", text)
+        self.assertIn(story_10_line, text)
+        self.assertIn(story_11_line, text)
+        self.assertNotIn("https://example.com/story-3", text)
+
+    def test_discord_hackernews_topic_backfills_when_prior_link_is_hn_url(self):
+        ranked_articles = {
+            index: {
+                "title": f"HN ranked story {index}",
+                "link": f"https://example.com/story-{index}",
+                "hn_url": f"https://news.ycombinator.com/item?id={index}",
+                "source_type": "rss",
+                "source_name": "Hacker News Frontpage",
+                "source_id": "hn-rss",
+                "hn_rank": index,
+                "score": 100 - index,
+                "num_comments": index,
+                "summary": f"Summary {index}.",
+                "quality_score": 10,
+            }
+            for index in range(1, 12)
+        }
+        prior_visible_discussion = {
+            "title": "Prior discussion link for story 3",
+            "link": "https://news.ycombinator.com/item?id=3",
+            "source_type": "web",
+            "summary": "Already visible as an ordinary link.",
+            "quality_score": 100,
+        }
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 12},
+            "topics": {
+                "supplemental": {"articles": [prior_visible_discussion]},
+                "hackernews": {
+                    "articles": [
+                        ranked_articles[index]
+                        for index in [5, 1, 3, 2, 4, 6, 7, 8, 9, 10, 11]
+                    ]
+                },
+            },
+        }
+        topic_defs = [
+            {"id": "supplemental", "emoji": "🧩", "label": "Supplemental"},
+            {"id": "hackernews", "emoji": "📰", "label": "Hacker News / 热榜"},
+        ]
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=topic_defs,
+            report_date="2026-05-22",
+            version="3.17.5",
+        )
+
+        story_10_line = "• HN ranked story 10 — 90↑ · 10 comments"
+        story_11_line = "• HN ranked story 11 — 89↑ · 11 comments"
+
+        self.assertIn("• Prior discussion link for story 3", text)
+        self.assertEqual(text.count("https://news.ycombinator.com/item?id=3"), 1)
         self.assertNotIn("• HN ranked story 3 — 97↑ · 3 comments", text)
         self.assertIn(story_10_line, text)
         self.assertIn(story_11_line, text)
