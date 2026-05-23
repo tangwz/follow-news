@@ -69,7 +69,9 @@ No special-case merge routing is required.
 
 ## Rendering Behavior
 
-For the `hackernews` topic, render each item with:
+For the `hackernews` topic, render exactly the top 10 eligible HN stories when 10 or more are available. The topic ordering should follow Hacker News frontpage rank (`hn_rank` ascending) because the product requirement is to show Hacker News Top 10, not the highest local quality-score items. If an item lacks `hn_rank`, fall back after ranked items using HN score descending, then title.
+
+For each `hackernews` topic item, render:
 
 - Title.
 - HN score and comment count when available.
@@ -78,7 +80,7 @@ For the `hackernews` topic, render each item with:
 
 For other topics, keep existing rendering behavior.
 
-The fixed Hacker News section remains useful when merged input contains HN articles outside the `hackernews` topic, but it should not create duplicates after the new topic has already rendered those articles.
+The fixed Hacker News section remains useful when merged input contains HN articles outside the `hackernews` topic, but it should not create duplicates after the new topic has already rendered those articles. Dedupe must cover both duplicate articles inside the `hackernews` topic and cross-section duplicates between `hackernews`, generic topic sections, and the fixed Hacker News fallback.
 
 ## Documentation Updates
 
@@ -105,6 +107,8 @@ Update or add tests for these contracts:
    - Chat output renders `## 📰 Hacker News / 热榜`.
    - Discord output renders the same dedicated topic label.
    - HN topic items include score/comment metadata when present.
+   - HN topic renders at most 10 items.
+   - Duplicate HN stories render once, even when they share a normalized title or URL across topic/fallback candidates.
 
 3. Golden files
    - Update digest golden files only after reviewing the rendered diff.
