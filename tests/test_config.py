@@ -569,7 +569,7 @@ class TestDocumentationExamples(unittest.TestCase):
             content,
         )
         self.assertIn(
-            f"A deduplicated tech digest built from **{counts['total']} built-in sources** plus **{counts['topics']} web search topics**:",
+            f"A deduplicated tech digest built from **{counts['total']} built-in sources** plus **{counts['topics']} default report topics**:",
             content,
         )
         self.assertIn(
@@ -598,7 +598,7 @@ class TestDocumentationExamples(unittest.TestCase):
             content,
         )
         self.assertIn(
-            f"基于 **{counts['total']} 个内置数据源** + **{counts['topics']} 个 Web 搜索主题** 的去重科技日报：",
+            f"基于 **{counts['total']} 个内置数据源** + **{counts['topics']} 个默认报告主题** 的去重科技日报：",
             content,
         )
         self.assertIn(

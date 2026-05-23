@@ -272,7 +272,7 @@ python3 scripts/fetch-github.py [--defaults DIR] [--config DIR] [--hours 24] [--
 ```bash
 python3 scripts/fetch-github.py --trending [--hours 24] [--output FILE] [--verbose]
 ```
-- Searches GitHub API for trending repos across configured topics (`llm`, `ai-agent`, `kol`, `hackernews`, `frontier-tech`, `podcast`)
+- Searches GitHub API for trending repos across supported trending topics (`llm`, `ai-agent`, `frontier-tech`)
 - Internal ranking: base 5 + daily_stars_est / 10, max 15
 
 #### `fetch-reddit.py` - Reddit Posts Fetcher
@@ -413,10 +413,11 @@ Place custom configs in `workspace/config/` to override defaults:
 ## Default Sources (163 total)
 
 - **RSS Feeds (65)**: AI labs, engineering blogs, founder/operator writing, Chinese tech media
-- **Twitter/X KOLs (60)**: AI researchers, builder accounts, product operators, technology commentators
+- **Twitter/X KOLs (61)**: AI researchers, builder accounts, product operators, technology commentators
 - **GitHub Repos (23)**: Major open-source projects (LangChain, vLLM, DeepSeek, Llama, etc.)
 - **Reddit (8)**: r/MachineLearning, r/LocalLLaMA, r/OpenAI, r/ExperiencedDevs, etc.
-- **Web Search (6 topics)**: `llm`, `ai-agent`, `kol`, `hackernews`, `frontier-tech`, `podcast`
+- **Default report topics (6)**: `llm`, `ai-agent`, `kol`, `hackernews`, `frontier-tech`, `podcast`
+- **Web Search (4 query-backed topics)**: `llm`, `ai-agent`, `kol`, `frontier-tech`
 - **Podcast (custom)**: RSS podcast feeds, YouTube podcast playlists/channels, and Xiaoyuzhou podcasts, with optional transcript enrichment
 
 All sources pre-configured with appropriate topic tags and priority levels.

@@ -1,6 +1,6 @@
 {
   "_description": "Enhanced topic definitions for tech digest. Each topic defines a report section with search queries, filters, and display preferences.",
-  "_updated": "2026-02-15",
+  "_updated": "2026-05-23",
   "_version": "2.5.0",
   "topics": [
     {

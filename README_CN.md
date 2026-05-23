@@ -32,13 +32,13 @@ clawhub install follow-news
 
 ## 📊 你会得到什么
 
-基于 **163 个内置数据源** + **6 个 Web 搜索主题** 的去重科技日报：
+基于 **163 个内置数据源** + **6 个默认报告主题** 的去重科技日报：
 
 | 层级 | 数量 | 内容 |
 |------|------|------|
 | 📡 RSS | 65 个订阅源 | OpenAI、Simon Willison、Hugging Face、HN、36氪… |
-| 🐦 Twitter/X | 60 个 KOL | @sama、@karpathy、@paulg、@garrytan、@dotey… |
-| 🔍 Web 搜索 | 6 个主题 | `llm`、`ai-agent`、`kol`、`hackernews`、`frontier-tech`、`podcast` + 时效过滤 |
+| 🐦 Twitter/X | 61 个 KOL | @sama、@karpathy、@paulg、@garrytan、@dotey… |
+| 🔍 Web 搜索 | 4 个查询主题 | `llm`、`ai-agent`、`kol`、`frontier-tech` + 时效过滤 |
 | 🐙 GitHub | 23 个仓库 | 关键项目的 Release 跟踪（LangChain、vLLM、DeepSeek、Llama…） |
 | 🗣️ Reddit | 8 个子版块 | r/MachineLearning、r/LocalLLaMA、r/OpenAI、r/ExperiencedDevs… |
 | 🎙️ Podcast | 自定义源 | RSS 播客订阅源、YouTube 播放列表/频道、小宇宙播客，以及可选转录文本 |

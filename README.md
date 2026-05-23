@@ -32,13 +32,13 @@ clawhub install follow-news
 
 ## 📊 What You Get
 
-A deduplicated tech digest built from **163 built-in sources** plus **6 web search topics**:
+A deduplicated tech digest built from **163 built-in sources** plus **6 default report topics**:
 
 | Layer | Sources | What |
 |-------|---------|------|
 | 📡 RSS | 65 feeds | OpenAI, Simon Willison, Hugging Face, HN, 36氪… |
-| 🐦 Twitter/X | 60 KOLs | @sama, @karpathy, @paulg, @garrytan, @dotey… |
-| 🔍 Web Search | 6 topics | `llm`, `ai-agent`, `kol`, `hackernews`, `frontier-tech`, `podcast` with freshness filters |
+| 🐦 Twitter/X | 61 KOLs | @sama, @karpathy, @paulg, @garrytan, @dotey… |
+| 🔍 Web Search | 4 query-backed topics | `llm`, `ai-agent`, `kol`, `frontier-tech` with freshness filters |
 | 🐙 GitHub | 23 repos | Releases from key projects (LangChain, vLLM, DeepSeek, Llama…) |
 | 🗣️ Reddit | 8 subs | r/MachineLearning, r/LocalLLaMA, r/OpenAI, r/ExperiencedDevs… |
 | 🎙️ Podcast | custom sources | RSS podcast feeds, YouTube playlists/channels, and Xiaoyuzhou podcasts with optional transcripts |
