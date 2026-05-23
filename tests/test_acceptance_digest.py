@@ -3008,6 +3008,207 @@ class TestAcceptanceRenderer(unittest.TestCase):
         self.assertIn("🔗 https://news.ycombinator.com/item?id=42", text)
         self.assertIn("↗ https://example.com/tool", text)
 
+    def test_chat_hackernews_topic_renders_hn_metadata_and_links(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 1},
+            "topics": {
+                "hackernews": {
+                    "articles": [
+                        {
+                            "title": "Show HN: Useful Tool",
+                            "link": "https://example.com/tool",
+                            "hn_url": "https://news.ycombinator.com/item?id=42",
+                            "source_type": "rss",
+                            "source_name": "Hacker News Frontpage",
+                            "source_id": "hn-rss",
+                            "hn_rank": 1,
+                            "score": 234,
+                            "num_comments": 56,
+                            "summary": "A tool builders are discussing.",
+                            "quality_score": 10,
+                        }
+                    ]
+                }
+            },
+        }
+        topic_defs = [
+            {"id": "hackernews", "emoji": "📰", "label": "Hacker News / 热榜"}
+        ]
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=topic_defs,
+            report_date="2026-05-22",
+            version="3.17.5",
+            template="chat",
+        )
+
+        self.assertIn("## 📰 Hacker News / 热榜", text)
+        self.assertIn(
+            f"1. {render_mod.bold_chat_title_text('Show HN: Useful Tool')}",
+            text,
+        )
+        self.assertIn("234↑ · 56 comments · A tool builders are discussing.", text)
+        self.assertIn("🔗 https://news.ycombinator.com/item?id=42", text)
+        self.assertIn("↗ https://example.com/tool", text)
+        self.assertNotIn("## 📰 Hacker News Top / 热榜", text)
+
+    def test_chat_hackernews_topic_renders_ranked_top_ten_without_duplicates(self):
+        articles = [
+            {
+                "title": f"HN ranked story {index}",
+                "link": f"https://example.com/story-{index}",
+                "hn_url": f"https://news.ycombinator.com/item?id={index}",
+                "source_type": "rss",
+                "source_name": "Hacker News Frontpage",
+                "source_id": "hn-rss",
+                "hn_rank": index,
+                "score": 100 - index,
+                "num_comments": index,
+                "summary": f"Summary {index}.",
+                "quality_score": 10,
+            }
+            for index in range(1, 12)
+        ]
+        articles.append(
+            {
+                "title": "HN ranked story 3",
+                "link": "https://mirror.example.com/story-3",
+                "hn_url": "https://news.ycombinator.com/item?id=3",
+                "source_type": "rss",
+                "source_name": "Hacker News Frontpage",
+                "source_id": "hn-rss",
+                "hn_rank": 3,
+                "score": 97,
+                "num_comments": 3,
+                "summary": "Duplicate story.",
+                "quality_score": 10,
+            }
+        )
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": len(articles)},
+            "topics": {"hackernews": {"articles": articles}},
+        }
+        topic_defs = [
+            {"id": "hackernews", "emoji": "📰", "label": "Hacker News / 热榜"}
+        ]
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=topic_defs,
+            report_date="2026-05-22",
+            version="3.17.5",
+            template="chat",
+        )
+
+        self.assertIn(render_mod.bold_chat_title_text("HN ranked story 1"), text)
+        self.assertIn(render_mod.bold_chat_title_text("HN ranked story 10"), text)
+        self.assertNotIn(render_mod.bold_chat_title_text("HN ranked story 11"), text)
+        self.assertEqual(
+            text.count(render_mod.bold_chat_title_text("HN ranked story 3")),
+            1,
+        )
+        self.assertEqual(text.count("https://news.ycombinator.com/item?id=3"), 1)
+        self.assertNotIn("https://mirror.example.com/story-3", text)
+
+    def test_discord_hackernews_topic_renders_hn_metadata_and_links(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 1},
+            "topics": {
+                "hackernews": {
+                    "articles": [
+                        {
+                            "title": "Show HN: Useful Tool",
+                            "link": "https://example.com/tool",
+                            "hn_url": "https://news.ycombinator.com/item?id=42",
+                            "source_type": "rss",
+                            "source_name": "Hacker News Frontpage",
+                            "source_id": "hn-rss",
+                            "hn_rank": 1,
+                            "score": 234,
+                            "num_comments": 56,
+                            "summary": "A tool builders are discussing.",
+                            "quality_score": 10,
+                        }
+                    ]
+                }
+            },
+        }
+        topic_defs = [
+            {"id": "hackernews", "emoji": "📰", "label": "Hacker News / 热榜"}
+        ]
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=topic_defs,
+            report_date="2026-05-22",
+            version="3.17.5",
+        )
+
+        self.assertIn("## 📰 Hacker News / 热榜", text)
+        self.assertIn("• Show HN: Useful Tool — 234↑ · 56 comments", text)
+        self.assertIn("🔗 https://news.ycombinator.com/item?id=42", text)
+        self.assertIn("↗ https://example.com/tool", text)
+        self.assertNotIn("## 📰 Hacker News Top", text)
+
+    def test_discord_hackernews_topic_renders_ranked_top_ten_without_duplicates(self):
+        articles = [
+            {
+                "title": f"HN ranked story {index}",
+                "link": f"https://example.com/story-{index}",
+                "hn_url": f"https://news.ycombinator.com/item?id={index}",
+                "source_type": "rss",
+                "source_name": "Hacker News Frontpage",
+                "source_id": "hn-rss",
+                "hn_rank": index,
+                "score": 100 - index,
+                "num_comments": index,
+                "summary": f"Summary {index}.",
+                "quality_score": 10,
+            }
+            for index in range(1, 12)
+        ]
+        articles.append(
+            {
+                "title": "HN ranked story 3",
+                "link": "https://mirror.example.com/story-3",
+                "hn_url": "https://news.ycombinator.com/item?id=3",
+                "source_type": "rss",
+                "source_name": "Hacker News Frontpage",
+                "source_id": "hn-rss",
+                "hn_rank": 3,
+                "score": 97,
+                "num_comments": 3,
+                "summary": "Duplicate story.",
+                "quality_score": 10,
+            }
+        )
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": len(articles)},
+            "topics": {"hackernews": {"articles": articles}},
+        }
+        topic_defs = [
+            {"id": "hackernews", "emoji": "📰", "label": "Hacker News / 热榜"}
+        ]
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=topic_defs,
+            report_date="2026-05-22",
+            version="3.17.5",
+        )
+
+        self.assertIn("HN ranked story 1", text)
+        self.assertIn("HN ranked story 10", text)
+        self.assertNotIn("HN ranked story 11", text)
+        self.assertEqual(text.count("HN ranked story 3"), 1)
+        self.assertEqual(text.count("https://news.ycombinator.com/item?id=3"), 1)
+        self.assertNotIn("https://mirror.example.com/story-3", text)
+
     def test_hnrss_metadata_is_parsed_from_description(self):
         description = """
         <p>Article URL: <a href="https://example.com/article">https://example.com/article</a></p>
