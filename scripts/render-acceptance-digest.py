@@ -487,10 +487,7 @@ def visible_alias_candidates(
         if not isinstance(topic_data, dict):
             continue
 
-        if template == "chat":
-            candidates.extend(chat_topic_articles(topic_data))
-        else:
-            candidates.extend(sorted_topic_articles(topic_data))
+        candidates.extend(topic_render_candidate_articles(topic_id, topic_data, template))
 
     candidates.extend(fixed_kol_articles(data))
     candidates.extend(
@@ -499,11 +496,32 @@ def visible_alias_candidates(
             filter_low_signal=(template == "chat"),
         )
     )
-    candidates.extend(fixed_hacker_news_articles(data))
+    if not has_renderable_hackernews_topic(data, topic_defs):
+        candidates.extend(fixed_hacker_news_articles(data))
     candidates.extend(fixed_github_trending_articles(data))
     candidates.extend(fixed_blog_pick_articles(data))
     candidates.extend(podcast_remix_candidates(data))
     return candidates
+
+
+def topic_render_candidate_articles(
+    topic_id: Any,
+    topic_data: Dict[str, Any],
+    template: str,
+) -> List[Dict[str, Any]]:
+    if is_hackernews_topic(topic_id):
+        return select_hackernews_topic_articles(topic_data.get("articles", []) or [])
+
+    if template == "chat":
+        articles = chat_topic_articles(topic_data)
+    else:
+        articles = sorted_topic_articles(topic_data)
+
+    return [
+        article
+        for article in articles
+        if not is_non_hackernews_topic_hn_article(topic_id, article)
+    ]
 
 
 def sorted_topic_articles(topic_data: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -531,19 +549,13 @@ def render_topic_sections(
         if not isinstance(topic_data, dict):
             continue
 
-        topic_articles = topic_data.get("articles", []) or []
+        articles = topic_render_candidate_articles(topic_id, topic_data, "discord")
         if is_hackernews_topic(topic_id):
             articles = visible_registry.filter_unseen_limited(
-                select_hackernews_topic_articles(topic_articles),
+                articles,
                 HN_DEFAULT_LIMIT,
             )
         else:
-            articles = sorted_topic_articles(topic_data)
-            articles = [
-                article
-                for article in articles
-                if not is_non_hackernews_topic_hn_article(topic_id, article)
-            ]
             articles = visible_registry.filter_unseen(articles)
         if not articles:
             continue
@@ -580,19 +592,13 @@ def render_chat_topic_sections(
         if not isinstance(topic_data, dict):
             continue
 
-        topic_articles = topic_data.get("articles", []) or []
+        articles = topic_render_candidate_articles(topic_id, topic_data, "chat")
         if is_hackernews_topic(topic_id):
             articles = visible_registry.filter_unseen_limited(
-                select_hackernews_topic_articles(topic_articles),
+                articles,
                 HN_DEFAULT_LIMIT,
             )
         else:
-            articles = chat_topic_articles(topic_data)
-            articles = [
-                article
-                for article in articles
-                if not is_non_hackernews_topic_hn_article(topic_id, article)
-            ]
             articles = visible_registry.filter_unseen(articles)
         if not articles:
             continue
@@ -879,15 +885,32 @@ def select_hackernews_topic_articles(
     return sorted(eligible, key=hackernews_topic_sort_key)
 
 
+def find_hackernews_topic_data(
+    data: Dict[str, Any],
+    topic_defs: Sequence[Dict[str, Any]],
+) -> Optional[Dict[str, Any]]:
+    topics = data.get("topics", {})
+    if not isinstance(topics, dict):
+        return None
+
+    for topic_def in topic_defs:
+        topic_id = topic_def.get("id")
+        if not is_hackernews_topic(topic_id):
+            continue
+
+        topic_data = topics.get(topic_id)
+        if isinstance(topic_data, dict):
+            return topic_data
+
+    return None
+
+
 def has_renderable_hackernews_topic(
     data: Dict[str, Any],
     topic_defs: Sequence[Dict[str, Any]],
 ) -> bool:
-    if not any(is_hackernews_topic(topic_def.get("id")) for topic_def in topic_defs):
-        return False
-
-    topic_data = data.get("topics", {}).get("hackernews")
-    if not isinstance(topic_data, dict):
+    topic_data = find_hackernews_topic_data(data, topic_defs)
+    if topic_data is None:
         return False
 
     return bool(select_hackernews_topic_articles(topic_data.get("articles", []) or []))
@@ -1346,10 +1369,17 @@ def render_chat_intro(
 
     topics = data.get("topics", {})
     for topic_def in topic_defs:
-        topic_data = topics.get(topic_def.get("id"))
+        topic_id = topic_def.get("id")
+        topic_data = topics.get(topic_id)
         if not isinstance(topic_data, dict):
             continue
-        candidates.extend(registry.filter_unseen(chat_topic_articles(topic_data)))
+        topic_articles = topic_render_candidate_articles(topic_id, topic_data, "chat")
+        if is_hackernews_topic(topic_id):
+            candidates.extend(
+                registry.filter_unseen_limited(topic_articles, HN_DEFAULT_LIMIT)
+            )
+        else:
+            candidates.extend(registry.filter_unseen(topic_articles))
 
     highlights = sorted(candidates, key=quality_score, reverse=True)[:3]
     lines = []

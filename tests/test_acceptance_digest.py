@@ -3215,6 +3215,101 @@ class TestAcceptanceRenderer(unittest.TestCase):
         self.assertIn("🔗 https://news.ycombinator.com/item?id=42", text)
         self.assertNotIn("malformed", text)
 
+    def test_chat_hackernews_topic_suppresses_fixed_section_with_matching_id(self):
+        articles = [
+            {
+                "title": f"HN ranked story {index}",
+                "link": f"https://example.com/story-{index}",
+                "hn_url": f"https://news.ycombinator.com/item?id={index}",
+                "source_type": "rss",
+                "source_name": "Hacker News Frontpage",
+                "source_id": "hn-rss",
+                "hn_rank": index,
+                "score": 100 - index,
+                "num_comments": index,
+                "summary": f"Summary {index}.",
+                "quality_score": 10,
+            }
+            for index in range(1, 12)
+        ]
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": len(articles)},
+            "topics": {"HackerNews": {"articles": articles}},
+        }
+        topic_defs = [
+            {"id": "HackerNews", "emoji": "📰", "label": "Hacker News / 热榜"}
+        ]
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=topic_defs,
+            report_date="2026-05-22",
+            version="3.17.5",
+            template="chat",
+        )
+
+        self.assertIn("## 📰 Hacker News / 热榜", text)
+        self.assertIn(
+            f"10. {render_mod.bold_chat_title_text('HN ranked story 10')}",
+            text,
+        )
+        self.assertNotIn("## 📰 Hacker News Top / 热榜", text)
+        self.assertNotIn("HN ranked story 11", text)
+
+    def test_chat_intro_uses_hackernews_topic_filtering(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 2},
+            "topics": {
+                "hackernews": {
+                    "articles": [
+                        {
+                            "title": "Ghost HN highlight",
+                            "link": "https://example.com/ghost",
+                            "source_type": "rss",
+                            "source_name": "Hacker News Frontpage",
+                            "source_id": "hn-rss",
+                            "hn_rank": 1,
+                            "score": 999,
+                            "num_comments": 100,
+                            "summary": "Ghost story should not appear.",
+                            "quality_score": 100,
+                        },
+                        {
+                            "title": "Renderable HN story",
+                            "link": "https://example.com/renderable",
+                            "hn_url": "https://news.ycombinator.com/item?id=42",
+                            "source_type": "rss",
+                            "source_name": "Hacker News Frontpage",
+                            "source_id": "hn-rss",
+                            "hn_rank": 2,
+                            "score": 10,
+                            "num_comments": 5,
+                            "summary": "Renderable discussion appears.",
+                            "quality_score": 10,
+                        },
+                    ]
+                }
+            },
+        }
+        topic_defs = [
+            {"id": "hackernews", "emoji": "📰", "label": "Hacker News / 热榜"}
+        ]
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=topic_defs,
+            report_date="2026-05-22",
+            version="3.17.5",
+            template="chat",
+        )
+
+        self.assertIn("今日看点", text)
+        self.assertIn("Renderable discussion appears.", text)
+        self.assertNotIn("Ghost story should not appear.", text)
+        self.assertNotIn("Ghost HN highlight", text)
+
     def test_chat_keeps_non_hn_primary_article_with_hn_all_source(self):
         data = {
             "input_sources": {},
@@ -3689,6 +3784,71 @@ class TestAcceptanceRenderer(unittest.TestCase):
         self.assertIn(story_10_line, text)
         self.assertNotIn(story_11_line, text)
         self.assertIn("https://example.com/story-3", text)
+
+    def test_discord_hackernews_topic_survives_filtered_alias_chain(self):
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 3},
+            "topics": {
+                "frontier-tech": {
+                    "articles": [
+                        {
+                            "title": "Shared launch coverage",
+                            "link": "https://example.com/non-hn",
+                            "summary": "Ordinary coverage should remain visible.",
+                            "quality_score": 100,
+                        },
+                        {
+                            "title": "Shared launch coverage",
+                            "link": "https://example.com/legacy-hn",
+                            "hn_url": "https://news.ycombinator.com/item?id=42",
+                            "source_type": "rss",
+                            "source_name": "Hacker News Frontpage",
+                            "source_id": "hn-rss",
+                            "hn_rank": 1,
+                            "score": 234,
+                            "num_comments": 56,
+                            "summary": "Filtered legacy HN coverage.",
+                            "quality_score": 99,
+                        },
+                    ]
+                },
+                "hackernews": {
+                    "articles": [
+                        {
+                            "title": "Show HN: Shared Launch",
+                            "link": "https://example.com/hn-topic",
+                            "hn_url": "https://news.ycombinator.com/item?id=42",
+                            "source_type": "rss",
+                            "source_name": "Hacker News Frontpage",
+                            "source_id": "hn-rss",
+                            "hn_rank": 1,
+                            "score": 234,
+                            "num_comments": 56,
+                            "summary": "The real HN topic story should render.",
+                            "quality_score": 10,
+                        }
+                    ]
+                },
+            },
+        }
+        topic_defs = [
+            {"id": "frontier-tech", "emoji": "🏭", "label": "Tech Industry"},
+            {"id": "hackernews", "emoji": "📰", "label": "Hacker News / 热榜"},
+        ]
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=topic_defs,
+            report_date="2026-05-22",
+            version="3.17.5",
+        )
+
+        self.assertIn("• Shared launch coverage", text)
+        self.assertNotIn("Filtered legacy HN coverage.", text)
+        self.assertIn("• Show HN: Shared Launch — 234↑ · 56 comments", text)
+        self.assertIn("🔗 https://news.ycombinator.com/item?id=42", text)
+        self.assertIn("↗ https://example.com/hn-topic", text)
 
     def test_discord_hackernews_topic_backfills_when_prior_link_is_hn_url(self):
         ranked_articles = {
