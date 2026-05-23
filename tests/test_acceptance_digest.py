@@ -3069,7 +3069,7 @@ class TestAcceptanceRenderer(unittest.TestCase):
                 "summary": f"Summary {index}.",
                 "quality_score": 10,
             }
-            for index in range(1, 12)
+            for index in range(1, 10)
         ]
         articles.append(
             {
@@ -3085,6 +3085,22 @@ class TestAcceptanceRenderer(unittest.TestCase):
                 "summary": "Duplicate story.",
                 "quality_score": 10,
             }
+        )
+        articles.extend(
+            {
+                "title": f"HN ranked story {index}",
+                "link": f"https://example.com/story-{index}",
+                "hn_url": f"https://news.ycombinator.com/item?id={index}",
+                "source_type": "rss",
+                "source_name": "Hacker News Frontpage",
+                "source_id": "hn-rss",
+                "hn_rank": index,
+                "score": 100 - index,
+                "num_comments": index,
+                "summary": f"Summary {index}.",
+                "quality_score": 10,
+            }
+            for index in range(10, 12)
         )
         data = {
             "input_sources": {},
@@ -3103,11 +3119,19 @@ class TestAcceptanceRenderer(unittest.TestCase):
             template="chat",
         )
 
-        self.assertIn(render_mod.bold_chat_title_text("HN ranked story 1"), text)
-        self.assertIn(render_mod.bold_chat_title_text("HN ranked story 10"), text)
-        self.assertNotIn(render_mod.bold_chat_title_text("HN ranked story 11"), text)
+        story_1 = render_mod.bold_chat_title_text("HN ranked story 1")
+        story_2 = render_mod.bold_chat_title_text("HN ranked story 2")
+        story_3 = render_mod.bold_chat_title_text("HN ranked story 3")
+        story_10 = render_mod.bold_chat_title_text("HN ranked story 10")
+        story_11 = render_mod.bold_chat_title_text("HN ranked story 11")
+
+        self.assertIn(story_1, text)
+        self.assertIn(story_10, text)
+        self.assertNotIn(story_11, text)
+        self.assertLess(text.find(story_1), text.find(story_2))
+        self.assertLess(text.find(story_2), text.find(story_3))
         self.assertEqual(
-            text.count(render_mod.bold_chat_title_text("HN ranked story 3")),
+            text.count(story_3),
             1,
         )
         self.assertEqual(text.count("https://news.ycombinator.com/item?id=3"), 1)
@@ -3169,7 +3193,7 @@ class TestAcceptanceRenderer(unittest.TestCase):
                 "summary": f"Summary {index}.",
                 "quality_score": 10,
             }
-            for index in range(1, 12)
+            for index in range(1, 10)
         ]
         articles.append(
             {
@@ -3185,6 +3209,22 @@ class TestAcceptanceRenderer(unittest.TestCase):
                 "summary": "Duplicate story.",
                 "quality_score": 10,
             }
+        )
+        articles.extend(
+            {
+                "title": f"HN ranked story {index}",
+                "link": f"https://example.com/story-{index}",
+                "hn_url": f"https://news.ycombinator.com/item?id={index}",
+                "source_type": "rss",
+                "source_name": "Hacker News Frontpage",
+                "source_id": "hn-rss",
+                "hn_rank": index,
+                "score": 100 - index,
+                "num_comments": index,
+                "summary": f"Summary {index}.",
+                "quality_score": 10,
+            }
+            for index in range(10, 12)
         )
         data = {
             "input_sources": {},
@@ -3205,6 +3245,14 @@ class TestAcceptanceRenderer(unittest.TestCase):
         self.assertIn("HN ranked story 1", text)
         self.assertIn("HN ranked story 10", text)
         self.assertNotIn("HN ranked story 11", text)
+        self.assertLess(
+            text.find("• HN ranked story 1"),
+            text.find("• HN ranked story 2"),
+        )
+        self.assertLess(
+            text.find("• HN ranked story 2"),
+            text.find("• HN ranked story 3"),
+        )
         self.assertEqual(text.count("HN ranked story 3"), 1)
         self.assertEqual(text.count("https://news.ycombinator.com/item?id=3"), 1)
         self.assertNotIn("https://mirror.example.com/story-3", text)
