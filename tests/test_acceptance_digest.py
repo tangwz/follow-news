@@ -3027,6 +3027,66 @@ class TestAcceptanceRenderer(unittest.TestCase):
         self.assertIn("🔗 https://news.ycombinator.com/item?id=42", text)
         self.assertIn("↗ https://example.com/tool", text)
 
+    def test_chat_legacy_hacker_news_fallback_skips_generic_topic(self):
+        hn_title = "Legacy HN Infrastructure Story"
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 2},
+            "topics": {
+                "frontier-tech": {
+                    "articles": [
+                        {
+                            "title": "Regular Frontier Tech Story",
+                            "link": "https://example.com/frontier-tech",
+                            "summary": "A regular topic story.",
+                            "quality_score": 10,
+                        },
+                        {
+                            "title": hn_title,
+                            "link": "https://example.com/legacy-hn",
+                            "hn_url": "https://news.ycombinator.com/item?id=4242",
+                            "source_type": "rss",
+                            "source_name": "Hacker News Frontpage",
+                            "source_id": "hn-rss",
+                            "hn_rank": 1,
+                            "score": 321,
+                            "num_comments": 45,
+                            "summary": "Legacy HN story from an old merged topic.",
+                            "quality_score": 10,
+                        },
+                    ]
+                }
+            },
+        }
+        topic_defs = [
+            {"id": "frontier-tech", "emoji": "🏭", "label": "Tech Industry / 产业动态"}
+        ]
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=topic_defs,
+            report_date="2026-05-22",
+            version="3.17.0",
+            template="chat",
+        )
+
+        topic_section = text.split("## 🏭 Tech Industry / 产业动态", 1)[1].split(
+            "## 📰 Hacker News Top / 热榜",
+            1,
+        )[0]
+
+        self.assertIn("## 🏭 Tech Industry / 产业动态", text)
+        self.assertIn("https://example.com/frontier-tech", topic_section)
+        self.assertNotIn(render_mod.bold_chat_title_text(hn_title), topic_section)
+        self.assertIn("## 📰 Hacker News Top / 热榜", text)
+        self.assertIn(f"1. {render_mod.bold_chat_title_text(hn_title)}", text)
+        self.assertIn(
+            "321↑ · 45 comments · Legacy HN story from an old merged topic.",
+            text,
+        )
+        self.assertIn("🔗 https://news.ycombinator.com/item?id=4242", text)
+        self.assertIn("↗ https://example.com/legacy-hn", text)
+
     def test_chat_hackernews_topic_renders_hn_metadata_and_links(self):
         data = {
             "input_sources": {},
@@ -3257,7 +3317,7 @@ class TestAcceptanceRenderer(unittest.TestCase):
         self.assertNotIn("https://mirror.example.com/tool", text)
         self.assertNotIn("## 📰 Hacker News Top", text)
 
-    def test_discord_hackernews_topic_backfills_after_global_hn_url_dedupe(self):
+    def test_discord_hackernews_topic_ignores_generic_hn_duplicate_by_hn_url(self):
         ranked_articles = {
             index: {
                 "title": f"HN ranked story {index}",
@@ -3313,14 +3373,15 @@ class TestAcceptanceRenderer(unittest.TestCase):
         )
 
         story_10_line = "• HN ranked story 10 — 90↑ · 10 comments"
+        story_3_line = "• HN ranked story 3 — 97↑ · 3 comments"
         story_11_line = "• HN ranked story 11 — 89↑ · 11 comments"
 
-        self.assertIn("• Prior coverage of story 3", text)
-        self.assertIn("https://supplemental.example.com/story-3", text)
-        self.assertNotIn("• HN ranked story 3 — 97↑ · 3 comments", text)
+        self.assertNotIn("• Prior coverage of story 3", text)
+        self.assertNotIn("https://supplemental.example.com/story-3", text)
+        self.assertIn(story_3_line, text)
         self.assertIn(story_10_line, text)
-        self.assertIn(story_11_line, text)
-        self.assertNotIn("https://example.com/story-3", text)
+        self.assertNotIn(story_11_line, text)
+        self.assertIn("https://example.com/story-3", text)
 
     def test_discord_hackernews_topic_backfills_when_prior_link_is_hn_url(self):
         ranked_articles = {
@@ -3421,6 +3482,62 @@ class TestAcceptanceRenderer(unittest.TestCase):
         self.assertIn("🔗 https://news.ycombinator.com/item?id=42", text)
         self.assertIn("↗ https://example.com/tool", text)
         self.assertNotIn("## 📰 Hacker News Top", text)
+
+    def test_discord_legacy_hacker_news_fallback_skips_generic_topic(self):
+        hn_title = "Legacy HN Infrastructure Story"
+        data = {
+            "input_sources": {},
+            "output_stats": {"total_articles": 2},
+            "topics": {
+                "frontier-tech": {
+                    "articles": [
+                        {
+                            "title": "Regular Frontier Tech Story",
+                            "link": "https://example.com/frontier-tech",
+                            "summary": "A regular topic story.",
+                            "quality_score": 10,
+                        },
+                        {
+                            "title": hn_title,
+                            "link": "https://example.com/legacy-hn",
+                            "hn_url": "https://news.ycombinator.com/item?id=4242",
+                            "source_type": "rss",
+                            "source_name": "Hacker News Frontpage",
+                            "source_id": "hn-rss",
+                            "hn_rank": 1,
+                            "score": 321,
+                            "num_comments": 45,
+                            "summary": "Legacy HN story from an old merged topic.",
+                            "quality_score": 10,
+                        },
+                    ]
+                }
+            },
+        }
+        topic_defs = [
+            {"id": "frontier-tech", "emoji": "🏭", "label": "Tech Industry / 产业动态"}
+        ]
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=topic_defs,
+            report_date="2026-05-22",
+            version="3.17.0",
+        )
+
+        topic_section = text.split("## 🏭 Tech Industry / 产业动态", 1)[1].split(
+            "## 📰 Hacker News Top",
+            1,
+        )[0]
+
+        self.assertIn("## 🏭 Tech Industry / 产业动态", text)
+        self.assertIn("Regular Frontier Tech Story", topic_section)
+        self.assertNotIn(hn_title, topic_section)
+        self.assertIn("## 📰 Hacker News Top", text)
+        self.assertIn(f"1. **{hn_title}** — 321↑ · 45 comments", text)
+        self.assertIn("Legacy HN story from an old merged topic.", text)
+        self.assertIn("🔗 https://news.ycombinator.com/item?id=4242", text)
+        self.assertIn("↗ https://example.com/legacy-hn", text)
 
     def test_discord_hackernews_topic_renders_ranked_top_ten_without_duplicates(self):
         ranked_articles = {

@@ -539,6 +539,11 @@ def render_topic_sections(
             )
         else:
             articles = sorted_topic_articles(topic_data)
+            articles = [
+                article
+                for article in articles
+                if not is_non_hackernews_topic_hn_article(topic_id, article)
+            ]
             articles = visible_registry.filter_unseen(articles)
         if not articles:
             continue
@@ -583,6 +588,11 @@ def render_chat_topic_sections(
             )
         else:
             articles = chat_topic_articles(topic_data)
+            articles = [
+                article
+                for article in articles
+                if not is_non_hackernews_topic_hn_article(topic_id, article)
+            ]
             articles = visible_registry.filter_unseen(articles)
         if not articles:
             continue
@@ -709,6 +719,13 @@ def is_hacker_news_article(article: Dict[str, Any]) -> bool:
 
 def is_hackernews_topic(topic_id: Any) -> bool:
     return compact_text(topic_id).lower() == "hackernews"
+
+
+def is_non_hackernews_topic_hn_article(
+    topic_id: Any,
+    article: Dict[str, Any],
+) -> bool:
+    return not is_hackernews_topic(topic_id) and is_hacker_news_article(article)
 
 
 def is_direct_hacker_news_article(article: Dict[str, Any]) -> bool:
