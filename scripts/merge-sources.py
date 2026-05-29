@@ -121,6 +121,17 @@ def topic_source_counts(
     def canonical_topic(topic: str) -> str:
         return topic_aliases.get(topic, topic)
 
+    count_key_by_topic = {}
+    for count_key in counts:
+        aliases = {count_key, canonical_topic(count_key)}
+        aliases.update(
+            alias
+            for alias, canonical in topic_aliases.items()
+            if canonical == canonical_topic(count_key)
+        )
+        for alias in aliases:
+            count_key_by_topic.setdefault(alias, count_key)
+
     for source in sources:
         if not source.get("enabled", True):
             continue
@@ -131,8 +142,9 @@ def topic_source_counts(
 
         for topic_id in source_topics:
             canonical = canonical_topic(topic_id)
-            if canonical in counts:
-                counts[canonical] += 1
+            count_key = count_key_by_topic.get(topic_id) or count_key_by_topic.get(canonical)
+            if count_key:
+                counts[count_key] += 1
 
     for topic_def in topic_defs:
         topic_id = topic_def.get("id")

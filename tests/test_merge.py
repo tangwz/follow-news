@@ -275,6 +275,24 @@ class TestTopicSourceCounts(unittest.TestCase):
             },
         )
 
+    def test_counts_configured_legacy_topic_ids(self):
+        sources = [
+            {"id": "legacy-agent", "enabled": True, "topics": ["ai_agent"]},
+            {"id": "current-agent", "enabled": True, "topics": ["ai-agent"]},
+        ]
+        topics = [
+            {"id": "ai_agent"},
+        ]
+
+        counts = merge_mod.topic_source_counts(sources, topics)
+
+        self.assertEqual(
+            counts,
+            {
+                "ai_agent": 2,
+            },
+        )
+
     def test_counts_query_backed_topics_as_covered_by_web_search(self):
         sources = []
         topics = [
