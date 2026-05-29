@@ -600,6 +600,25 @@ class TestOpenCliCheckCache(unittest.TestCase):
             )
         )
 
+    def test_check_state_is_stale_when_timestamp_is_in_future(self):
+        now = 1779984000
+        state = {
+            "opencli_path": "/bin/opencli",
+            "opencli_version": "1.7.22",
+            "capability_checked_at": now + 10,
+        }
+
+        self.assertFalse(
+            fetch_twitter.is_opencli_check_cache_fresh(
+                state,
+                "/bin/opencli",
+                "1.7.22",
+                now,
+                86400,
+                "capability_checked_at",
+            )
+        )
+
     def test_record_check_state_preserves_existing_fields(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             path = Path(temp_dir) / "opencli-check-state.json"

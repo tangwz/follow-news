@@ -974,7 +974,8 @@ def is_opencli_check_cache_fresh(
         checked_at_value = float(checked_at)
     except (TypeError, ValueError):
         return False
-    return checked_at_value > 0 and now - checked_at_value < ttl_seconds
+    age_seconds = now - checked_at_value
+    return checked_at_value > 0 and 0 <= age_seconds < ttl_seconds
 
 
 def record_opencli_check_state(
