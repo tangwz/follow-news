@@ -623,7 +623,12 @@ class TestOpenCliCheckCache(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             path = Path(temp_dir) / "opencli-check-state.json"
             store = fetch_twitter.JsonStateStore(path)
-            store.save({"doctor_checked_at": 10, "doctor_status": "ok"})
+            store.save({
+                "opencli_path": "/bin/opencli",
+                "opencli_version": "1.7.22",
+                "doctor_checked_at": 10,
+                "doctor_status": "ok",
+            })
 
             fetch_twitter.record_opencli_check_state(
                 store,
@@ -941,6 +946,34 @@ class TestOpenCliBackend(unittest.TestCase):
                     backend.fetch_all([self.source], self.cutoff)
 
         self.assertEqual(ctx.exception.code, "opencli_capability_missing")
+
+    @patch.dict(os.environ, {"OPENCLI_CLOSE_CHROME_WINDOWS_AFTER_RUN": "0"}, clear=True)
+    @patch("fetch_twitter.resolve_opencli_bin", return_value="/bin/opencli")
+    @patch("subprocess.run")
+    def test_identity_change_does_not_reuse_old_doctor_check(self, run_mock, _resolve_mock):
+        now = 1779984000
+        run_mock.side_effect = [
+            self._completed("Usage: opencli twitter tweets <username> [options]"),
+            self._completed("OpenCLI doctor ok"),
+        ]
+        with tempfile.TemporaryDirectory() as temp_dir:
+            state_path = Path(temp_dir) / "opencli-check-state.json"
+            fetch_twitter.JsonStateStore(state_path).save({
+                "opencli_path": "/bin/opencli",
+                "opencli_version": "1.7.21",
+                "doctor_checked_at": now - 10,
+                "doctor_status": "ok",
+            })
+            with ExitStack() as stack:
+                stack.enter_context(patch("fetch_twitter.get_opencli_check_state_path", return_value=state_path))
+                stack.enter_context(patch("fetch_twitter.time.time", return_value=now))
+                stack.enter_context(patch("fetch_twitter.snapshot_chrome_windows", return_value=None))
+
+                fetch_twitter.OpenCliBackend(no_cache=True)
+
+        commands = [call.args[0] for call in run_mock.call_args_list]
+        self.assertIn(["/bin/opencli", "twitter", "tweets", "--help"], commands)
+        self.assertIn(["/bin/opencli", "doctor"], commands)
 
     @patch.dict(os.environ, {"OPENCLI_CLOSE_CHROME_WINDOWS_AFTER_RUN": "0"}, clear=True)
     @patch("fetch_twitter.resolve_opencli_bin", return_value="/bin/opencli")

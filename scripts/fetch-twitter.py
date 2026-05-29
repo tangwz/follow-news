@@ -991,6 +991,8 @@ def record_opencli_check_state(
     """Persist one successful OpenCLI precheck timestamp."""
     current = int(time.time() if now is None else now)
     state = store.load()
+    if state.get("opencli_path") != command or state.get("opencli_version") != version:
+        state = {}
     state["opencli_path"] = command
     state["opencli_version"] = version
     state[checked_at_key] = current
