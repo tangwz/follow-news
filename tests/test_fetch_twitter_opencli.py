@@ -1178,6 +1178,42 @@ class TestOpenCliBackend(unittest.TestCase):
         self.assertEqual(state["doctor_checked_at"], now)
         self.assertEqual(state["doctor_status"], "ok")
 
+    @patch.dict(
+        os.environ,
+        {
+            "OPENCLI_CLOSE_CHROME_WINDOWS_AFTER_RUN": "0",
+            "OPENCLI_CLOSE_TABS_AFTER_RUN": "0",
+        },
+        clear=True,
+    )
+    @patch("fetch_twitter.resolve_opencli_bin", return_value="/bin/opencli")
+    @patch("fetch_twitter.JsonStateStore.save", side_effect=OSError("disk full"))
+    @patch("subprocess.run")
+    def test_precheck_state_write_failure_does_not_block_fetch(self, run_mock, save_mock, _resolve_mock):
+        run_mock.side_effect = [
+            self._completed("Usage: opencli twitter tweets <username> [options]"),
+            self._completed("OpenCLI doctor ok"),
+            self._completed(json.dumps([
+                {
+                    "id": "123",
+                    "author": "sama",
+                    "text": "A useful post.",
+                    "created_at": "2026-05-08T01:00:00Z",
+                    "url": "https://x.com/sama/status/123",
+                    "is_retweet": False,
+                }
+            ])),
+        ]
+
+        backend = fetch_twitter.OpenCliBackend(no_cache=True)
+        results = backend.fetch_all([self.source], self.cutoff)
+
+        self.assertGreaterEqual(save_mock.call_count, 1)
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["status"], "ok")
+        self.assertEqual(results[0]["count"], 1)
+        self.assertEqual(results[0]["articles"][0]["tweet_id"], "123")
+
     @patch.dict(os.environ, {"OPENCLI_CLOSE_CHROME_WINDOWS_AFTER_RUN": "0"}, clear=True)
     @patch("fetch_twitter.resolve_opencli_bin", return_value="/bin/opencli")
     @patch("subprocess.run")

@@ -1026,7 +1026,10 @@ def record_opencli_check_state(
     if extra:
         protected_keys = {"opencli_path", "opencli_version", checked_at_key}
         state.update({key: value for key, value in extra.items() if key not in protected_keys})
-    store.save(state)
+    try:
+        store.save(state)
+    except Exception as exc:
+        logging.debug("Failed to persist OpenCLI precheck state: %s", exc)
 
 
 def get_x_id_cache_path() -> Path:
