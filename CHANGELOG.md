@@ -1,5 +1,12 @@
 # Changelog
 
+## v3.18.1 — 2026-05-29
+
+### Added
+- Warn readers near the top of the digest when a configured topic has no enabled
+  sources, while treating query-backed web search topics and legacy topic aliases
+  as covered.
+
 ## v3.17.4 — 2026-05-22
 
 ### Changed
