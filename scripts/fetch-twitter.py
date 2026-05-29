@@ -60,6 +60,8 @@ OPENCLI_CLOSE_CHROME_WINDOWS_AFTER_RUN_DEFAULT = True
 OPENCLI_BROWSER_RECOVERABLE_RETRIES = 1
 OPENCLI_AUTO_UPDATE_DEFAULT = True
 OPENCLI_UPDATE_CHECK_INTERVAL_SECONDS = 24 * 60 * 60
+OPENCLI_CHECK_CACHE_TTL_SECONDS = 24 * 60 * 60
+OPENCLI_CHECK_STATE_FILENAME = "opencli-check-state.json"
 OPENCLI_UPDATE_COMMAND_CANDIDATES = ("self-update", "update", "upgrade")
 OPENCLI_DEFAULT_MIN_VERSION = "1.7.22"
 OPENCLI_UPDATE_ALREADY_UP_TO_DATE_MARKERS = (
@@ -926,6 +928,40 @@ def get_x_cache_dir() -> Path:
     if configured:
         return Path(configured).expanduser()
     return DEFAULT_X_CACHE_DIR
+
+
+def get_opencli_check_cache_ttl_seconds() -> int:
+    """Return the TTL for cached OpenCLI capability and doctor checks."""
+    raw_value = os.getenv("OPENCLI_CHECK_CACHE_TTL_SECONDS", "").strip()
+    if not raw_value:
+        return OPENCLI_CHECK_CACHE_TTL_SECONDS
+    try:
+        value = int(raw_value)
+    except ValueError:
+        logging.warning(
+            "Invalid OPENCLI_CHECK_CACHE_TTL_SECONDS=%r; using %s",
+            raw_value,
+            OPENCLI_CHECK_CACHE_TTL_SECONDS,
+        )
+        return OPENCLI_CHECK_CACHE_TTL_SECONDS
+    if value <= 0:
+        logging.warning(
+            "Invalid OPENCLI_CHECK_CACHE_TTL_SECONDS=%r; using %s",
+            raw_value,
+            OPENCLI_CHECK_CACHE_TTL_SECONDS,
+        )
+        return OPENCLI_CHECK_CACHE_TTL_SECONDS
+    return value
+
+
+def get_opencli_strict_check() -> bool:
+    """Return true when OpenCLI prechecks should always run."""
+    return _env_bool("OPENCLI_STRICT_CHECK", False)
+
+
+def get_opencli_check_state_path() -> Path:
+    """Return the project-local OpenCLI precheck state path."""
+    return get_x_cache_dir() / OPENCLI_CHECK_STATE_FILENAME
 
 
 def get_x_id_cache_path() -> Path:

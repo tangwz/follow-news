@@ -499,6 +499,39 @@ class TestOpenCliAutoUpdate(unittest.TestCase):
             run_mock.assert_not_called()
 
 
+class TestOpenCliCheckCache(unittest.TestCase):
+    def test_check_cache_ttl_defaults_to_one_day(self):
+        with patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(fetch_twitter.get_opencli_check_cache_ttl_seconds(), 86400)
+
+    def test_check_cache_ttl_rejects_invalid_values(self):
+        cases = ["", "0", "-1", "not-a-number"]
+        for value in cases:
+            with self.subTest(value=value):
+                with patch.dict(os.environ, {"OPENCLI_CHECK_CACHE_TTL_SECONDS": value}, clear=True):
+                    self.assertEqual(fetch_twitter.get_opencli_check_cache_ttl_seconds(), 86400)
+
+    def test_check_cache_ttl_accepts_positive_integer(self):
+        with patch.dict(os.environ, {"OPENCLI_CHECK_CACHE_TTL_SECONDS": "120"}, clear=True):
+            self.assertEqual(fetch_twitter.get_opencli_check_cache_ttl_seconds(), 120)
+
+    def test_strict_check_defaults_to_false(self):
+        with patch.dict(os.environ, {}, clear=True):
+            self.assertFalse(fetch_twitter.get_opencli_strict_check())
+
+    def test_strict_check_accepts_truthy_value(self):
+        with patch.dict(os.environ, {"OPENCLI_STRICT_CHECK": "1"}, clear=True):
+            self.assertTrue(fetch_twitter.get_opencli_strict_check())
+
+    def test_check_state_path_uses_x_cache_dir(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with patch.dict(os.environ, {"X_CACHE_DIR": temp_dir}, clear=True):
+                self.assertEqual(
+                    fetch_twitter.get_opencli_check_state_path(),
+                    Path(temp_dir) / "opencli-check-state.json",
+                )
+
+
 class TestOpenCliSelectionDiagnostics(unittest.TestCase):
     def test_empty_reason_prioritizes_opencli_failure(self):
         diagnostics = [
