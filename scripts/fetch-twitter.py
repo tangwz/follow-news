@@ -874,6 +874,8 @@ def build_twitter_skipped_reason(backend_name: str, diagnostics: List[Dict[str, 
 def _classify_opencli_failure(returncode: int, stderr: str = "", stdout: str = "") -> str:
     """Map OpenCLI process failures into stable backend error codes."""
     text = f"{stderr or ''} {stdout or ''}".lower()
+    if _looks_like_unsupported_opencli_command(stderr, stdout):
+        return "opencli_capability_missing"
     if returncode == 69:
         return "opencli_browser_unavailable"
     if returncode == 75:
