@@ -1031,6 +1031,33 @@ class TestOpenCliBackend(unittest.TestCase):
         self.assertEqual(state["doctor_checked_at"], now)
         self.assertEqual(state["doctor_status"], "ok")
 
+    @patch.dict(os.environ, {"OPENCLI_CLOSE_CHROME_WINDOWS_AFTER_RUN": "0"}, clear=True)
+    @patch("fetch_twitter.resolve_opencli_bin", return_value="/bin/opencli")
+    @patch("subprocess.run")
+    def test_non_global_doctor_failure_is_not_cached_as_success(self, run_mock, _resolve_mock):
+        now = 1779984000
+        run_mock.side_effect = [
+            self._completed("Usage: opencli twitter tweets <username> [options]"),
+            self._completed("", returncode=1, stderr="minor warning"),
+        ]
+        with tempfile.TemporaryDirectory() as temp_dir:
+            state_path = Path(temp_dir) / "opencli-check-state.json"
+            with ExitStack() as stack:
+                stack.enter_context(patch("fetch_twitter.get_opencli_check_state_path", return_value=state_path))
+                stack.enter_context(patch("fetch_twitter.time.time", return_value=now))
+                stack.enter_context(patch("fetch_twitter.snapshot_chrome_windows", return_value=None))
+
+                with self.assertLogs(level="WARNING"):
+                    fetch_twitter.OpenCliBackend(no_cache=True)
+
+            state = fetch_twitter.JsonStateStore(state_path).load()
+
+        self.assertEqual(state["opencli_path"], "/bin/opencli")
+        self.assertEqual(state["opencli_version"], "1.7.22")
+        self.assertEqual(state["capability_checked_at"], now)
+        self.assertNotIn("doctor_checked_at", state)
+        self.assertNotEqual(state.get("doctor_status"), "ok")
+
     @patch.dict(
         os.environ,
         {

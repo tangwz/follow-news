@@ -1825,20 +1825,22 @@ class OpenCliBackend(TwitterBackend):
             "capability_checked_at",
         )
 
-    def _run_doctor(self) -> None:
+    def _run_doctor(self) -> bool:
         result = self._run_command(["doctor"], timeout=30)
         if result.returncode == 0:
-            return
+            return True
         code = _classify_opencli_failure(result.returncode, result.stderr, result.stdout)
         if code in {"opencli_browser_unavailable", "opencli_auth_required"}:
             raise OpenCliBackendError(code, result.stderr.strip() or "opencli doctor failed")
         logging.warning(f"opencli doctor returned {result.returncode}: {(result.stderr or result.stdout).strip()[:200]}")
+        return False
 
     def _run_doctor_cached(self) -> None:
         if self._precheck_cache_fresh("doctor_checked_at"):
             logging.debug("OpenCLI doctor check cache hit.")
             return
-        self._run_doctor()
+        if not self._run_doctor():
+            return
         record_opencli_check_state(
             self._check_state_store,
             self.command,
