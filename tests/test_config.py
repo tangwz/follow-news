@@ -671,6 +671,12 @@ class TestDocumentationExamples(unittest.TestCase):
             self.assertIn("official", lowered)
 
         self.assertIn("OPENCLI_BIN", skill)
+        self.assertIn("OPENCLI_CHECK_CACHE_TTL_SECONDS", readme_en)
+        self.assertIn("OPENCLI_STRICT_CHECK", readme_en)
+        self.assertIn("OPENCLI_CHECK_CACHE_TTL_SECONDS", readme_zh)
+        self.assertIn("OPENCLI_STRICT_CHECK", readme_zh)
+        self.assertIn("OPENCLI_CHECK_CACHE_TTL_SECONDS", skill)
+        self.assertIn("OPENCLI_STRICT_CHECK", skill)
 
     def test_opencli_installation_requirements_are_documented(self):
         readme_en = README_EN.read_text(encoding="utf-8")
