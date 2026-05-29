@@ -793,12 +793,13 @@ class TestOpenCliBackend(unittest.TestCase):
         backend = fetch_twitter.OpenCliBackend(max_workers=1, no_cache=True)
         results = backend.fetch_all([regular, priority], self.cutoff)
 
-        tweet_commands = [
+        fetch_commands = [
             call.args[0]
             for call in run_mock.call_args_list
-            if call.args[0][:2] == ["/bin/opencli", "twitter"] and "tweets" in call.args[0]
+            if call.args[0][:3] == ["/bin/opencli", "twitter", "tweets"]
+            and call.args[0][3] != "--help"
         ]
-        self.assertEqual(tweet_commands[1][3], "priority")
+        self.assertEqual([command[3] for command in fetch_commands], ["priority", "regular"])
         self.assertEqual({item["handle"] for item in results}, {"priority", "regular"})
         for result in results:
             self.assertEqual(
