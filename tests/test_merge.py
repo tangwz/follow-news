@@ -255,6 +255,53 @@ class TestTopicSourceCounts(unittest.TestCase):
             },
         )
 
+    def test_counts_legacy_topic_aliases_under_canonical_topics(self):
+        sources = [
+            {"id": "legacy-agent", "enabled": True, "topics": ["ai_agent"]},
+            {"id": "legacy-builder", "enabled": True, "topics": ["builder"]},
+        ]
+        topics = [
+            {"id": "ai-agent"},
+            {"id": "kol"},
+        ]
+
+        counts = merge_mod.topic_source_counts(sources, topics)
+
+        self.assertEqual(
+            counts,
+            {
+                "ai-agent": 1,
+                "kol": 1,
+            },
+        )
+
+    def test_counts_query_backed_topics_as_covered_by_web_search(self):
+        sources = []
+        topics = [
+            {
+                "id": "query-only",
+                "search": {
+                    "queries": ["query only topic"],
+                },
+            },
+            {
+                "id": "empty-topic",
+                "search": {
+                    "queries": [],
+                },
+            },
+        ]
+
+        counts = merge_mod.topic_source_counts(sources, topics)
+
+        self.assertEqual(
+            counts,
+            {
+                "query-only": 1,
+                "empty-topic": 0,
+            },
+        )
+
 
 class TestPodcastMerge(unittest.TestCase):
     def test_podcast_fixture_shape(self):

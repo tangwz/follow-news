@@ -99,10 +99,28 @@ def load_sources(defaults_dir: Path, config_dir: Optional[Path] = None) -> List[
 
 def topic_source_counts(
     sources: List[Dict[str, Any]],
-    topic_ids: List[str],
+    topics: List[Any],
 ) -> Dict[str, int]:
     """Count enabled configured sources assigned to each topic."""
+    topic_defs = [topic for topic in topics if isinstance(topic, dict)]
+    topic_ids = [
+        topic.get("id") if isinstance(topic, dict) else topic
+        for topic in topics
+    ]
+    topic_ids = [
+        topic_id
+        for topic_id in topic_ids
+        if isinstance(topic_id, str) and topic_id
+    ]
     counts = {topic_id: 0 for topic_id in topic_ids}
+
+    topic_aliases = dict(STABLE_TOPIC_ALIASES)
+    if "kol" in counts and "builder" not in counts:
+        topic_aliases["builder"] = "kol"
+
+    def canonical_topic(topic: str) -> str:
+        return topic_aliases.get(topic, topic)
+
     for source in sources:
         if not source.get("enabled", True):
             continue
@@ -112,8 +130,16 @@ def topic_source_counts(
             continue
 
         for topic_id in source_topics:
-            if topic_id in counts:
-                counts[topic_id] += 1
+            canonical = canonical_topic(topic_id)
+            if canonical in counts:
+                counts[canonical] += 1
+
+    for topic_def in topic_defs:
+        topic_id = topic_def.get("id")
+        search = topic_def.get("search", {})
+        queries = search.get("queries", []) if isinstance(search, dict) else []
+        if topic_id in counts and isinstance(queries, list) and queries:
+            counts[topic_id] += 1
 
     return counts
 
@@ -882,7 +908,7 @@ Examples:
             topic_keywords = topic_keyword_map(configured_topics)
 
             configured_sources = load_sources(args.defaults, args.config)
-            source_counts = topic_source_counts(configured_sources, ordered_topic_ids)
+            source_counts = topic_source_counts(configured_sources, configured_topics)
             source_stats = {
                 "topic_source_counts": source_counts,
                 "topics_without_sources": [
