@@ -938,18 +938,8 @@ def get_opencli_check_cache_ttl_seconds() -> int:
     try:
         value = int(raw_value)
     except ValueError:
-        logging.warning(
-            "Invalid OPENCLI_CHECK_CACHE_TTL_SECONDS=%r; using %s",
-            raw_value,
-            OPENCLI_CHECK_CACHE_TTL_SECONDS,
-        )
         return OPENCLI_CHECK_CACHE_TTL_SECONDS
     if value <= 0:
-        logging.warning(
-            "Invalid OPENCLI_CHECK_CACHE_TTL_SECONDS=%r; using %s",
-            raw_value,
-            OPENCLI_CHECK_CACHE_TTL_SECONDS,
-        )
         return OPENCLI_CHECK_CACHE_TTL_SECONDS
     return value
 
