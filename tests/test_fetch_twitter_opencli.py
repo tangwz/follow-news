@@ -733,6 +733,90 @@ class TestOpenCliBackend(unittest.TestCase):
             stderr=stderr,
         )
 
+    def test_selects_priority_source_as_probe(self):
+        regular = dict(self.source, id="regular-twitter", handle="regular", priority=False)
+        priority = dict(self.source, id="priority-twitter", handle="priority", priority=True)
+
+        ordered = fetch_twitter.prioritize_opencli_sources([regular, priority])
+
+        self.assertEqual([item["handle"] for item in ordered], ["priority", "regular"])
+
+    def test_preserves_relative_order_within_priority_groups(self):
+        first_regular = dict(self.source, id="regular-a", handle="regular_a", priority=False)
+        first_priority = dict(self.source, id="priority-a", handle="priority_a", priority=True)
+        second_priority = dict(self.source, id="priority-b", handle="priority_b", priority=True)
+        second_regular = dict(self.source, id="regular-b", handle="regular_b", priority=False)
+
+        ordered = fetch_twitter.prioritize_opencli_sources([
+            first_regular,
+            first_priority,
+            second_priority,
+            second_regular,
+        ])
+
+        self.assertEqual(
+            [item["handle"] for item in ordered],
+            ["priority_a", "priority_b", "regular_a", "regular_b"],
+        )
+
+    @patch("fetch_twitter.resolve_opencli_bin", return_value="/bin/opencli")
+    @patch("subprocess.run")
+    def test_fetch_all_fetches_priority_probe_first(self, run_mock, _resolve_mock):
+        regular = dict(self.source, id="regular-twitter", handle="regular", priority=False)
+        priority = dict(self.source, id="priority-twitter", handle="priority", priority=True)
+        run_mock.side_effect = [
+            self._completed("Usage: opencli twitter tweets <username> [options]"),
+            self._completed("OpenCLI doctor ok"),
+            self._completed(json.dumps({"tabs": []})),
+            self._completed(json.dumps([
+                {
+                    "id": "priority-post",
+                    "author": "priority",
+                    "text": "Priority works.",
+                    "created_at": "2026-05-08T01:00:00Z",
+                    "is_retweet": False,
+                }
+            ])),
+            self._completed(json.dumps([
+                {
+                    "id": "regular-post",
+                    "author": "regular",
+                    "text": "Regular works.",
+                    "created_at": "2026-05-08T01:00:00Z",
+                    "is_retweet": False,
+                }
+            ])),
+            self._completed(json.dumps({"tabs": []})),
+            self._completed("lease released"),
+        ]
+
+        backend = fetch_twitter.OpenCliBackend(max_workers=1, no_cache=True)
+        results = backend.fetch_all([regular, priority], self.cutoff)
+
+        tweet_commands = [
+            call.args[0]
+            for call in run_mock.call_args_list
+            if call.args[0][:2] == ["/bin/opencli", "twitter"] and "tweets" in call.args[0]
+        ]
+        self.assertEqual(tweet_commands[1][3], "priority")
+        self.assertEqual({item["handle"] for item in results}, {"priority", "regular"})
+        for result in results:
+            self.assertEqual(
+                set(result.keys()),
+                {
+                    "source_id",
+                    "source_type",
+                    "name",
+                    "handle",
+                    "priority",
+                    "topics",
+                    "status",
+                    "attempts",
+                    "count",
+                    "articles",
+                },
+            )
+
     @patch("fetch_twitter.resolve_opencli_bin", return_value="/bin/opencli")
     @patch("subprocess.run")
     def test_fetches_tweets_for_source(self, run_mock, _resolve_mock):

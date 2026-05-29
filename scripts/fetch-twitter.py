@@ -733,6 +733,13 @@ def get_backend_order(backend_name: str) -> List[str]:
     return [backend_name]
 
 
+def prioritize_opencli_sources(sources: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Return sources with priority sources first while preserving group order."""
+    priority_sources = [source for source in sources if source.get("priority")]
+    regular_sources = [source for source in sources if not source.get("priority")]
+    return priority_sources + regular_sources
+
+
 def get_opencli_max_workers(raw_value: Optional[str] = None) -> int:
     """Return OpenCLI worker count, defaulting to parallel browser access."""
     if raw_value is None:
@@ -1912,13 +1919,14 @@ class OpenCliBackend(TwitterBackend):
         before_tabs = self._list_browser_tabs()
         results: List[Dict[str, Any]] = []
         total = len(sources)
+        ordered_sources = prioritize_opencli_sources(sources)
 
         try:
-            first = self._fetch_user_tweets(sources[0], cutoff)
+            first = self._fetch_user_tweets(ordered_sources[0], cutoff)
             results.append(first)
             logging.info(f"[1/{total}] @{first['handle']}: {first['count']} tweets via OpenCLI")
 
-            remaining = sources[1:]
+            remaining = ordered_sources[1:]
             if not remaining:
                 return results
 
