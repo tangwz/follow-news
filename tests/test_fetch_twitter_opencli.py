@@ -849,6 +849,12 @@ class TestOpenCliBackend(unittest.TestCase):
         self.assertNotIn("opencli.phase", payload_text)
         self.assertEqual(results[0]["articles"][0]["tweet_id"], "123")
 
+    @patch("fetch_twitter.logging.info", side_effect=RuntimeError("logging failed"))
+    def test_phase_timer_does_not_mask_body_exception_when_logging_fails(self, _info_mock):
+        with self.assertRaisesRegex(ValueError, "original"):
+            with fetch_twitter.PhaseTimer("opencli.test"):
+                raise ValueError("original")
+
     @patch("fetch_twitter.resolve_opencli_bin", return_value="/bin/opencli")
     @patch("subprocess.run")
     def test_fetches_tweets_for_source(self, run_mock, _resolve_mock):

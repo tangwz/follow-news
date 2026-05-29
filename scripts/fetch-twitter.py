@@ -165,8 +165,11 @@ class PhaseTimer:
         return self
 
     def __exit__(self, exc_type, exc, tb):
-        elapsed_ms = int((time.monotonic() - self.started_at) * 1000)
-        logging.info("opencli.phase name=%s elapsed_ms=%s", self.name, elapsed_ms)
+        try:
+            elapsed_ms = int((time.monotonic() - self.started_at) * 1000)
+            logging.info("opencli.phase name=%s elapsed_ms=%s", self.name, elapsed_ms)
+        except Exception:
+            pass
         return False
 
 
