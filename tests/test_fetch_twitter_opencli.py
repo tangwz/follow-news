@@ -820,6 +820,37 @@ class TestOpenCliBackend(unittest.TestCase):
 
     @patch("fetch_twitter.resolve_opencli_bin", return_value="/bin/opencli")
     @patch("subprocess.run")
+    def test_timing_logs_do_not_change_result_payload(self, run_mock, _resolve_mock):
+        run_mock.side_effect = [
+            self._completed("Usage: opencli twitter tweets <username> [options]"),
+            self._completed("OpenCLI doctor ok"),
+            self._completed(json.dumps({"tabs": []})),
+            self._completed(json.dumps([
+                {
+                    "id": "123",
+                    "author": "sama",
+                    "text": "A useful post.",
+                    "created_at": "2026-05-08T01:00:00Z",
+                    "url": "https://x.com/sama/status/123",
+                    "is_retweet": False,
+                }
+            ])),
+            self._completed(json.dumps({"tabs": []})),
+            self._completed("lease released"),
+        ]
+
+        with self.assertLogs(level="INFO") as logs:
+            backend = fetch_twitter.OpenCliBackend(no_cache=True)
+            results = backend.fetch_all([self.source], self.cutoff)
+
+        self.assertTrue(any("opencli.phase" in line for line in logs.output))
+        payload_text = json.dumps(results, sort_keys=True)
+        self.assertNotIn("elapsed", payload_text)
+        self.assertNotIn("opencli.phase", payload_text)
+        self.assertEqual(results[0]["articles"][0]["tweet_id"], "123")
+
+    @patch("fetch_twitter.resolve_opencli_bin", return_value="/bin/opencli")
+    @patch("subprocess.run")
     def test_fetches_tweets_for_source(self, run_mock, _resolve_mock):
         run_mock.side_effect = [
             self._completed("Usage: opencli twitter tweets <username> [options]"),

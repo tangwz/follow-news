@@ -153,6 +153,23 @@ def setup_logging(verbose: bool) -> logging.Logger:
     return logging.getLogger(__name__)
 
 
+class PhaseTimer:
+    """Context manager for lightweight elapsed-time logging."""
+
+    def __init__(self, name: str):
+        self.name = name
+        self.started_at = 0.0
+
+    def __enter__(self):
+        self.started_at = time.monotonic()
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        elapsed_ms = int((time.monotonic() - self.started_at) * 1000)
+        logging.info("opencli.phase name=%s elapsed_ms=%s", self.name, elapsed_ms)
+        return False
+
+
 def clean_tweet_text(text: str) -> str:
     """Clean tweet text for better display."""
     # Remove excessive whitespace
@@ -1721,9 +1738,12 @@ class OpenCliBackend(TwitterBackend):
                     "opencli_version_too_old",
                     f"OpenCLI is too old (current={self._opencli_version}); upgrade to {_opencli_version_str(minimum)} or later.",
                 )
-            self._before_chrome_windows = snapshot_chrome_windows()
-            self._verify_capability_cached()
-            self._run_doctor_cached()
+            with PhaseTimer("opencli.browser_snapshot"):
+                self._before_chrome_windows = snapshot_chrome_windows()
+            with PhaseTimer("opencli.capability"):
+                self._verify_capability_cached()
+            with PhaseTimer("opencli.doctor"):
+                self._run_doctor_cached()
         except Exception:
             cleanup_new_opencli_chrome_windows(self._before_chrome_windows)
             raise
@@ -1922,7 +1942,8 @@ class OpenCliBackend(TwitterBackend):
         ordered_sources = prioritize_opencli_sources(sources)
 
         try:
-            first = self._fetch_user_tweets(ordered_sources[0], cutoff)
+            with PhaseTimer("opencli.probe_fetch"):
+                first = self._fetch_user_tweets(ordered_sources[0], cutoff)
             results.append(first)
             logging.info(f"[1/{total}] @{first['handle']}: {first['count']} tweets via OpenCLI")
 
@@ -1932,26 +1953,28 @@ class OpenCliBackend(TwitterBackend):
 
             done = 1
             max_workers = self._max_workers if self._max_workers is not None else get_opencli_max_workers()
-            with ThreadPoolExecutor(max_workers=max_workers) as pool:
-                futures = {pool.submit(self._fetch_user_tweets, source, cutoff): source for source in remaining}
-                for future in as_completed(futures):
-                    source = futures[future]
-                    try:
-                        result = future.result()
-                    except OpenCliBackendError as exc:
-                        result = self._make_error(source, f"{exc.code}: {exc.message[:160]}", 0)
-                    results.append(result)
-                    done += 1
-                    if result["status"] == "ok":
-                        logging.info(f"[{done}/{total}] ✅ @{result['handle']}: {result['count']} tweets via OpenCLI")
-                    else:
-                        logging.warning(f"[{done}/{total}] ❌ @{result['handle']}: {result.get('error', 'unknown')}")
+            with PhaseTimer("opencli.parallel_fetch"):
+                with ThreadPoolExecutor(max_workers=max_workers) as pool:
+                    futures = {pool.submit(self._fetch_user_tweets, source, cutoff): source for source in remaining}
+                    for future in as_completed(futures):
+                        source = futures[future]
+                        try:
+                            result = future.result()
+                        except OpenCliBackendError as exc:
+                            result = self._make_error(source, f"{exc.code}: {exc.message[:160]}", 0)
+                        results.append(result)
+                        done += 1
+                        if result["status"] == "ok":
+                            logging.info(f"[{done}/{total}] ✅ @{result['handle']}: {result['count']} tweets via OpenCLI")
+                        else:
+                            logging.warning(f"[{done}/{total}] ❌ @{result['handle']}: {result.get('error', 'unknown')}")
 
             return results
         finally:
-            self._cleanup_new_browser_tabs(before_tabs)
-            self._release_browser_lease()
-            cleanup_new_opencli_chrome_windows(before_chrome_windows)
+            with PhaseTimer("opencli.cleanup"):
+                self._cleanup_new_browser_tabs(before_tabs)
+                self._release_browser_lease()
+                cleanup_new_opencli_chrome_windows(before_chrome_windows)
 
 
 class OfficialBackend(TwitterBackend):
