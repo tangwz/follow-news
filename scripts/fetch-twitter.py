@@ -993,7 +993,8 @@ def record_opencli_check_state(
     state["opencli_version"] = version
     state[checked_at_key] = current
     if extra:
-        state.update(extra)
+        protected_keys = {"opencli_path", "opencli_version", checked_at_key}
+        state.update({key: value for key, value in extra.items() if key not in protected_keys})
     store.save(state)
 
 
@@ -1660,6 +1661,8 @@ class OpenCliBackend(TwitterBackend):
         self._auto_update = auto_update
         self.no_cache = no_cache
         self._before_chrome_windows: Optional[Dict[str, List[str]]] = None
+        self._check_state_store = JsonStateStore(get_opencli_check_state_path())
+        self._opencli_version: Optional[str] = None
         try:
             if self._auto_update:
                 update_result = _ensure_opencli_latest(self.command)
@@ -1681,10 +1684,31 @@ class OpenCliBackend(TwitterBackend):
                         "OpenCLI auto-update check did not complete successfully: %s",
                         update_result["message"],
                     )
-            _ensure_opencli_min_version(self.command)
+                if update_result["status"] == "updated":
+                    self._opencli_version = _get_opencli_version(self.command)
+            if self._opencli_version is None:
+                self._opencli_version = _get_opencli_version(self.command)
+            if self._opencli_version is None:
+                minimum_text = _opencli_version_str(_min_opencli_version())
+                raise OpenCliBackendError(
+                    "opencli_version_unknown",
+                    f"Could not determine OpenCLI version. Install OpenCLI {minimum_text} or later.",
+                )
+            current_tuple = _parse_opencli_version(self._opencli_version)
+            if current_tuple is None:
+                raise OpenCliBackendError(
+                    "opencli_version_unknown",
+                    "Could not parse OpenCLI version output.",
+                )
+            minimum = _min_opencli_version()
+            if current_tuple < minimum:
+                raise OpenCliBackendError(
+                    "opencli_version_too_old",
+                    f"OpenCLI is too old (current={self._opencli_version}); upgrade to {_opencli_version_str(minimum)} or later.",
+                )
             self._before_chrome_windows = snapshot_chrome_windows()
-            self._verify_capability()
-            self._run_doctor()
+            self._verify_capability_cached()
+            self._run_doctor_cached()
         except Exception:
             cleanup_new_opencli_chrome_windows(self._before_chrome_windows)
             raise
@@ -1768,6 +1792,31 @@ class OpenCliBackend(TwitterBackend):
                 "OpenCLI does not expose the twitter tweets command.",
             )
 
+    def _precheck_cache_fresh(self, checked_at_key: str) -> bool:
+        if get_opencli_strict_check():
+            return False
+        state = self._check_state_store.load()
+        return is_opencli_check_cache_fresh(
+            state,
+            self.command,
+            self._opencli_version,
+            time.time(),
+            get_opencli_check_cache_ttl_seconds(),
+            checked_at_key,
+        )
+
+    def _verify_capability_cached(self) -> None:
+        if self._precheck_cache_fresh("capability_checked_at"):
+            logging.debug("OpenCLI capability check cache hit.")
+            return
+        self._verify_capability()
+        record_opencli_check_state(
+            self._check_state_store,
+            self.command,
+            self._opencli_version,
+            "capability_checked_at",
+        )
+
     def _run_doctor(self) -> None:
         result = self._run_command(["doctor"], timeout=30)
         if result.returncode == 0:
@@ -1776,6 +1825,19 @@ class OpenCliBackend(TwitterBackend):
         if code in {"opencli_browser_unavailable", "opencli_auth_required"}:
             raise OpenCliBackendError(code, result.stderr.strip() or "opencli doctor failed")
         logging.warning(f"opencli doctor returned {result.returncode}: {(result.stderr or result.stdout).strip()[:200]}")
+
+    def _run_doctor_cached(self) -> None:
+        if self._precheck_cache_fresh("doctor_checked_at"):
+            logging.debug("OpenCLI doctor check cache hit.")
+            return
+        self._run_doctor()
+        record_opencli_check_state(
+            self._check_state_store,
+            self.command,
+            self._opencli_version,
+            "doctor_checked_at",
+            extra={"doctor_status": "ok"},
+        )
 
     def _parse_tweets_payload(self, payload: Any, source: Dict[str, Any], cutoff: datetime) -> List[Dict[str, Any]]:
         articles = []
