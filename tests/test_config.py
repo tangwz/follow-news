@@ -672,11 +672,19 @@ class TestDocumentationExamples(unittest.TestCase):
 
         self.assertIn("OPENCLI_BIN", skill)
         self.assertIn("OPENCLI_CHECK_CACHE_TTL_SECONDS", readme_en)
+        self.assertIn("successful OpenCLI capability and doctor", readme_en)
+        self.assertIn("86400", readme_en)
         self.assertIn("OPENCLI_STRICT_CHECK", readme_en)
+        self.assertIn("OPENCLI_STRICT_CHECK=1", readme_en)
         self.assertIn("OPENCLI_CHECK_CACHE_TTL_SECONDS", readme_zh)
         self.assertIn("OPENCLI_STRICT_CHECK", readme_zh)
+        self.assertIn("成功的 OpenCLI capability 和 doctor", readme_zh)
+        self.assertIn("强制每次完整预检查", readme_zh)
         self.assertIn("OPENCLI_CHECK_CACHE_TTL_SECONDS", skill)
         self.assertIn("OPENCLI_STRICT_CHECK", skill)
+        self.assertIn("successful OpenCLI capability and doctor", skill)
+        self.assertIn("Defaults to 86400", skill)
+        self.assertIn("force OpenCLI capability and doctor prechecks", skill)
 
     def test_opencli_installation_requirements_are_documented(self):
         readme_en = README_EN.read_text(encoding="utf-8")
@@ -753,6 +761,8 @@ class TestSkillFrontmatter(unittest.TestCase):
             {
                 "TWITTER_API_BACKEND",
                 "OPENCLI_BIN",
+                "OPENCLI_CHECK_CACHE_TTL_SECONDS",
+                "OPENCLI_STRICT_CHECK",
                 "TAVILY_API_KEY",
                 "WEB_SEARCH_BACKEND",
                 "BRAVE_API_KEYS",
