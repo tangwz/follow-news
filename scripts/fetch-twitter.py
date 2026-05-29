@@ -1836,7 +1836,8 @@ class OpenCliBackend(TwitterBackend):
         return False
 
     def _run_doctor_cached(self) -> None:
-        if self._precheck_cache_fresh("doctor_checked_at"):
+        state = self._check_state_store.load()
+        if self._precheck_cache_fresh("doctor_checked_at") and state.get("doctor_status") == "ok":
             logging.debug("OpenCLI doctor check cache hit.")
             return
         if not self._run_doctor():

@@ -978,6 +978,31 @@ class TestOpenCliBackend(unittest.TestCase):
     @patch.dict(os.environ, {"OPENCLI_CLOSE_CHROME_WINDOWS_AFTER_RUN": "0"}, clear=True)
     @patch("fetch_twitter.resolve_opencli_bin", return_value="/bin/opencli")
     @patch("subprocess.run")
+    def test_fresh_doctor_timestamp_without_ok_status_does_not_skip_doctor(self, run_mock, _resolve_mock):
+        now = 1779984000
+        run_mock.return_value = self._completed("OpenCLI doctor ok")
+        with tempfile.TemporaryDirectory() as temp_dir:
+            state_path = Path(temp_dir) / "opencli-check-state.json"
+            fetch_twitter.JsonStateStore(state_path).save({
+                "opencli_path": "/bin/opencli",
+                "opencli_version": "1.7.22",
+                "capability_checked_at": now - 10,
+                "doctor_checked_at": now - 10,
+            })
+            with ExitStack() as stack:
+                stack.enter_context(patch("fetch_twitter.get_opencli_check_state_path", return_value=state_path))
+                stack.enter_context(patch("fetch_twitter.time.time", return_value=now))
+                stack.enter_context(patch("fetch_twitter.snapshot_chrome_windows", return_value=None))
+
+                fetch_twitter.OpenCliBackend(no_cache=True)
+
+        commands = [call.args[0] for call in run_mock.call_args_list]
+        self.assertNotIn(["/bin/opencli", "twitter", "tweets", "--help"], commands)
+        self.assertIn(["/bin/opencli", "doctor"], commands)
+
+    @patch.dict(os.environ, {"OPENCLI_CLOSE_CHROME_WINDOWS_AFTER_RUN": "0"}, clear=True)
+    @patch("fetch_twitter.resolve_opencli_bin", return_value="/bin/opencli")
+    @patch("subprocess.run")
     def test_strict_opencli_check_ignores_precheck_cache(self, run_mock, _resolve_mock):
         now = 1779984000
         run_mock.side_effect = [
