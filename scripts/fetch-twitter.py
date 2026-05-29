@@ -1664,9 +1664,15 @@ class OpenCliBackend(TwitterBackend):
         self._check_state_store = JsonStateStore(get_opencli_check_state_path())
         self._opencli_version: Optional[str] = None
         try:
+            self._opencli_version = _get_opencli_version(self.command)
             if self._auto_update:
                 update_result = _ensure_opencli_latest(self.command)
-                if update_result["status"] == "throttled" and _is_opencli_below_min_version(self.command):
+                current_tuple = _parse_opencli_version(self._opencli_version or "")
+                if (
+                    update_result["status"] == "throttled"
+                    and current_tuple is not None
+                    and current_tuple < _min_opencli_version()
+                ):
                     logging.info("OpenCLI update throttle bypassed because the installed version is below minimum.")
                     update_result = _ensure_opencli_latest(self.command, force=True)
                 if update_result["status"] == "updated":
@@ -1686,8 +1692,6 @@ class OpenCliBackend(TwitterBackend):
                     )
                 if update_result["status"] == "updated":
                     self._opencli_version = _get_opencli_version(self.command)
-            if self._opencli_version is None:
-                self._opencli_version = _get_opencli_version(self.command)
             if self._opencli_version is None:
                 minimum_text = _opencli_version_str(_min_opencli_version())
                 raise OpenCliBackendError(
