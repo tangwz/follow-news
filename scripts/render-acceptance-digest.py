@@ -1409,6 +1409,53 @@ def source_count_first_present(data: Dict[str, Any], keys: Sequence[str]) -> int
     return 0
 
 
+def zero_source_topic_labels(
+    data: Dict[str, Any],
+    topic_defs: Sequence[Dict[str, Any]],
+) -> List[str]:
+    source_stats = data.get("source_stats", {})
+    if not isinstance(source_stats, dict):
+        return []
+
+    counts = source_stats.get("topic_source_counts", {})
+    if not isinstance(counts, dict) or not counts:
+        return []
+
+    labels = []
+    for topic_def in topic_defs:
+        topic_id = compact_text(topic_def.get("id"))
+        if not topic_id:
+            continue
+
+        try:
+            count = int(counts[topic_id])
+        except (KeyError, TypeError, ValueError):
+            continue
+
+        if count == 0:
+            labels.append(compact_text(topic_def.get("label")) or topic_id)
+
+    return labels
+
+
+def render_source_coverage_warning(
+    data: Dict[str, Any],
+    topic_defs: Sequence[Dict[str, Any]],
+) -> Optional[str]:
+    labels = zero_source_topic_labels(data, topic_defs)
+    if not labels:
+        return None
+
+    topic_list = ", ".join(labels)
+    return "\n".join(
+        [
+            "⚠️ Source Coverage Warning",
+            "",
+            f"No enabled sources are configured for: {topic_list}.",
+        ]
+    )
+
+
 def render_footer(data: Dict[str, Any], version: str) -> str:
     stats = data.get("output_stats", {})
     merged = stats.get("total_articles", 0)
@@ -1451,6 +1498,9 @@ def render_digest(
         raise ValueError(f"Unsupported template: {template}")
 
     sections = [f"# 🚀 Tech Digest - {report_date}"]
+    warning = render_source_coverage_warning(data, topic_defs)
+    if warning:
+        sections.append(warning)
     visible_registry = VisibleArticleRegistry()
     visible_registry.register_aliases(
         visible_alias_candidates(data, topic_defs, template="discord")
@@ -1487,6 +1537,9 @@ def render_chat_digest(
         visible_alias_candidates(data, topic_defs, template="chat")
     )
     sections = [f"# 🚀 Tech Digest - {report_date}"]
+    warning = render_source_coverage_warning(data, topic_defs)
+    if warning:
+        sections.append(warning)
     intro = render_chat_intro(data, topic_defs)
     if intro:
         sections.append(intro)

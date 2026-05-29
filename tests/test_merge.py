@@ -234,6 +234,28 @@ class TestGroupByTopics(unittest.TestCase):
         self.assertEqual(groups["ai-agent"][0]["primary_topic"], "ai-agent")
 
 
+class TestTopicSourceCounts(unittest.TestCase):
+    def test_counts_enabled_sources_for_each_configured_topic(self):
+        sources = [
+            {"id": "rss-1", "enabled": True, "topics": ["llm", "ai-agent"]},
+            {"id": "rss-2", "enabled": False, "topics": ["llm"]},
+            {"id": "rss-3", "topics": ["ai-agent"]},
+            {"id": "rss-4", "enabled": True, "topics": ["unconfigured"]},
+        ]
+        topic_ids = ["llm", "ai-agent", "empty-topic"]
+
+        counts = merge_mod.topic_source_counts(sources, topic_ids)
+
+        self.assertEqual(
+            counts,
+            {
+                "llm": 1,
+                "ai-agent": 2,
+                "empty-topic": 0,
+            },
+        )
+
+
 class TestPodcastMerge(unittest.TestCase):
     def test_podcast_fixture_shape(self):
         data = load_fixture("podcast")

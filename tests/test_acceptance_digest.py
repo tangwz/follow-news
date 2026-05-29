@@ -678,6 +678,76 @@ class TestAcceptanceRenderer(unittest.TestCase):
             "𝐎𝐩𝐞𝐧𝐀𝐈 𝟏𝟐𝟑 发布",
         )
 
+    def test_discord_digest_warns_near_top_for_topics_without_sources(self):
+        data = {
+            "input_sources": {},
+            "source_stats": {
+                "topic_source_counts": {
+                    "llm": 0,
+                    "ai-agent": 2,
+                }
+            },
+            "output_stats": {"total_articles": 0},
+            "topics": {},
+        }
+        topic_defs = [
+            {"id": "llm", "label": "LLM / Large Models", "emoji": "🧠"},
+            {"id": "ai-agent", "label": "AI Agents", "emoji": "🤖"},
+        ]
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=topic_defs,
+            report_date="2026-05-29",
+            version="3.17.0",
+        )
+        lines = text.splitlines()
+
+        self.assertEqual(lines[0], "# 🚀 Tech Digest - 2026-05-29")
+        self.assertEqual(lines[2], "⚠️ Source Coverage Warning")
+        self.assertEqual(
+            lines[4],
+            "No enabled sources are configured for: LLM / Large Models.",
+        )
+        self.assertNotIn("AI Agents", lines[4])
+
+    def test_chat_digest_warns_before_intro_for_topics_without_sources(self):
+        data = {
+            "input_sources": {},
+            "source_stats": {
+                "topic_source_counts": {
+                    "llm": 0,
+                }
+            },
+            "output_stats": {"total_articles": 1},
+            "topics": {
+                "llm": {
+                    "articles": [
+                        {
+                            "title": "A high quality model story",
+                            "link": "https://example.com/model",
+                            "quality_score": 10,
+                            "source_type": "rss",
+                            "summary": "A model story with enough signal.",
+                        }
+                    ]
+                }
+            },
+        }
+        topic_defs = [{"id": "llm", "label": "LLM / Large Models", "emoji": "🧠"}]
+
+        text = render_mod.render_digest(
+            data,
+            topic_defs=topic_defs,
+            report_date="2026-05-29",
+            version="3.17.0",
+            template="chat",
+        )
+        lines = text.splitlines()
+
+        self.assertEqual(lines[2], "⚠️ Source Coverage Warning")
+        self.assertLess(lines.index("⚠️ Source Coverage Warning"), lines.index("今日看点"))
+
     def test_daily_digest_matches_golden(self):
         assert_or_update_golden(self, DAILY_GOLDEN, render_daily_digest())
 

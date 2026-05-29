@@ -83,6 +83,41 @@ def load_topics(defaults_dir: Path, config_dir: Optional[Path] = None) -> List[D
     return topics
 
 
+def load_sources(defaults_dir: Path, config_dir: Optional[Path] = None) -> List[Dict[str, Any]]:
+    """Load sources from configuration with overlay support."""
+    try:
+        from config_loader import load_merged_sources
+    except ImportError:
+        import sys
+        sys.path.append(str(Path(__file__).parent))
+        from config_loader import load_merged_sources
+
+    sources = load_merged_sources(defaults_dir, config_dir)
+    logging.info(f"Loaded {len(sources)} sources for source coverage stats")
+    return sources
+
+
+def topic_source_counts(
+    sources: List[Dict[str, Any]],
+    topic_ids: List[str],
+) -> Dict[str, int]:
+    """Count enabled configured sources assigned to each topic."""
+    counts = {topic_id: 0 for topic_id in topic_ids}
+    for source in sources:
+        if not source.get("enabled", True):
+            continue
+
+        source_topics = source.get("topics", [])
+        if not isinstance(source_topics, list):
+            continue
+
+        for topic_id in source_topics:
+            if topic_id in counts:
+                counts[topic_id] += 1
+
+    return counts
+
+
 def normalize_title(title: str) -> str:
     """Normalize title for comparison."""
     # Remove common prefixes/suffixes
@@ -833,6 +868,7 @@ Examples:
         topic_ids: Optional[Set[str]] = None
         topic_priority = None
         topic_keywords = None
+        source_stats: Dict[str, Any] = {}
         try:
             configured_topics = load_topics(args.defaults, args.config)
             ordered_topic_ids = [
@@ -844,6 +880,17 @@ Examples:
             topic_priority = {topic_id: index for index, topic_id in enumerate(ordered_topic_ids)}
             topic_priority["uncategorized"] = len(topic_ids) + 1
             topic_keywords = topic_keyword_map(configured_topics)
+
+            configured_sources = load_sources(args.defaults, args.config)
+            source_counts = topic_source_counts(configured_sources, ordered_topic_ids)
+            source_stats = {
+                "topic_source_counts": source_counts,
+                "topics_without_sources": [
+                    topic_id
+                    for topic_id in ordered_topic_ids
+                    if source_counts.get(topic_id, 0) == 0
+                ],
+            }
         except Exception as e:
             logger.warning(f"Failed to load configured topics from {args.defaults}: {e}")
 
@@ -887,6 +934,7 @@ Examples:
                 "previous_digest_penalty": len(previous_titles) > 0,
                 "quality_scoring": True
             },
+            "source_stats": source_stats,
             "output_stats": {
                 "total_articles": total_after_domain_limits,
                 "topics_count": len(topic_groups),
