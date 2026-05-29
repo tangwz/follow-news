@@ -531,6 +531,100 @@ class TestOpenCliCheckCache(unittest.TestCase):
                     Path(temp_dir) / "opencli-check-state.json",
                 )
 
+    def test_fresh_check_state_matches_identity(self):
+        now = 1779984000
+        state = {
+            "opencli_path": "/bin/opencli",
+            "opencli_version": "1.7.22",
+            "capability_checked_at": now - 10,
+            "doctor_checked_at": now - 20,
+            "doctor_status": "ok",
+        }
+
+        self.assertTrue(
+            fetch_twitter.is_opencli_check_cache_fresh(
+                state,
+                "/bin/opencli",
+                "1.7.22",
+                now,
+                86400,
+                "capability_checked_at",
+            )
+        )
+        self.assertTrue(
+            fetch_twitter.is_opencli_check_cache_fresh(
+                state,
+                "/bin/opencli",
+                "1.7.22",
+                now,
+                86400,
+                "doctor_checked_at",
+            )
+        )
+
+    def test_check_state_is_stale_when_ttl_expires(self):
+        now = 1779984000
+        state = {
+            "opencli_path": "/bin/opencli",
+            "opencli_version": "1.7.22",
+            "capability_checked_at": now - 86500,
+        }
+
+        self.assertFalse(
+            fetch_twitter.is_opencli_check_cache_fresh(
+                state,
+                "/bin/opencli",
+                "1.7.22",
+                now,
+                86400,
+                "capability_checked_at",
+            )
+        )
+
+    def test_check_state_is_stale_when_identity_changes(self):
+        now = 1779984000
+        state = {
+            "opencli_path": "/old/opencli",
+            "opencli_version": "1.7.22",
+            "capability_checked_at": now - 10,
+        }
+
+        self.assertFalse(
+            fetch_twitter.is_opencli_check_cache_fresh(
+                state,
+                "/bin/opencli",
+                "1.7.22",
+                now,
+                86400,
+                "capability_checked_at",
+            )
+        )
+
+    def test_record_check_state_preserves_existing_fields(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "opencli-check-state.json"
+            store = fetch_twitter.JsonStateStore(path)
+            store.save({"doctor_checked_at": 10, "doctor_status": "ok"})
+
+            fetch_twitter.record_opencli_check_state(
+                store,
+                "/bin/opencli",
+                "1.7.22",
+                "capability_checked_at",
+                now=20,
+            )
+
+            self.assertEqual(
+                store.load(),
+                {
+                    "opencli_path": "/bin/opencli",
+                    "opencli_version": "1.7.22",
+                    "doctor_checked_at": 10,
+                    "doctor_status": "ok",
+                    "capability_checked_at": 20,
+                },
+            )
+
 
 class TestOpenCliSelectionDiagnostics(unittest.TestCase):
     def test_empty_reason_prioritizes_opencli_failure(self):

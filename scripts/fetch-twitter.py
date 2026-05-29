@@ -954,6 +954,48 @@ def get_opencli_check_state_path() -> Path:
     return get_x_cache_dir() / OPENCLI_CHECK_STATE_FILENAME
 
 
+def is_opencli_check_cache_fresh(
+    state: Dict[str, Any],
+    command: str,
+    version: str,
+    now: float,
+    ttl_seconds: int,
+    checked_at_key: str,
+) -> bool:
+    """Return true when a cached OpenCLI precheck result can be reused."""
+    if not state:
+        return False
+    if state.get("opencli_path") != command:
+        return False
+    if state.get("opencli_version") != version:
+        return False
+    checked_at = state.get(checked_at_key)
+    try:
+        checked_at_value = float(checked_at)
+    except (TypeError, ValueError):
+        return False
+    return checked_at_value > 0 and now - checked_at_value < ttl_seconds
+
+
+def record_opencli_check_state(
+    store: "JsonStateStore",
+    command: str,
+    version: str,
+    checked_at_key: str,
+    now: Optional[float] = None,
+    extra: Optional[Dict[str, Any]] = None,
+) -> None:
+    """Persist one successful OpenCLI precheck timestamp."""
+    current = int(time.time() if now is None else now)
+    state = store.load()
+    state["opencli_path"] = command
+    state["opencli_version"] = version
+    state[checked_at_key] = current
+    if extra:
+        state.update(extra)
+    store.save(state)
+
+
 def get_x_id_cache_path() -> Path:
     """Return the project-local username to user-id cache path."""
     return get_x_cache_dir() / "user_ids.json"
