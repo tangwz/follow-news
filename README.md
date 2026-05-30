@@ -134,6 +134,8 @@ All environment variables are optional. The pipeline runs with whatever sources 
 export TWITTER_API_BACKEND="auto"  # auto|opencli|getxapi|twitterapiio|official
 export OPENCLI_BIN="/path/to/opencli"  # optional; defaults to opencli on PATH
 export OPENCLI_MAX_WORKERS="10"  # optional; increase parallel OpenCLI workers
+export OPENCLI_CHECK_CACHE_TTL_SECONDS="86400"  # optional; cache OpenCLI capability/doctor checks for 24h
+export OPENCLI_STRICT_CHECK="0"  # optional; set 1 to run OpenCLI prechecks every time
 export OPENCLI_AUTO_UPDATE="1"      # auto-update OpenCLI if support exists (default: 1)
 export OPENCLI_NO_UPDATE="0"        # set 1 to skip OpenCLI auto-update
 export OPENCLI_UPDATE_COMMAND="self-update"  # optional; try this command if auto-update
@@ -159,6 +161,8 @@ export BRAVE_PLAN="free"           # Override Brave rate limit: free|pro
 OpenCLI is preferred because it can reuse an authenticated Chrome/Chromium session instead of requiring Twitter API credentials. API backends remain available for CI, headless machines, or users who already configured API keys.
 
 To use the OpenCLI backend, install the OpenCLI executable yourself and make it available on `PATH`, or set `OPENCLI_BIN` to its absolute path. In OpenClaw, also install the `jackwener/opencli` Skill so the agent can run `opencli doctor`, check the browser bridge, and guide X login-state troubleshooting.
+
+The fetcher caches successful OpenCLI capability and doctor checks for `OPENCLI_CHECK_CACHE_TTL_SECONDS` seconds to reduce cold-start overhead; set `OPENCLI_STRICT_CHECK=1` when diagnosing browser bridge or login-state issues.
 
 OpenCLI browser bridge stability depends on the local browser extension connection. The fetcher defaults to 10 concurrent OpenCLI workers (`OPENCLI_MAX_WORKERS=10`) and has a hard cap at 10. It also closes X/Twitter tabs created during the OpenCLI fetch (`OPENCLI_CLOSE_TABS_AFTER_RUN=1` by default) and, on macOS, closes Chrome automation windows that OpenCLI opened during the run (`OPENCLI_CLOSE_CHROME_WINDOWS_AFTER_RUN=1` by default) while leaving pre-existing windows alone.
 

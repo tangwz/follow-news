@@ -60,6 +60,8 @@ OPENCLI_CLOSE_CHROME_WINDOWS_AFTER_RUN_DEFAULT = True
 OPENCLI_BROWSER_RECOVERABLE_RETRIES = 1
 OPENCLI_AUTO_UPDATE_DEFAULT = True
 OPENCLI_UPDATE_CHECK_INTERVAL_SECONDS = 24 * 60 * 60
+OPENCLI_CHECK_CACHE_TTL_SECONDS = 24 * 60 * 60
+OPENCLI_CHECK_STATE_FILENAME = "opencli-check-state.json"
 OPENCLI_UPDATE_COMMAND_CANDIDATES = ("self-update", "update", "upgrade")
 OPENCLI_DEFAULT_MIN_VERSION = "1.7.22"
 OPENCLI_UPDATE_ALREADY_UP_TO_DATE_MARKERS = (
@@ -149,6 +151,26 @@ def setup_logging(verbose: bool) -> logging.Logger:
         datefmt='%Y-%m-%d %H:%M:%S'
     )
     return logging.getLogger(__name__)
+
+
+class PhaseTimer:
+    """Context manager for lightweight elapsed-time logging."""
+
+    def __init__(self, name: str):
+        self.name = name
+        self.started_at = 0.0
+
+    def __enter__(self):
+        self.started_at = time.monotonic()
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        try:
+            elapsed_ms = int((time.monotonic() - self.started_at) * 1000)
+            logging.info("opencli.phase name=%s elapsed_ms=%s", self.name, elapsed_ms)
+        except Exception:
+            pass
+        return False
 
 
 def clean_tweet_text(text: str) -> str:
@@ -731,6 +753,13 @@ def get_backend_order(backend_name: str) -> List[str]:
     return [backend_name]
 
 
+def prioritize_opencli_sources(sources: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Return sources with priority sources first while preserving group order."""
+    priority_sources = [source for source in sources if source.get("priority")]
+    regular_sources = [source for source in sources if not source.get("priority")]
+    return priority_sources + regular_sources
+
+
 def get_opencli_max_workers(raw_value: Optional[str] = None) -> int:
     """Return OpenCLI worker count, defaulting to parallel browser access."""
     if raw_value is None:
@@ -872,6 +901,8 @@ def build_twitter_skipped_reason(backend_name: str, diagnostics: List[Dict[str, 
 def _classify_opencli_failure(returncode: int, stderr: str = "", stdout: str = "") -> str:
     """Map OpenCLI process failures into stable backend error codes."""
     text = f"{stderr or ''} {stdout or ''}".lower()
+    if _looks_like_unsupported_opencli_command(stderr, stdout):
+        return "opencli_capability_missing"
     if returncode == 69:
         return "opencli_browser_unavailable"
     if returncode == 75:
@@ -926,6 +957,79 @@ def get_x_cache_dir() -> Path:
     if configured:
         return Path(configured).expanduser()
     return DEFAULT_X_CACHE_DIR
+
+
+def get_opencli_check_cache_ttl_seconds() -> int:
+    """Return the TTL for cached OpenCLI capability and doctor checks."""
+    raw_value = os.getenv("OPENCLI_CHECK_CACHE_TTL_SECONDS", "").strip()
+    if not raw_value:
+        return OPENCLI_CHECK_CACHE_TTL_SECONDS
+    try:
+        value = int(raw_value)
+    except ValueError:
+        return OPENCLI_CHECK_CACHE_TTL_SECONDS
+    if value <= 0:
+        return OPENCLI_CHECK_CACHE_TTL_SECONDS
+    return value
+
+
+def get_opencli_strict_check() -> bool:
+    """Return true when OpenCLI prechecks should always run."""
+    return _env_bool("OPENCLI_STRICT_CHECK", False)
+
+
+def get_opencli_check_state_path() -> Path:
+    """Return the project-local OpenCLI precheck state path."""
+    return get_x_cache_dir() / OPENCLI_CHECK_STATE_FILENAME
+
+
+def is_opencli_check_cache_fresh(
+    state: Dict[str, Any],
+    command: str,
+    version: str,
+    now: float,
+    ttl_seconds: int,
+    checked_at_key: str,
+) -> bool:
+    """Return true when a cached OpenCLI precheck result can be reused."""
+    if not state:
+        return False
+    if state.get("opencli_path") != command:
+        return False
+    if state.get("opencli_version") != version:
+        return False
+    checked_at = state.get(checked_at_key)
+    try:
+        checked_at_value = float(checked_at)
+    except (TypeError, ValueError):
+        return False
+    age_seconds = now - checked_at_value
+    return checked_at_value > 0 and 0 <= age_seconds < ttl_seconds
+
+
+def record_opencli_check_state(
+    store: "JsonStateStore",
+    command: str,
+    version: str,
+    checked_at_key: str,
+    now: Optional[float] = None,
+    extra: Optional[Dict[str, Any]] = None,
+) -> None:
+    """Persist one successful OpenCLI precheck timestamp."""
+    current = int(time.time() if now is None else now)
+    state = store.load()
+    if state.get("opencli_path") != command or state.get("opencli_version") != version:
+        state = {}
+    state["opencli_path"] = command
+    state["opencli_version"] = version
+    state[checked_at_key] = current
+    if extra:
+        protected_keys = {"opencli_path", "opencli_version", checked_at_key}
+        state.update({key: value for key, value in extra.items() if key not in protected_keys})
+    try:
+        store.save(state)
+    except Exception as exc:
+        logging.debug("Failed to persist OpenCLI precheck state: %s", exc)
 
 
 def get_x_id_cache_path() -> Path:
@@ -1591,10 +1695,18 @@ class OpenCliBackend(TwitterBackend):
         self._auto_update = auto_update
         self.no_cache = no_cache
         self._before_chrome_windows: Optional[Dict[str, List[str]]] = None
+        self._check_state_store = JsonStateStore(get_opencli_check_state_path())
+        self._opencli_version: Optional[str] = None
         try:
+            self._opencli_version = _get_opencli_version(self.command)
             if self._auto_update:
                 update_result = _ensure_opencli_latest(self.command)
-                if update_result["status"] == "throttled" and _is_opencli_below_min_version(self.command):
+                current_tuple = _parse_opencli_version(self._opencli_version or "")
+                if (
+                    update_result["status"] == "throttled"
+                    and current_tuple is not None
+                    and current_tuple < _min_opencli_version()
+                ):
                     logging.info("OpenCLI update throttle bypassed because the installed version is below minimum.")
                     update_result = _ensure_opencli_latest(self.command, force=True)
                 if update_result["status"] == "updated":
@@ -1612,10 +1724,32 @@ class OpenCliBackend(TwitterBackend):
                         "OpenCLI auto-update check did not complete successfully: %s",
                         update_result["message"],
                     )
-            _ensure_opencli_min_version(self.command)
-            self._before_chrome_windows = snapshot_chrome_windows()
-            self._verify_capability()
-            self._run_doctor()
+                if update_result["status"] == "updated":
+                    self._opencli_version = _get_opencli_version(self.command)
+            if self._opencli_version is None:
+                minimum_text = _opencli_version_str(_min_opencli_version())
+                raise OpenCliBackendError(
+                    "opencli_version_unknown",
+                    f"Could not determine OpenCLI version. Install OpenCLI {minimum_text} or later.",
+                )
+            current_tuple = _parse_opencli_version(self._opencli_version)
+            if current_tuple is None:
+                raise OpenCliBackendError(
+                    "opencli_version_unknown",
+                    "Could not parse OpenCLI version output.",
+                )
+            minimum = _min_opencli_version()
+            if current_tuple < minimum:
+                raise OpenCliBackendError(
+                    "opencli_version_too_old",
+                    f"OpenCLI is too old (current={self._opencli_version}); upgrade to {_opencli_version_str(minimum)} or later.",
+                )
+            with PhaseTimer("opencli.browser_snapshot"):
+                self._before_chrome_windows = snapshot_chrome_windows()
+            with PhaseTimer("opencli.capability"):
+                self._verify_capability_cached()
+            with PhaseTimer("opencli.doctor"):
+                self._run_doctor_cached()
         except Exception:
             cleanup_new_opencli_chrome_windows(self._before_chrome_windows)
             raise
@@ -1699,14 +1833,55 @@ class OpenCliBackend(TwitterBackend):
                 "OpenCLI does not expose the twitter tweets command.",
             )
 
-    def _run_doctor(self) -> None:
+    def _precheck_cache_fresh(self, checked_at_key: str) -> bool:
+        if get_opencli_strict_check():
+            return False
+        state = self._check_state_store.load()
+        return is_opencli_check_cache_fresh(
+            state,
+            self.command,
+            self._opencli_version,
+            time.time(),
+            get_opencli_check_cache_ttl_seconds(),
+            checked_at_key,
+        )
+
+    def _verify_capability_cached(self) -> None:
+        if self._precheck_cache_fresh("capability_checked_at"):
+            logging.debug("OpenCLI capability check cache hit.")
+            return
+        self._verify_capability()
+        record_opencli_check_state(
+            self._check_state_store,
+            self.command,
+            self._opencli_version,
+            "capability_checked_at",
+        )
+
+    def _run_doctor(self) -> bool:
         result = self._run_command(["doctor"], timeout=30)
         if result.returncode == 0:
-            return
+            return True
         code = _classify_opencli_failure(result.returncode, result.stderr, result.stdout)
         if code in {"opencli_browser_unavailable", "opencli_auth_required"}:
             raise OpenCliBackendError(code, result.stderr.strip() or "opencli doctor failed")
         logging.warning(f"opencli doctor returned {result.returncode}: {(result.stderr or result.stdout).strip()[:200]}")
+        return False
+
+    def _run_doctor_cached(self) -> None:
+        state = self._check_state_store.load()
+        if self._precheck_cache_fresh("doctor_checked_at") and state.get("doctor_status") == "ok":
+            logging.debug("OpenCLI doctor check cache hit.")
+            return
+        if not self._run_doctor():
+            return
+        record_opencli_check_state(
+            self._check_state_store,
+            self.command,
+            self._opencli_version,
+            "doctor_checked_at",
+            extra={"doctor_status": "ok"},
+        )
 
     def _parse_tweets_payload(self, payload: Any, source: Dict[str, Any], cutoff: datetime) -> List[Dict[str, Any]]:
         articles = []
@@ -1770,38 +1945,42 @@ class OpenCliBackend(TwitterBackend):
         before_tabs = self._list_browser_tabs()
         results: List[Dict[str, Any]] = []
         total = len(sources)
+        ordered_sources = prioritize_opencli_sources(sources)
 
         try:
-            first = self._fetch_user_tweets(sources[0], cutoff)
+            with PhaseTimer("opencli.probe_fetch"):
+                first = self._fetch_user_tweets(ordered_sources[0], cutoff)
             results.append(first)
             logging.info(f"[1/{total}] @{first['handle']}: {first['count']} tweets via OpenCLI")
 
-            remaining = sources[1:]
+            remaining = ordered_sources[1:]
             if not remaining:
                 return results
 
             done = 1
             max_workers = self._max_workers if self._max_workers is not None else get_opencli_max_workers()
-            with ThreadPoolExecutor(max_workers=max_workers) as pool:
-                futures = {pool.submit(self._fetch_user_tweets, source, cutoff): source for source in remaining}
-                for future in as_completed(futures):
-                    source = futures[future]
-                    try:
-                        result = future.result()
-                    except OpenCliBackendError as exc:
-                        result = self._make_error(source, f"{exc.code}: {exc.message[:160]}", 0)
-                    results.append(result)
-                    done += 1
-                    if result["status"] == "ok":
-                        logging.info(f"[{done}/{total}] ✅ @{result['handle']}: {result['count']} tweets via OpenCLI")
-                    else:
-                        logging.warning(f"[{done}/{total}] ❌ @{result['handle']}: {result.get('error', 'unknown')}")
+            with PhaseTimer("opencli.parallel_fetch"):
+                with ThreadPoolExecutor(max_workers=max_workers) as pool:
+                    futures = {pool.submit(self._fetch_user_tweets, source, cutoff): source for source in remaining}
+                    for future in as_completed(futures):
+                        source = futures[future]
+                        try:
+                            result = future.result()
+                        except OpenCliBackendError as exc:
+                            result = self._make_error(source, f"{exc.code}: {exc.message[:160]}", 0)
+                        results.append(result)
+                        done += 1
+                        if result["status"] == "ok":
+                            logging.info(f"[{done}/{total}] ✅ @{result['handle']}: {result['count']} tweets via OpenCLI")
+                        else:
+                            logging.warning(f"[{done}/{total}] ❌ @{result['handle']}: {result.get('error', 'unknown')}")
 
             return results
         finally:
-            self._cleanup_new_browser_tabs(before_tabs)
-            self._release_browser_lease()
-            cleanup_new_opencli_chrome_windows(before_chrome_windows)
+            with PhaseTimer("opencli.cleanup"):
+                self._cleanup_new_browser_tabs(before_tabs)
+                self._release_browser_lease()
+                cleanup_new_opencli_chrome_windows(before_chrome_windows)
 
 
 class OfficialBackend(TwitterBackend):
